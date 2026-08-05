@@ -5,7 +5,7 @@ from __future__ import division
 from ..mesh.operations import mesh_move_vertices_by
 # from .coloring import quad_mesh_polyedge_2_coloring
 
-from compas.utilities import pairwise
+from compas.itertools import pairwise
 
 
 __all__ = [

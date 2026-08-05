@@ -12,8 +12,8 @@ __all__ = ['Network']
 
 class Network(Network):
 
-    def __init__(self):
-        super(Network, self).__init__()
+    def __init__(self, *args, **kwargs):
+        super(Network, self).__init__(*args, **kwargs)
 
     @classmethod
     def from_nodes_and_edges(cls, nodes, edges):

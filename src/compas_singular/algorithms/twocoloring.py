@@ -5,7 +5,7 @@ from __future__ import division
 import time
 import itertools
 
-from compas.topology import adjacency_from_edges
+from compas_singular._compat import adjacency_from_edges
 
 from compas_singular.datastructures import QuadMesh
 from compas_singular.datastructures import delete_strips

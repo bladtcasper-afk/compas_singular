@@ -3,8 +3,8 @@ from __future__ import absolute_import
 from __future__ import division
 
 from math import pi
-from compas.geometry import circle_evaluate
-from compas.geometry import archimedean_spiral_evaluate
+from compas_singular._compat import circle_evaluate
+from compas_singular._compat import archimedean_spiral_evaluate
 from compas.geometry import add_vectors
 
 

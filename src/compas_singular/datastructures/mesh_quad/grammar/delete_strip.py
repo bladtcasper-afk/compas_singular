@@ -1,7 +1,7 @@
-from compas.datastructures import network_disconnected_nodes
-from compas.datastructures import mesh_substitute_vertex_in_faces
+from compas_singular._compat import network_disconnected_nodes
+from compas_singular._compat import mesh_substitute_vertex_in_faces
 from compas.geometry import centroid_points
-from compas.utilities import pairwise
+from compas.itertools import pairwise
 
 from ...network import Network
 

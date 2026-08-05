@@ -4,10 +4,10 @@ from __future__ import division
 
 from compas.geometry import Polyline
 from compas.geometry import discrete_coons_patch
-from compas.datastructures import meshes_join_and_weld
-from compas.utilities import geometric_key
-from compas.utilities import pairwise
-from compas.utilities import linspace
+from compas_singular._compat import meshes_join_and_weld
+from compas_singular._compat import geometric_key
+from compas.itertools import pairwise
+from compas.itertools import linspace
 
 from ..mesh_quad_coarse import CoarseQuadMesh
 from ..mesh_quad_pseudo import PseudoQuadMesh
@@ -18,8 +18,8 @@ __all__ = [	'CoarsePseudoQuadMesh']
 
 class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
 
-    def __init__(self):
-        super(CoarsePseudoQuadMesh, self).__init__()
+    def __init__(self, *args, **kwargs):
+        super(CoarsePseudoQuadMesh, self).__init__(*args, **kwargs)
 
     def densification(self, edges_to_curves=None):
         """Generate a denser quad mesh from the coarse quad mesh and its strip densities.
@@ -48,19 +48,21 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
                 d = self.get_strip_density(edge_strip[u, v])
 
                 if edges_to_curves:
+                    # d + 1 points (not d) to match the straight-chord branch below --
+                    # linspace(0, 1, d) samples one point short and raises for d == 1.
                     polyline = []
                     if (u, v) in edges_to_curves:
                         curve = Polyline(edges_to_curves[u, v])
-                        polyline = [curve.point(t) for t in linspace(0, 1, d)]
+                        polyline = [curve.point_at(t) for t in linspace(0, 1, d + 1)]
                     else:
                         curve = Polyline(edges_to_curves[v, u])
-                        polyline = [curve.point(t) for t in linspace(0, 1, d)]
+                        polyline = [curve.point_at(t) for t in linspace(0, 1, d + 1)]
                         polyline[:] = polyline[::-1]
                 else:
                     polyline = []
                     curve = Polyline([self.vertex_coordinates(u), self.vertex_coordinates(v)])
                     for i in range(0, d + 1):
-                        point = curve.point(float(i) / float(d))
+                        point = curve.point_at(float(i) / float(d))
                         polyline.append(point)
 
                 polylines.append(polyline)
