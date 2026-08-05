@@ -2,9 +2,9 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-from compas.datastructures import network_polylines
-from compas.datastructures import trimesh_face_circle
-from compas.utilities import geometric_key
+from compas_singular._compat import network_polylines
+from compas_singular._compat import trimesh_face_circle
+from compas_singular._compat import geometric_key
 
 from ..mesh import Mesh
 from ..network import Network
@@ -26,8 +26,8 @@ class Skeleton(Mesh):
            Available at https://www.sciencedirect.com/science/article/abs/pii/S0167865515001233.
     """
 
-    def __init__(self):
-        super(Skeleton, self).__init__()
+    def __init__(self, *args, **kwargs):
+        super(Skeleton, self).__init__(*args, **kwargs)
 
     @classmethod
     def from_mesh(cls, mesh):

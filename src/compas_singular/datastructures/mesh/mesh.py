@@ -5,8 +5,6 @@ from __future__ import division
 from compas.datastructures import Mesh
 from compas.geometry import centroid_points
 from compas.geometry import angle_points
-# from compas.utilities import geometric_key
-# from compas.utilities import pairwise
 
 
 __all__ = ['Mesh']
@@ -14,8 +12,40 @@ __all__ = ['Mesh']
 
 class Mesh(Mesh):
 
-    def __init__(self):
-        super(Mesh, self).__init__()
+    def __init__(self, *args, **kwargs):
+        super(Mesh, self).__init__(*args, **kwargs)
+
+    # ------------------------------------------------------------------------
+    # COMPAS 2.x compatibility
+    #
+    # In COMPAS 2.x the edge methods take a single ``(u, v)`` tuple, whereas
+    # compas_singular was written against the COMPAS 0.x/1.x API where they
+    # took ``u`` and ``v`` as two separate arguments. These thin overrides
+    # accept both calling styles (the tuple form is what COMPAS 2.x uses
+    # internally) so the rest of compas_singular can keep the old signatures.
+    # ------------------------------------------------------------------------
+
+    @staticmethod
+    def _as_edge(u, v):
+        return u if v is None else (u, v)
+
+    def edge_midpoint(self, u, v=None):
+        return super(Mesh, self).edge_midpoint(self._as_edge(u, v))
+
+    def edge_length(self, u, v=None):
+        return super(Mesh, self).edge_length(self._as_edge(u, v))
+
+    def edge_faces(self, u, v=None):
+        return super(Mesh, self).edge_faces(self._as_edge(u, v))
+
+    def is_edge_on_boundary(self, u, v=None):
+        return super(Mesh, self).is_edge_on_boundary(self._as_edge(u, v))
+
+    def edge_point(self, u, v=None, t=0.5):
+        # old style: edge_point(u, v, t); new style: edge_point((u, v), t)
+        if isinstance(u, (list, tuple)):
+            return super(Mesh, self).edge_point(u, 0.5 if v is None else v)
+        return super(Mesh, self).edge_point((u, v), t)
 
     def to_vertices_and_faces(self, keep_keys=True):
 
@@ -23,9 +53,9 @@ class Mesh(Mesh):
             vertices = {vkey: self.vertex_coordinates(vkey) for vkey in self.vertices()}
             faces = {fkey: self.face_vertices(fkey) for fkey in self.faces()}
         else:
-            key_index = self.key_index()
+            vertex_index = self.vertex_index()
             vertices = [self.vertex_coordinates(key) for key in self.vertices()]
-            faces = [[key_index[key] for key in self.face_vertices(fkey)] for fkey in self.faces()]
+            faces = [[vertex_index[key] for key in self.face_vertices(fkey)] for fkey in self.faces()]
         return vertices, faces
 
     def boundaries(self):

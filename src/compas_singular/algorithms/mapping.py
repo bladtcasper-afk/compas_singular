@@ -249,9 +249,9 @@ if __name__ == '__main__':
     from compas_singular.datastructures.mesh_quad_pseudo_coarse.mesh_quad_pseudo_coarse import CoarsePseudoQuadMesh
     from compas_singular.datastructures.mesh_quad_pseudo.mesh_quad_pseudo import PseudoQuadMesh
     from compas_singular.algorithms.interpolation.layout import *
-    from compas.datastructures import meshes_join
+    from compas_singular._compat import meshes_join
     from compas_plotters.meshplotter import MeshPlotter
-    from compas.utilities import average
+    from compas_singular._compat import average
     from compas_singular.algorithms.interpolation.isomorphism import are_meshes_isomorphic
 
     # mesh_1 = CoarseQuadMesh.from_json('/Users/Robin/Desktop/json/f.json')

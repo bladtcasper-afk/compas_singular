@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-from compas.utilities import pairwise
+from compas.itertools import pairwise
 
 from .mesh_quad_coarse import CoarseQuadMesh
 from ..mesh_quad.coloring import quad_mesh_strip_2_coloring

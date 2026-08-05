@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-from compas.topology import adjacency_from_edges
+from compas.topology import vertex_adjacency_from_edges
 from compas.topology import vertex_coloring
 
 from compas_singular.topology import is_adjacency_two_colorable
@@ -70,7 +70,7 @@ def mesh_face_2_coloring(mesh):
     """
 
     edges = [(mesh.halfedge[u][v], mesh.halfedge[v][u]) for u, v in mesh.edges() if not mesh.is_edge_on_boundary(u, v)]
-    return is_adjacency_two_colorable(adjacency_from_edges(edges))
+    return is_adjacency_two_colorable(vertex_adjacency_from_edges(edges))
 
 
 def mesh_face_n_coloring(mesh):
@@ -89,7 +89,7 @@ def mesh_face_n_coloring(mesh):
     """
 
     edges = [(mesh.halfedge[u][v], mesh.halfedge[v][u]) for u, v in mesh.edges() if not mesh.is_edge_on_boundary(u, v)]
-    return vertex_coloring(adjacency_from_edges(edges))
+    return vertex_coloring(vertex_adjacency_from_edges(edges))
 
 
 # ==============================================================================

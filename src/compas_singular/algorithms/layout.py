@@ -6,7 +6,7 @@ from math import pi
 
 from compas.geometry import subtract_vectors
 from compas.geometry import centroid_points_weighted
-from compas.geometry import circle_evaluate
+from compas_singular._compat import circle_evaluate
 
 from ..datastructures import mesh_move_by
 

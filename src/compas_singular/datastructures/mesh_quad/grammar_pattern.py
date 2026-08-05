@@ -4,17 +4,17 @@ from __future__ import division
 
 from math import pi
 
-from compas.datastructures import mesh_substitute_vertex_in_faces
+from compas_singular._compat import mesh_substitute_vertex_in_faces
 # from compas.datastructures import mesh_unweld_vertices
-from compas.datastructures import network_disconnected_nodes
-from compas.datastructures import mesh_smooth_centroid
+from compas_singular._compat import network_disconnected_nodes
+from compas_singular._compat import mesh_smooth_centroid
 from compas.geometry import centroid_points
 # from compas.geometry import project_point_line
 # from compas.topology import shortest_path
 # from compas.topology import connected_components
 from compas.topology import breadth_first_paths
-from compas.utilities import geometric_key
-from compas.utilities import pairwise
+from compas_singular._compat import geometric_key
+from compas.itertools import pairwise
 
 from compas_singular.geometry import closest_point_on_polyline
 from compas_singular.utilities import sublist_from_to_items_in_closed_list
