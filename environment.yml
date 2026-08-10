@@ -1,0 +1,18 @@
+# Conda environment for compas_singular, including the standalone viewer.
+#
+#   conda env create -f environment.yml
+#   conda activate compas-singular
+#
+# The final `pip: -e .[viewer]` line installs compas_singular itself in
+# editable mode, so `import compas_singular` works from anywhere without
+# any sys.path juggling.
+name: compas-singular
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - compas=2.15.1
+  - networkx
+  - pip:
+      - -e .[viewer]
