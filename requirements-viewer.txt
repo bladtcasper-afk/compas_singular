@@ -1,0 +1,8 @@
+# Optional dependencies for the standalone 3D viewer used by the examples
+# (compas_singular/examples/*.py).
+#
+# Install with:  pip install -e .[viewer]
+#
+# Known-good combination: compas_viewer 2.0.2 with compas 2.15.1.
+compas_viewer>=2.0
+PyOpenGL>=3.1

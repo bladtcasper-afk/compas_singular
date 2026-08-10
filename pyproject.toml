@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "compas_singular"
+version = "0.1.0"
+description = "Topology finding of singularities in quad meshes"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Robin Oval", email = "rpho2@cam.ac.uk" }]
+keywords = ["compas", "quad mesh", "singularities", "topology finding"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX",
+    "Operating System :: Unix",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+dynamic = ["dependencies", "optional-dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+optional-dependencies.viewer = { file = ["requirements-viewer.txt"] }
+
+[tool.setuptools]
+include-package-data = true
+
+# `where = ["src"]` is the src-layout mapping that used to live in setup.py as
+# package_dir={"": "src"}. Unlike the old explicit packages=["compas_singular"],
+# find picks up every subpackage (datastructures, algorithms, geometry, rhino,
+# topology, utilities), which is what makes
+# `from compas_singular.datastructures import CoarseQuadMesh` work.
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["compas_singular*"]
