@@ -6,7 +6,7 @@ from math import floor
 from operator import itemgetter
 
 from compas.geometry import centroid_points
-from compas.utilities import pairwise
+from compas.itertools import pairwise
 
 from compas_singular.utilities import list_split
 
@@ -18,8 +18,8 @@ __all__ = ['QuadMesh']
 
 class QuadMesh(Mesh):
 
-    def __init__(self):
-        super(QuadMesh, self).__init__()
+    def __init__(self, *args, **kwargs):
+        super(QuadMesh, self).__init__(*args, **kwargs)
         self.attributes['strips'] = {}
         self.attributes['polyedges'] = {}
 

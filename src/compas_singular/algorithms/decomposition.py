@@ -15,16 +15,16 @@ from compas.geometry import angle_vectors
 from compas.geometry import angle_vectors_signed
 # from compas.geometry import cross_vectors
 from compas.geometry import centroid_points
-from compas.datastructures import trimesh_face_circle
-from compas.datastructures import network_polylines
-from compas.datastructures import mesh_insert_vertex_on_edge
-from compas.datastructures import mesh_substitute_vertex_in_faces
-from compas.datastructures import mesh_explode
-from compas.datastructures import mesh_weld
-from compas.datastructures import mesh_unweld_edges
-from compas.utilities import pairwise
-from compas.utilities import window
-from compas.utilities import geometric_key
+from compas_singular._compat import trimesh_face_circle
+from compas_singular._compat import network_polylines
+from compas_singular._compat import mesh_insert_vertex_on_edge
+from compas_singular._compat import mesh_substitute_vertex_in_faces
+from compas_singular._compat import mesh_explode
+from compas_singular._compat import mesh_weld
+from compas_singular._compat import mesh_unweld_edges
+from compas.itertools import pairwise
+from compas.itertools import window
+from compas_singular._compat import geometric_key
 
 from ..datastructures import CoarsePseudoQuadMesh
 from ..datastructures import Network
@@ -43,8 +43,8 @@ class SkeletonDecomposition(Skeleton):
 
     """
 
-    def __init__(self):
-        super(SkeletonDecomposition, self).__init__()
+    def __init__(self, *args, **kwargs):
+        super(SkeletonDecomposition, self).__init__(*args, **kwargs)
         self.mesh = None
         self.polylines = None
         self.relative_kink_angle_limit = pi / 8.
@@ -368,7 +368,7 @@ class SkeletonDecomposition(Skeleton):
                     # remove triangular face and merge the two boundary vertices
                     # due to singularities at the same location
                     polyline = Polyline(self.decomposition_polyline(*map(lambda x: geometric_key(mesh.vertex_coordinates(x)), boundary_vertices)))
-                    point = polyline.point(t=.5, snap=True)
+                    point = polyline.point_at(t=.5, snap=True)
                     new_vkey = mesh.add_vertex(attr_dict={'x': point.x, 'y': point.y, 'z': point.z})
 
                     # modify triangular face

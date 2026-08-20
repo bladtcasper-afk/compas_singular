@@ -6,11 +6,11 @@ from compas.geometry import is_point_in_polygon_xy
 from compas.geometry import length_vector
 from compas.geometry import subtract_vectors
 from compas.geometry import cross_vectors
-from compas.geometry import delaunay_from_points
-from compas.datastructures import trimesh_face_circle
-from compas.datastructures import mesh_unweld_edges
-from compas.utilities import pairwise
-from compas.utilities import geometric_key
+from compas.geometry import delaunay_triangulation as delaunay_from_points
+from compas_singular._compat import trimesh_face_circle
+from compas_singular._compat import mesh_unweld_edges
+from compas.itertools import pairwise
+from compas_singular._compat import geometric_key
 
 from ..datastructures import Mesh
 

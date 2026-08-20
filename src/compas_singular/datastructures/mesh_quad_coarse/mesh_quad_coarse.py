@@ -6,12 +6,14 @@ from copy import deepcopy
 from math import floor
 from math import ceil
 
-from compas.datastructures import meshes_join_and_weld
-from compas.topology import adjacency_from_edges
+from compas_singular._compat import meshes_join_and_weld
+from compas_singular._compat import adjacency_from_edges
 from compas.topology import connected_components
 from compas.geometry import discrete_coons_patch
 from compas.geometry import vector_average
-from compas.utilities import pairwise
+from compas.geometry import Polyline
+from compas.itertools import pairwise
+from compas.itertools import linspace
 
 from ..mesh import Mesh
 from ..mesh_quad import QuadMesh
@@ -22,8 +24,8 @@ __all__ = ['CoarseQuadMesh']
 
 class CoarseQuadMesh(QuadMesh):
 
-    def __init__(self):
-        super(CoarseQuadMesh, self).__init__()
+    def __init__(self, *args, **kwargs):
+        super(CoarseQuadMesh, self).__init__(*args, **kwargs)
         self.attributes['strips_density'] = {}
         self.attributes['vertex_coarse_to_dense'] = {}
         self.attributes['edge_coarse_to_dense'] = {}
@@ -251,8 +253,15 @@ class CoarseQuadMesh(QuadMesh):
     # densification
     # --------------------------------------------------------------------------
 
-    def densification(self):
+    def densification(self, edges_to_curves=None):
         """Generate a denser quad mesh from the coarse quad mesh and its strip densities.
+
+        Parameters
+        ----------
+        edges_to_curves : dict, optional
+            A dictionary with edges (u, v) pointing to curve for densification. The curves are lists of XYZ points.
+            Without it, each coarse edge is densified as a straight chord between its two vertices, same as
+            :meth:`edge_point` gives. Mirrors ``CoarsePseudoQuadMesh.densification``.
         """
         edge_strip = {}
         for skey, edges in self.strips(data=True):
@@ -262,8 +271,23 @@ class CoarseQuadMesh(QuadMesh):
 
         face_meshes = {}
         for fkey in self.faces():
-            ab, bc, cd, da = [[self.edge_point(u, v, float(i) / float(self.get_strip_density(edge_strip[(u, v)])))
-                               for i in range(0, self.get_strip_density(edge_strip[(u, v)]) + 1)] for u, v in self.face_halfedges(fkey)]
+            polylines = []
+            for u, v in self.face_halfedges(fkey):
+                d = self.get_strip_density(edge_strip[(u, v)])
+                if edges_to_curves:
+                    # d + 1 points (not d) to match the straight-chord branch below --
+                    # linspace(0, 1, d) samples one point short and raises for d == 1.
+                    if (u, v) in edges_to_curves:
+                        curve = Polyline(edges_to_curves[u, v])
+                        polyline = [curve.point_at(t) for t in linspace(0, 1, d + 1)]
+                    else:
+                        curve = Polyline(edges_to_curves[v, u])
+                        polyline = [curve.point_at(t) for t in linspace(0, 1, d + 1)]
+                        polyline = polyline[::-1]
+                else:
+                    polyline = [self.edge_point(u, v, float(i) / float(d)) for i in range(0, d + 1)]
+                polylines.append(polyline)
+            ab, bc, cd, da = polylines
             vertices, faces = discrete_coons_patch(ab, bc, list(reversed(cd)), list(reversed(da)))
             face_meshes[fkey] = QuadMesh.from_vertices_and_faces(vertices, faces)
 

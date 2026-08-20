@@ -26,7 +26,10 @@ class Lizard:
 	def turn(self):
 		nbrs = self.mesh.vertex_neighbors(self.lizard[0], ordered=True)
 		i = nbrs.index(self.lizard[1])
-		new_head = nbrs[i + 1 - len(nbrs)]
+		# COMPAS 2.x orders vertex neighbors with the opposite winding to the
+		# 0.x/1.x API this turtle was written for. Stepping to the previous
+		# neighbor keeps the turtle turning in the original direction.
+		new_head = nbrs[i - 1]
 		self.lizard.insert(0, new_head)
 		if not self.grow:
 			del self.lizard[-1]
@@ -34,7 +37,7 @@ class Lizard:
 	def pivot(self):
 		nbrs = self.mesh.vertex_neighbors(self.lizard[1], ordered=True)
 		i = nbrs.index(self.lizard[0])
-		new_head = nbrs[i + 1 - len(nbrs)]
+		new_head = nbrs[i - 1]  # opposite neighbor winding in COMPAS 2.x (see turn)
 		self.lizard[0] = new_head
 
 	def add(self):
@@ -106,12 +109,12 @@ if __name__ == '__main__':
 	import compas
 	from compas_singular.datastructures import QuadMesh
 	from compas_singular.datastructures import CoarseQuadMesh
-	from compas.datastructures import mesh_smooth_centroid
+	from compas_singular._compat import mesh_smooth_centroid
 	from compas_plotters.meshplotter import MeshPlotter
 	from compas_singular.datastructures.mesh_quad.grammar.add_strip import add_strip
 	from math import pi
 	from compas.geometry import add_vectors
-	from compas.geometry import circle_evaluate
+	from compas_singular._compat import circle_evaluate
 	from compas_singular.datastructures.mesh.operations import mesh_move_vertex_to
 	from compas.rpc import Proxy
 

@@ -13,7 +13,7 @@ from compas.geometry import scale_vector
 from compas.geometry import length_vector
 from compas.geometry import dot_vectors
 from compas.geometry import subtract_vectors
-from compas.utilities import pairwise
+from compas.itertools import pairwise
 
 
 __all__ = [
