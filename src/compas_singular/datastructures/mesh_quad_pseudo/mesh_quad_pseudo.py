@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-from compas_singular._compat import geometric_key
+from compas.tolerance import TOL
 
 from ..mesh_quad import QuadMesh
 from compas_singular.utilities import list_split
@@ -28,14 +28,14 @@ class PseudoQuadMesh(QuadMesh):
 
     @classmethod
     def from_vertices_and_faces_with_poles(cls, vertices, faces, poles=[]):
-        pole_map = tuple([geometric_key(pole) for pole in poles])
+        pole_map = tuple([TOL.geometric_key(pole) for pole in poles])
         mesh = cls.from_vertices_and_faces(vertices, faces)
         for fkey in mesh.faces():
             face_vertices = mesh.face_vertices(fkey)
             if len(face_vertices) == 3:
                 mesh.attributes['face_pole'][fkey] = face_vertices[0]
                 for vkey in face_vertices:
-                    if geometric_key(mesh.vertex_coordinates(vkey)) in pole_map:
+                    if TOL.geometric_key(mesh.vertex_coordinates(vkey)) in pole_map:
                         mesh.attributes['face_pole'].update({fkey: vkey})
                         break
         return mesh
@@ -664,7 +664,7 @@ class PseudoQuadMesh(QuadMesh):
 #     vertex_conversion = {vkey: i for i, vkey in enumerate(mesh.vertices())}
 #     new_face_vertices = []
 
-#     poles = [geometric_key(pole) for pole in poles]
+#     poles = [TOL.geometric_key(pole) for pole in poles]
 
 #     for fkey in mesh.faces():
 #         face_vertices = mesh.face_vertices(fkey)[:]
@@ -672,7 +672,7 @@ class PseudoQuadMesh(QuadMesh):
 #             # find pole location
 #             pole = None
 #             for vkey in face_vertices:
-#                 geom_key = geometric_key(mesh.vertex_coordinates(vkey))
+#                 geom_key = TOL.geometric_key(mesh.vertex_coordinates(vkey))
 #                 if geom_key in poles:
 #                     pole = vkey
 #                     break

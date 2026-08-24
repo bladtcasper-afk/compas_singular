@@ -4,11 +4,11 @@ from __future__ import division
 
 from compas.geometry import Polyline
 from compas.geometry import discrete_coons_patch
-from compas_singular._compat import meshes_join_and_weld
-from compas_singular._compat import geometric_key
+from compas.tolerance import TOL
 from compas.itertools import pairwise
 from compas.itertools import linspace
 
+from ..mesh import meshes_join_and_weld
 from ..mesh_quad_coarse import CoarseQuadMesh
 from ..mesh_quad_pseudo import PseudoQuadMesh
 
@@ -39,7 +39,7 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
                 edge_strip[u, v] = strip
                 edge_strip[v, u] = strip
 
-        pole_map = [geometric_key(self.vertex_coordinates(pole)) for pole in self.poles()]
+        pole_map = [TOL.geometric_key(self.vertex_coordinates(pole)) for pole in self.poles()]
 
         meshes = []
         for fkey in self.faces():
@@ -93,17 +93,17 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
         for mesh in meshes:
             for fkey in mesh.faces():
                 for u, v in pairwise(mesh.face_vertices(fkey) + mesh.face_vertices(fkey)[: 1]):
-                    if geometric_key(mesh.vertex_coordinates(u)) in pole_map and geometric_key(mesh.vertex_coordinates(u)) == geometric_key(mesh.vertex_coordinates(v)):
-                        face_pole_map[geometric_key(mesh.face_center(fkey))] = geometric_key(mesh.vertex_coordinates(u))
+                    if TOL.geometric_key(mesh.vertex_coordinates(u)) in pole_map and TOL.geometric_key(mesh.vertex_coordinates(u)) == TOL.geometric_key(mesh.vertex_coordinates(v)):
+                        face_pole_map[TOL.geometric_key(mesh.face_center(fkey))] = TOL.geometric_key(mesh.vertex_coordinates(u))
                         break
 
         self.set_quad_mesh(meshes_join_and_weld(meshes))
 
         face_pole = {}
         for fkey in self.get_quad_mesh().faces():
-            if geometric_key(self.get_quad_mesh().face_center(fkey)) in face_pole_map:
+            if TOL.geometric_key(self.get_quad_mesh().face_center(fkey)) in face_pole_map:
                 for vkey in self.get_quad_mesh().face_vertices(fkey):
-                    if geometric_key(self.get_quad_mesh().vertex_coordinates(vkey)) == face_pole_map[geometric_key(self.get_quad_mesh().face_center(fkey))]:
+                    if TOL.geometric_key(self.get_quad_mesh().vertex_coordinates(vkey)) == face_pole_map[TOL.geometric_key(self.get_quad_mesh().face_center(fkey))]:
                         face_pole[fkey] = vkey
                         break
 
@@ -145,7 +145,7 @@ if __name__ == '__main__':
     # # # print(mesh_weld(dense_mesh, precision='2f').is_manifold())
     # print(mesh.is_manifold())
     # print(dense_mesh.is_manifold())
-    # # # geom_key_map = [geometric_key(dense_mesh.vertex_coordinates(vkey), precision='2f') for vkey in dense_mesh.vertices()]
+    # # # geom_key_map = [TOL.geometric_key(dense_mesh.vertex_coordinates(vkey), precision='2f') for vkey in dense_mesh.vertices()]
     # # # for key in geom_key_map:
     # # # 	if geom_key_map.count(key) > 1:
     # # # 		print(geom_key_map)

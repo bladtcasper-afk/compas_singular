@@ -2,9 +2,9 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-from compas.datastructures import mesh_smooth_centerofmass
-from compas.datastructures import mesh_smooth_area
-from compas.datastructures import mesh_smooth_centroid
+from compas.datastructures.mesh.smoothing import mesh_smooth_centerofmass
+from compas.datastructures.mesh.smoothing import mesh_smooth_area
+from compas.datastructures.mesh.smoothing import mesh_smooth_centroid
 
 # from compas_rhino.geometry import RhinoMesh
 # from compas_rhino.geometry import RhinoPoint

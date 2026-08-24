@@ -1,5 +1,5 @@
-from compas_singular._compat import network_disconnected_nodes
-from compas_singular._compat import mesh_substitute_vertex_in_faces
+from compas.topology import connected_components
+from compas.datastructures.mesh.operations.substitute import mesh_substitute_vertex_in_faces
 from compas.geometry import centroid_points
 from compas.itertools import pairwise
 
@@ -40,7 +40,7 @@ def delete_strip(mesh, skey, update_data=True):
 
     # build network between vertices of the edges of the strip to delete to get the disconnect parts of vertices to merge
     network = strip_edge_network(mesh, skey)
-    disc_vertices = network_disconnected_nodes(network)
+    disc_vertices = connected_components(network.adjacency)
 
     # delete strip faces
     for fkey in mesh.strip_faces(skey):

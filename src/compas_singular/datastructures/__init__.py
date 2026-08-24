@@ -43,6 +43,10 @@ Operations
     mesh_move_vertices_by
     mesh_move_vertex_to
     mesh_move_vertices_to
+    trimesh_face_circle
+    mesh_weld
+    meshes_join
+    meshes_join_and_weld
 
 Coloring
 --------
