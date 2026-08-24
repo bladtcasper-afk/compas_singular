@@ -2,11 +2,11 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-from compas_singular._compat import network_polylines
-from compas_singular._compat import trimesh_face_circle
-from compas_singular._compat import geometric_key
+from compas.datastructures.graph.operations.join import graph_polylines
+from compas.tolerance import TOL
 
 from ..mesh import Mesh
+from ..mesh import trimesh_face_circle
 from ..network import Network
 
 
@@ -79,8 +79,8 @@ class Skeleton(Mesh):
             for fkey in self.faces()
             for nbr in self.face_neighbors(fkey)
             if fkey < nbr
-            and geometric_key(trimesh_face_circle(self, fkey)[0])
-            != geometric_key(trimesh_face_circle(self, nbr)[0])
+            and TOL.geometric_key(trimesh_face_circle(self, fkey)[0])
+            != TOL.geometric_key(trimesh_face_circle(self, nbr)[0])
         ]
 
     def branches(self):
@@ -92,7 +92,7 @@ class Skeleton(Mesh):
             List of polylines as tuples of XYZ-coordinates.
 
         """
-        return network_polylines(Network.from_lines(self.lines()))
+        return graph_polylines(Network.from_lines(self.lines()))
 
 
 # ==============================================================================

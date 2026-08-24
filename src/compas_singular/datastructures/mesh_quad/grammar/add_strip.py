@@ -1,5 +1,5 @@
 from compas.topology import breadth_first_paths
-from compas_singular._compat import mesh_substitute_vertex_in_faces
+from compas.datastructures.mesh.operations.substitute import mesh_substitute_vertex_in_faces
 from compas.itertools import pairwise
 
 # from ..grammar_pattern import strip_polyedge_update

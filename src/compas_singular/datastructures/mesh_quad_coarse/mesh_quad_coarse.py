@@ -6,8 +6,7 @@ from copy import deepcopy
 from math import floor
 from math import ceil
 
-from compas_singular._compat import meshes_join_and_weld
-from compas_singular._compat import adjacency_from_edges
+from compas.topology import vertex_adjacency_from_edges
 from compas.topology import connected_components
 from compas.geometry import discrete_coons_patch
 from compas.geometry import vector_average
@@ -16,6 +15,7 @@ from compas.itertools import pairwise
 from compas.itertools import linspace
 
 from ..mesh import Mesh
+from ..mesh import meshes_join_and_weld
 from ..mesh_quad import QuadMesh
 
 
@@ -67,7 +67,7 @@ class CoarseQuadMesh(QuadMesh):
         faces = {fkey: quad_mesh.face_vertices(fkey) for fkey in quad_mesh.faces()}
         adj_edges = {(f1, f2) for f1 in quad_mesh.faces() for f2 in quad_mesh.face_neighbors(f1) if f1 < f2 and quad_mesh.face_adjacency_halfedge(f1, f2) not in singularity_edges}
         coarse_faces_children = {}
-        for i, connected_faces in enumerate(connected_components(adjacency_from_edges(adj_edges))):
+        for i, connected_faces in enumerate(connected_components(vertex_adjacency_from_edges(adj_edges))):
             mesh = Mesh.from_vertices_and_faces(vertices, [faces[face] for face in connected_faces])
             coarse_faces_children[i] = [vkey for vkey in reversed(mesh.boundaries()[0]) if mesh.vertex_degree(vkey) == 2]
 

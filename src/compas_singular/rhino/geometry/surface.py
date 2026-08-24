@@ -5,10 +5,10 @@ from __future__ import division
 import rhinoscriptsyntax as rs
 
 from compas.datastructures import Network
-from compas.datastructures import network_polylines
+from compas.datastructures.graph.operations.join import graph_polylines
 from compas.geometry import distance_point_point
 from compas.geometry import angle_vectors
-from compas.utilities import pairwise
+from compas.itertools import pairwise
 
 import compas_rhino
 from compas_rhino.geometry import RhinoSurface
@@ -237,8 +237,8 @@ class RhinoSurface(RhinoSurface):
                 border.append(points)
                 rs.DeleteObject(guid)
             borders.append(border)
-        outer_boundaries = network_polylines(Network.from_lines([(u, v) for border in borders[0] for u, v in pairwise(border)]))
-        inner_boundaries = network_polylines(Network.from_lines([(u, v) for border in borders[1] for u, v in pairwise(border)]))
+        outer_boundaries = graph_polylines(Network.from_lines([(u, v) for border in borders[0] for u, v in pairwise(border)]))
+        inner_boundaries = graph_polylines(Network.from_lines([(u, v) for border in borders[1] for u, v in pairwise(border)]))
 
         # mapping of the curve features on the surface
         curves = []
@@ -251,7 +251,7 @@ class RhinoSurface(RhinoSurface):
             if rs.IsCurveClosed(guid):
                 points.append(points[0])
             curves.append(points)
-        polyline_features = network_polylines(Network.from_lines([(u, v) for curve in curves for u, v in pairwise(curve)]))
+        polyline_features = graph_polylines(Network.from_lines([(u, v) for curve in curves for u, v in pairwise(curve)]))
 
         # mapping of the point features onthe surface
         point_features = [list(self.point_xyz_to_uv(rs.PointCoordinates(guid))) + [0.0] for guid in pt_guids]

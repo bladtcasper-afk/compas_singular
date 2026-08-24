@@ -4,16 +4,15 @@ from __future__ import division
 
 from math import pi
 
-from compas_singular._compat import mesh_substitute_vertex_in_faces
+from compas.datastructures.mesh.operations.substitute import mesh_substitute_vertex_in_faces
 # from compas.datastructures import mesh_unweld_vertices
-from compas_singular._compat import network_disconnected_nodes
-from compas_singular._compat import mesh_smooth_centroid
+from compas.topology import connected_components
+from compas.datastructures.mesh.smoothing import mesh_smooth_centroid
 from compas.geometry import centroid_points
 # from compas.geometry import project_point_line
 # from compas.topology import shortest_path
-# from compas.topology import connected_components
 from compas.topology import breadth_first_paths
-from compas_singular._compat import geometric_key
+from compas.tolerance import TOL
 from compas.itertools import pairwise
 
 from compas_singular.geometry import closest_point_on_polyline
@@ -198,9 +197,9 @@ def func_1(mesh, fix_xyz, kmax, damping):
                         attr['x'], attr['y'], attr['z'] = xyz
                         break
 
-    fix_map = {geometric_key(xyz): [] for xyz in fix_xyz}
+    fix_map = {TOL.geometric_key(xyz): [] for xyz in fix_xyz}
     for vkey in mesh.vertices():
-        geom_key = geometric_key(mesh.vertex_coordinates(vkey))
+        geom_key = TOL.geometric_key(mesh.vertex_coordinates(vkey))
         if geom_key in fix_map:
             fix_map[geom_key].append(vkey)
 
@@ -312,7 +311,7 @@ def delete_strip(mesh, skey, preserve_boundaries=False):
     edges = [(old_to_new[u], old_to_new[v]) for u, v in strip_edges]
     network = Network.from_nodes_and_edges(vertex_coordinates, edges)
     # disconnected parts
-    parts = network_disconnected_nodes(network)
+    parts = connected_components(network.adjacency)
 
     # delete strip faces
     for fkey in strip_faces:

@@ -5,7 +5,7 @@ from __future__ import division
 import time
 import itertools
 
-from compas_singular._compat import adjacency_from_edges
+from compas.topology import vertex_adjacency_from_edges
 
 from compas_singular.datastructures import QuadMesh
 from compas_singular.datastructures import delete_strips
@@ -50,7 +50,7 @@ class TwoColourableProjection(object):
 
         mesh = self.quad_mesh
         vertices, edges = mesh.strip_graph()
-        if is_adjacency_two_colorable(adjacency_from_edges(edges)) is not None:
+        if is_adjacency_two_colorable(vertex_adjacency_from_edges(edges)) is not None:
             self.results = True
             return True
 
@@ -86,7 +86,7 @@ class TwoColourableProjection(object):
                 else:
                     new_vertices = {vkey: xyz for vkey, xyz in vertices.items() if vkey not in combination}
                     new_edges = [(u, v) for u, v in edges if u not in combination and v not in combination]
-                    two_colourability = is_adjacency_two_colorable(adjacency_from_edges(new_edges))
+                    two_colourability = is_adjacency_two_colorable(vertex_adjacency_from_edges(new_edges))
                     if not two_colourability:
                         next_pool.append(combination)
                     else:
@@ -121,7 +121,7 @@ class TwoColourableProjection(object):
         n = mesh.number_of_strips()
 
         vertices, edges = mesh.strip_graph()
-        if is_adjacency_two_colorable(adjacency_from_edges(edges)) is not None:
+        if is_adjacency_two_colorable(vertex_adjacency_from_edges(edges)) is not None:
             self.results = True
             return True
 
@@ -167,7 +167,7 @@ class TwoColourableProjection(object):
                 else:
                     new_vertices = {vkey: xyz for vkey, xyz in vertices.items() if vkey not in combination}
                     new_edges = [(u, v) for u, v in edges if u not in combination and v not in combination]
-                    two_colourability = is_adjacency_two_colorable(adjacency_from_edges(new_edges))
+                    two_colourability = is_adjacency_two_colorable(vertex_adjacency_from_edges(new_edges))
                     if not two_colourability:
                         next_pool.append(combination)
                     else:
@@ -202,7 +202,7 @@ class TwoColourableProjection(object):
 
         # result for input mesh
         vertices, edges = mesh.strip_graph()
-        if is_adjacency_two_colorable(adjacency_from_edges(edges)) is not None:
+        if is_adjacency_two_colorable(vertex_adjacency_from_edges(edges)) is not None:
             self.results = True
             return True
 
@@ -247,7 +247,7 @@ class TwoColourableProjection(object):
                 else:
                     new_vertices = {vkey: xyz for vkey, xyz in vertices.items() if vkey not in combination}
                     new_edges = [(u, v) for u, v in edges if u not in combination and v not in combination]
-                    two_colourability = is_adjacency_two_colorable(adjacency_from_edges(new_edges))
+                    two_colourability = is_adjacency_two_colorable(vertex_adjacency_from_edges(new_edges))
                     if not two_colourability:
                         to_continue = True
                     else:
@@ -284,7 +284,7 @@ class TwoColourableProjection(object):
 
         # # result for input mesh
         # vertices, edges = mesh.strip_graph()
-        # if is_adjacency_two_colorable(adjacency_from_edges(edges)) is not None:
+        # if is_adjacency_two_colorable(vertex_adjacency_from_edges(edges)) is not None:
         # 	self.results = True
         # 	return True
 
@@ -334,7 +334,7 @@ class TwoColourableProjection(object):
                 # delete strip vertices in network and check colourability
                 else:
                     vertices, edges = copy_mesh.strip_graph()
-                    two_colourability = is_adjacency_two_colorable(adjacency_from_edges(edges))
+                    two_colourability = is_adjacency_two_colorable(vertex_adjacency_from_edges(edges))
                     if not two_colourability:
                         results[combination] = 'not two-colourable'
                         to_continue = True
@@ -371,7 +371,7 @@ class TwoColourableProjection(object):
 
         # result for input mesh
         vertices, edges = mesh.strip_graph()
-        if is_adjacency_two_colorable(adjacency_from_edges(edges)) is not None:
+        if is_adjacency_two_colorable(vertex_adjacency_from_edges(edges)) is not None:
             self.results = True
             return True
 
@@ -432,7 +432,7 @@ class TwoColourableProjection(object):
                     # vertices, edges = copy_mesh.strip_graph()
                     new_vertices = {vkey: xyz for vkey, xyz in vertices.items() if vkey not in combination}
                     new_edges = [(u, v) for u, v in edges if u not in combination and v not in combination]
-                    two_colourability = is_adjacency_two_colorable(adjacency_from_edges(new_edges))
+                    two_colourability = is_adjacency_two_colorable(vertex_adjacency_from_edges(new_edges))
                     if not two_colourability:
                         results[combination] = 'not two-colourable'
                         to_continue = True
