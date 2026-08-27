@@ -37,7 +37,7 @@ class CoarseQuadMesh(QuadMesh):
     # --------------------------------------------------------------------------
 
     @classmethod
-    def from_quad_mesh(cls, quad_mesh, collect_strips=True, collect_polyedges=True, attribute_density=True):
+    def from_quad_mesh(cls, quad_mesh, collect_strips=True, collect_polyedges=True, attribute_density=True, strict=False):
         """Build coarse quad mesh from quad mesh with density and child-parent element data.
 
         Parameters
@@ -46,13 +46,16 @@ class CoarseQuadMesh(QuadMesh):
             A quad mesh.
         attribute_density : bool, optional
             Keep density data of dense quad mesh and inherit it as aatribute.
+        strict : bool, optional
+            Passed to :meth:`QuadMesh.singularity_polyedge_decomposition`. Default is
+            False. Setting it to True changes the resulting coarse layout.
 
         Returns
         ----------
         coarse_quad_mesh : CoarseQuadMesh
             A coarse quad mesh with density data.
         """
-        polyedges = quad_mesh.singularity_polyedge_decomposition()
+        polyedges = quad_mesh.singularity_polyedge_decomposition(strict=strict)
 
         # vertex data
         vertices = {vkey: quad_mesh.vertex_coordinates(vkey) for vkey in quad_mesh.vertices()}
