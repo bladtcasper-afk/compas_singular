@@ -15,6 +15,8 @@ Array functions.
     :toctree: generated/
     :nosignatures:
 
+    circle_evaluate
+    archimedean_spiral_evaluate
     line_array
     rectangular_array
     circular_array
