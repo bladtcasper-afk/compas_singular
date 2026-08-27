@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-import time
 import itertools
 
 from compas.topology import vertex_adjacency_from_edges
@@ -447,7 +446,6 @@ class TwoColourableProjection(object):
                 break
 
         self.results = results
-        self.times = (t1 - t0, t2 - t0, t3 - t0)
 
     # --------------------------------------------------------------------------
     # results

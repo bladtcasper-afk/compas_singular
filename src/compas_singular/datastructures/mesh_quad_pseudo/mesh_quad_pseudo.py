@@ -85,6 +85,8 @@ class PseudoQuadMesh(QuadMesh):
         """
 
         fkey = self.halfedge[u][v]
+        if fkey is None:
+            return None
         # if quad
         if len(self.face_vertices(fkey)) == 4:
             w = self.face_vertex_descendant(fkey, v)
@@ -127,7 +129,10 @@ class PseudoQuadMesh(QuadMesh):
             count -= 1
 
             u, v = edges[-1]
-            w, x = self.face_opposite_edge(u, v)
+            opposite = self.face_opposite_edge(u, v)
+            if opposite is None:
+                break
+            w, x = opposite
 
             if (x, w) == edges[0]:
                 break
@@ -152,22 +157,25 @@ class PseudoQuadMesh(QuadMesh):
 
         """
 
+        # see QuadMesh.collect_polyedges: list for a stable seed order, set for O(1) removal
         edges = [(u, v) if self.halfedge[u][v] is not None else (v, u) for u, v in self.edges()]
+        remaining = set(edges)
 
         nb_strip = -1
-        while len(edges) > 0:
+        for u0, v0 in reversed(edges):
+
+            if (u0, v0) not in remaining:
+                continue
+
             nb_strip += 1
 
-            u0, v0 = edges.pop()
             strip_edges = self.collect_strip(u0, v0)
             self.attributes['strips'].update({nb_strip: strip_edges})
 
             for u, v in strip_edges:
                 if u != v:
-                    if (u, v) in edges:
-                        edges.remove((u, v))
-                    elif (v, u) in edges:
-                        edges.remove((v, u))
+                    remaining.discard((u, v))
+                    remaining.discard((v, u))
 
         return self.strips(data=True)
 

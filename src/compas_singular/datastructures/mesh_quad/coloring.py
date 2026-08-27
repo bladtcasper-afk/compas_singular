@@ -73,7 +73,10 @@ def quad_mesh_polyedge_2_coloring(quad_mesh, edge_output=False):
         None if not two-colorable.
     """
 
-    vertices, edges = quad_mesh.polyedge_graph()
+    # pinned to the legacy graph: switching to polyedge_graph(legacy=False) drops the
+    # spurious self-loops and is expected to give the same colouring, but that has to
+    # be a deliberate change, not a silent one.
+    vertices, edges = quad_mesh.polyedge_graph(legacy=True)
     polyedge_coloring = is_adjacency_two_colorable(vertex_adjacency_from_edges(edges))
     if not polyedge_coloring or not edge_output:
         return polyedge_coloring
@@ -102,7 +105,7 @@ def quad_mesh_polyedge_n_coloring(quad_mesh, edge_output=False):
         A dictionary with polyedge keys pointing to colors. If edge_output, edge keys pointing to colors.
     """
 
-    vertices, edges = quad_mesh.polyedge_graph()
+    vertices, edges = quad_mesh.polyedge_graph(legacy=True)  # see quad_mesh_polyedge_2_coloring
     polyedge_coloring = vertex_coloring(vertex_adjacency_from_edges(edges))
     if not polyedge_coloring or not edge_output:
         return polyedge_coloring
