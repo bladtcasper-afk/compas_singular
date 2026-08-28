@@ -109,12 +109,12 @@ if __name__ == '__main__':
 	import compas
 	from compas_singular.datastructures import QuadMesh
 	from compas_singular.datastructures import CoarseQuadMesh
-	from compas_singular._compat import mesh_smooth_centroid
+	from compas.datastructures.mesh.smoothing import mesh_smooth_centroid
 	from compas_plotters.meshplotter import MeshPlotter
 	from compas_singular.datastructures.mesh_quad.grammar.add_strip import add_strip
 	from math import pi
 	from compas.geometry import add_vectors
-	from compas_singular._compat import circle_evaluate
+	from compas_singular.geometry import circle_evaluate
 	from compas_singular.datastructures.mesh.operations import mesh_move_vertex_to
 	from compas.rpc import Proxy
 

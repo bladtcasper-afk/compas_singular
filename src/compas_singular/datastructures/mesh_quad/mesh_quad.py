@@ -6,6 +6,7 @@ from math import floor
 from operator import itemgetter
 
 from compas.geometry import centroid_points
+from compas.geometry import Polyline
 from compas.itertools import pairwise
 
 from compas_singular.utilities import list_split
@@ -54,17 +55,20 @@ class QuadMesh(Mesh):
 
         Returns
         -------
-        (w, x) : tuple
+        (w, x) : tuple, None
             The opposite edge.
+            None if (u, v) is a boundary halfedge, i.e. has no face.
 
         """
 
         fkey = self.halfedge[u][v]
+        if fkey is None:
+            return None
         w = self.face_vertex_descendant(fkey, v)
         x = self.face_vertex_descendant(fkey, w)
         return (w, x)
 
-    def vertex_opposite_vertex(self, u, v):
+    def vertex_opposite_vertex(self, u, v, strict=False):
         """Returns the opposite vertex to u accross vertex v.
 
         Parameters
@@ -73,6 +77,20 @@ class QuadMesh(Mesh):
             A vertex key.
         v : hashable
             A vertex key.
+        strict : bool, optional
+            Use the stricter crossing rules. Default is False, i.e. the historical
+            behaviour.
+
+            The default rules decide on vertices alone, which mis-steers a walk in
+            two cases. They turn an interior polyedge onto a boundary when ``u``
+            merely *is* a boundary vertex without the edge ``(u, v)`` being a
+            boundary edge, and they cannot tell a boundary loop from a boundary.
+            With ``strict=True`` the crossing is decided on edges instead: step
+            across ``v`` only if ``v`` is a regular interior vertex, or if both
+            ``(u, v)`` and the edge walked to are boundary edges.
+
+            This is the engine under :meth:`collect_polyedge` and therefore under
+            the whole coarse-layout pipeline, so switching it changes decompositions.
 
         Returns
         -------
@@ -81,6 +99,22 @@ class QuadMesh(Mesh):
             None if v is a singularity or if (u, v) leads outwards.
 
         """
+
+        if strict:
+            nbrs = self.vertex_neighbors(v, ordered=True)
+            n = len(nbrs)
+
+            # regular interior vertex: cross straight over
+            if n == 4 and not self.is_vertex_on_boundary(v):
+                return nbrs[nbrs.index(u) - 2]
+
+            # regular boundary vertex reached along the boundary: follow the boundary
+            if n == 3 and self.is_edge_on_boundary(u, v):
+                for nbr in nbrs:
+                    if nbr != u and self.is_edge_on_boundary(v, nbr):
+                        return nbr
+
+            return None
 
         if self.is_vertex_singular(v):
             return None
@@ -159,7 +193,7 @@ class QuadMesh(Mesh):
     # polyedges
     # --------------------------------------------------------------------------
 
-    def collect_polyedge(self, u0, v0):
+    def collect_polyedge(self, u0, v0, both_sides=True, oriented=False, strict=False):
         """Collect all the edges in the polyedge of the input edge.
 
         Parameters
@@ -168,6 +202,16 @@ class QuadMesh(Mesh):
             The identifier of the edge start.
         v : int
             The identifier of the edge end.
+        both_sides : bool, optional
+            Whether to walk in both directions from the seed halfedge. Default is
+            True. With False the walk stops at the first extremity, which is what
+            a directional tracer wants.
+        oriented : bool, optional
+            Whether to return the polyedge in the direction of the seed halfedge.
+            Default is False, which returns the reversed polyedge whenever the walk
+            reaches an extremity on the first side, i.e. the seed direction is lost.
+        strict : bool, optional
+            Passed to :meth:`vertex_opposite_vertex`. Default is False.
 
         Returns
         -------
@@ -175,6 +219,7 @@ class QuadMesh(Mesh):
             The list of the vertices in polyedge.
         """
 
+        flipped = False
         polyedge = [u0, v0]
 
         while len(polyedge) <= self.number_of_vertices():
@@ -184,26 +229,34 @@ class QuadMesh(Mesh):
                 break
 
             # get next vertex accros four-valent vertex
-            w = self.vertex_opposite_vertex(*polyedge[-2:])
+            w = self.vertex_opposite_vertex(*polyedge[-2:], strict=strict)
 
             # flip if end of first extremity
             if w is None:
+                if not both_sides:
+                    break
                 polyedge = list(reversed(polyedge))
+                flipped = True
                 # stop if end of second extremity
-                w = self.vertex_opposite_vertex(*polyedge[-2:])
+                w = self.vertex_opposite_vertex(*polyedge[-2:], strict=strict)
                 if w is None:
                     break
 
             # add next vertex
             polyedge.append(w)
 
+        if oriented and flipped:
+            polyedge = list(reversed(polyedge))
+
         return polyedge
 
-    def collect_polyedges(self):
+    def collect_polyedges(self, strict=False):
         """Collect the polyedges accross four-valent vertices between boundaries and/or singularities and store it in the mesh data attributes.
 
         Parameters
         ----------
+        strict : bool, optional
+            Passed to :meth:`vertex_opposite_vertex`. Default is False.
 
         Returns
         -------
@@ -212,23 +265,28 @@ class QuadMesh(Mesh):
 
         """
 
+        # the list fixes the seed order (deterministic, so polyedge keys are stable
+        # across runs); the set is only for O(1) membership and removal.
         edges = list(self.edges())
+        remaining = set(edges)
 
         nb_polyedges = -1
-        while len(edges) > 0:
+        for u0, v0 in reversed(edges):
+
+            if (u0, v0) not in remaining:
+                # already consumed by an earlier polyedge
+                continue
+
             nb_polyedges += 1
 
             # collect new polyedge
-            u0, v0 = edges.pop()
-            polyedge = self.collect_polyedge(u0, v0)
+            polyedge = self.collect_polyedge(u0, v0, strict=strict)
             self.attributes['polyedges'].update({nb_polyedges: polyedge})
 
             # remove collected edges
             for u, v in pairwise(polyedge):
-                if (u, v) in edges:
-                    edges.remove((u, v))
-                elif (v, u) in edges:
-                    edges.remove((v, u))
+                remaining.discard((u, v))
+                remaining.discard((v, u))
 
         return self.polyedges(data=True)
 
@@ -247,6 +305,74 @@ class QuadMesh(Mesh):
         """
 
         return self.attributes['polyedges'][pkey][0] == self.attributes['polyedges'][pkey][-1]
+
+    def number_of_polyedges(self):
+        """Count the number of polyedges in the mesh."""
+        return len(list(self.polyedges()))
+
+    def polyedge_vertices(self, pkey):
+        """Return the vertices of a polyedge.
+
+        Parameters
+        ----------
+        pkey : hashable
+            A polyedge key.
+
+        Returns
+        -------
+        list
+            The vertices of the polyedge.
+        """
+
+        return self.attributes['polyedges'][pkey]
+
+    def polyedge_edges(self, pkey):
+        """Return the edges of a polyedge.
+
+        Parameters
+        ----------
+        pkey : hashable
+            A polyedge key.
+
+        Returns
+        -------
+        list
+            The edges of the polyedge, as pairs of vertex keys.
+        """
+
+        return list(pairwise(self.polyedge_vertices(pkey)))
+
+    def polyedge_midpoint(self, pkey):
+        """Return the point at mid-length of a polyedge.
+
+        Parameters
+        ----------
+        pkey : hashable
+            A polyedge key.
+
+        Returns
+        -------
+        Point
+            The midpoint.
+        """
+
+        return Polyline(self.polyline(pkey)).point_at(0.5)
+
+    def polyedge_length(self, pkey):
+        """Return the length of a polyedge.
+
+        Parameters
+        ----------
+        pkey : hashable
+            A polyedge key.
+
+        Returns
+        -------
+        float
+            The sum of the lengths of the edges of the polyedge.
+        """
+
+        return sum([self.edge_length(u, v) for u, v in self.polyedge_edges(pkey)])
 
     def singularity_polyedges(self):
         """Collect the polyedges connected to singularities.
@@ -269,8 +395,13 @@ class QuadMesh(Mesh):
         # split singularity polyedges
         return [split_polyedge for polyedge in polyedges for split_polyedge in list_split(polyedge, [polyedge.index(vkey) for vkey in split_vertices if vkey in polyedge])]
 
-    def singularity_polyedge_decomposition(self):
+    def singularity_polyedge_decomposition(self, strict=False):
         """Returns a quad patch decomposition of the mesh based on the singularity polyedges, including boundaries and additionnal splits on the boundaries.
+
+        Parameters
+        ----------
+        strict : bool, optional
+            Passed to :meth:`vertex_opposite_vertex`. Default is False.
 
         Returns
         -------
@@ -279,7 +410,7 @@ class QuadMesh(Mesh):
 
         """
         if self.attributes['polyedges'] == {}:
-            self.collect_polyedges()
+            self.collect_polyedges(strict=strict)
 
         polyedges = [polyedge for key, polyedge in self.polyedges(data=True) if (self.is_vertex_singular(
             polyedge[0]) or self.is_vertex_singular(polyedge[-1])) and not self.is_edge_on_boundary(polyedge[0], polyedge[1])]
@@ -306,7 +437,7 @@ class QuadMesh(Mesh):
             for vkey in new_splits:
                 for nbr in self.vertex_neighbors(vkey):
                     if not self.is_edge_on_boundary(vkey, nbr):
-                        new_polyedge = self.collect_polyedge(vkey, nbr)
+                        new_polyedge = self.collect_polyedge(vkey, nbr, strict=strict)
                         polyedges.append(new_polyedge)
                         all_splits = list(set(all_splits + new_polyedge))
                         break
@@ -327,11 +458,23 @@ class QuadMesh(Mesh):
     # polylines
     # --------------------------------------------------------------------------
 
-    def polyedge_graph(self):
+    def polyedge_graph(self, legacy=True):
         """Compute the vertices and edges of the graph representing the polyedge connectivity,
         where each graph vertex is a mesh polyedge and each graph edge a non-compas_singular mesh vertex representing the crossing of two polyedges.
         Polyedges connected by their extremities, which are singularities, do not count as overlapping.
-        Potentially includes loop edges (u, u) or multiple arallel edges (u, v) and/or (v, u).
+
+        Parameters
+        ----------
+        legacy : bool, optional
+            Use the historical implementation. Default is True.
+
+            The legacy graph is quadratic in the number of polyedges and emits, for
+            every non-singular vertex, an edge to the *first* polyedge containing
+            that vertex -- which is usually the polyedge itself. Roughly half of the
+            edges it returns are therefore self-loops (u, u). With ``legacy=False``
+            each non-singular vertex contributes one edge between the two polyedges
+            that actually cross there, and vertices that are not a crossing are
+            skipped.
 
         Returns
         -------
@@ -339,20 +482,51 @@ class QuadMesh(Mesh):
             A tuple of two objects, the dictionary of mesh polyedge indices pointing to their centroid coordinates, and the list of edges between graph vertices.
         """
 
-        vertices = {key: centroid_points([self.vertex_coordinates(vkey) for vkey in polyedge]) for key, polyedge in self.polyedges(data=True)}
-        edges = []
-        for key, polyedge in self.polyedges(data=True):
+        if legacy:
+            vertices = {key: centroid_points([self.vertex_coordinates(vkey) for vkey in polyedge]) for key, polyedge in self.polyedges(data=True)}
+            edges = []
+            for key, polyedge in self.polyedges(data=True):
+                for vkey in polyedge:
+                    if not self.is_vertex_singular(vkey):
+                        for key_2, polyedge_2 in self.polyedges(data=True):
+                            if vkey in polyedge_2:
+                                edges.append((key, key_2))
+                                break
+            return vertices, edges
+
+        vertices = {pkey: centroid_points(self.polyline(pkey)) for pkey in self.polyedges()}
+
+        vkey_to_pkeys = {vkey: set() for vkey in self.vertices()}
+        for pkey, polyedge in self.polyedges(data=True):
             for vkey in polyedge:
                 if not self.is_vertex_singular(vkey):
-                    for key_2, polyedge_2 in self.polyedges(data=True):
-                        if vkey in polyedge_2:
-                            edges.append((key, key_2))
-                            break
+                    vkey_to_pkeys[vkey].add(pkey)
+
+        # a vertex that two polyedges pass through is a crossing; anything else
+        # (a singularity, an extremity) is not an adjacency and is skipped
+        edges = [tuple(pkeys) for pkeys in vkey_to_pkeys.values() if len(pkeys) == 2]
+
         return vertices, edges
 
     # --------------------------------------------------------------------------
     # polylines
     # --------------------------------------------------------------------------
+
+    def polyline(self, pkey):
+        """Return the coordinates of the vertices of a polyedge.
+
+        Parameters
+        ----------
+        pkey : hashable
+            A polyedge key.
+
+        Returns
+        -------
+        list
+            The polyline as a list of XYZ points.
+        """
+
+        return [self.vertex_coordinates(vkey) for vkey in self.polyedge_vertices(pkey)]
 
     def polylines(self):
         """Return the polylines of the quad mesh.
@@ -395,7 +569,7 @@ class QuadMesh(Mesh):
         """Count the number of strips in the mesh."""
         return len(list(self.strips()))
 
-    def collect_strip(self, u0, v0):
+    def collect_strip(self, u0, v0, both_sides=True):
         """Returns all the edges in the strip of the input edge.
 
         Parameters
@@ -404,6 +578,9 @@ class QuadMesh(Mesh):
             The identifier of the edge start.
         v : int
             The identifier of the edge end.
+        both_sides : bool, optional
+            Whether to walk in both directions from the seed halfedge. Default is
+            True. With False the walk stops at the first extremity.
 
         Returns
         -------
@@ -412,6 +589,8 @@ class QuadMesh(Mesh):
         """
 
         if self.halfedge[u0][v0] is None:
+            if not both_sides:
+                return [(u0, v0)]
             u0, v0 = v0, u0
 
         edges = [(u0, v0)]
@@ -421,7 +600,10 @@ class QuadMesh(Mesh):
             count -= 1
 
             u, v = edges[-1]
-            w, x = self.face_opposite_edge(u, v)
+            opposite = self.face_opposite_edge(u, v)
+            if opposite is None:
+                break
+            w, x = opposite
 
             if (x, w) == edges[0]:
                 break
@@ -429,6 +611,8 @@ class QuadMesh(Mesh):
             edges.append((x, w))
 
             if w not in self.halfedge[x] or self.halfedge[x][w] is None:
+                if not both_sides:
+                    break
                 edges = [(v, u) for u, v in reversed(edges)]
                 u, v = edges[-1]
                 if v not in self.halfedge[u] or self.halfedge[u][v] is None:
@@ -445,20 +629,23 @@ class QuadMesh(Mesh):
             The strip data.
         """
 
+        # see collect_polyedges: list for a stable seed order, set for O(1) removal
         edges = [(u, v) if self.halfedge[u][v] is not None else (v, u) for u, v in self.edges()]
+        remaining = set(edges)
 
         nb_strip = -1
-        while len(edges) > 0:
+        for u0, v0 in reversed(edges):
+
+            if (u0, v0) not in remaining:
+                continue
+
             nb_strip += 1
 
-            u0, v0 = edges.pop()
             strip_edges = self.collect_strip(u0, v0)
             self.attributes['strips'].update({nb_strip: strip_edges})
             for u, v in strip_edges:
-                if (u, v) in edges:
-                    edges.remove((u, v))
-                elif (v, u) in edges:
-                    edges.remove((v, u))
+                remaining.discard((u, v))
+                remaining.discard((v, u))
 
         return self.strips(data=True)
 

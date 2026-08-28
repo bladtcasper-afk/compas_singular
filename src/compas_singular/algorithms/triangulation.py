@@ -7,12 +7,12 @@ from compas.geometry import length_vector
 from compas.geometry import subtract_vectors
 from compas.geometry import cross_vectors
 from compas.geometry import delaunay_triangulation as delaunay_from_points
-from compas_singular._compat import trimesh_face_circle
-from compas_singular._compat import mesh_unweld_edges
+from compas.datastructures.mesh.operations.weld import mesh_unweld_edges
 from compas.itertools import pairwise
-from compas_singular._compat import geometric_key
+from compas.tolerance import TOL
 
 from ..datastructures import Mesh
+from ..datastructures import trimesh_face_circle
 
 
 __all__ = [
@@ -66,8 +66,8 @@ def boundary_triangulation(outer_boundary, inner_boundaries, polyline_features=[
             delaunay_mesh.delete_face(fkey)
 
     # topological cut along the feature polylines through unwelding
-    vertex_map = {geometric_key(delaunay_mesh.vertex_coordinates(vkey)): vkey for vkey in delaunay_mesh.vertices()}
-    edges = [edge for polyline in polyline_features for edge in pairwise([vertex_map[geometric_key(point)] for point in polyline])]
+    vertex_map = {TOL.geometric_key(delaunay_mesh.vertex_coordinates(vkey)): vkey for vkey in delaunay_mesh.vertices()}
+    edges = [edge for polyline in polyline_features for edge in pairwise([vertex_map[TOL.geometric_key(point)] for point in polyline])]
     mesh_unweld_edges(delaunay_mesh, edges)
 
     return delaunay_mesh

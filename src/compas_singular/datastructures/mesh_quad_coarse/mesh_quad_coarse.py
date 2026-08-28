@@ -6,8 +6,7 @@ from copy import deepcopy
 from math import floor
 from math import ceil
 
-from compas_singular._compat import meshes_join_and_weld
-from compas_singular._compat import adjacency_from_edges
+from compas.topology import vertex_adjacency_from_edges
 from compas.topology import connected_components
 from compas.geometry import discrete_coons_patch
 from compas.geometry import vector_average
@@ -16,6 +15,7 @@ from compas.itertools import pairwise
 from compas.itertools import linspace
 
 from ..mesh import Mesh
+from ..mesh import meshes_join_and_weld
 from ..mesh_quad import QuadMesh
 
 
@@ -37,7 +37,7 @@ class CoarseQuadMesh(QuadMesh):
     # --------------------------------------------------------------------------
 
     @classmethod
-    def from_quad_mesh(cls, quad_mesh, collect_strips=True, collect_polyedges=True, attribute_density=True):
+    def from_quad_mesh(cls, quad_mesh, collect_strips=True, collect_polyedges=True, attribute_density=True, strict=False):
         """Build coarse quad mesh from quad mesh with density and child-parent element data.
 
         Parameters
@@ -46,13 +46,16 @@ class CoarseQuadMesh(QuadMesh):
             A quad mesh.
         attribute_density : bool, optional
             Keep density data of dense quad mesh and inherit it as aatribute.
+        strict : bool, optional
+            Passed to :meth:`QuadMesh.singularity_polyedge_decomposition`. Default is
+            False. Setting it to True changes the resulting coarse layout.
 
         Returns
         ----------
         coarse_quad_mesh : CoarseQuadMesh
             A coarse quad mesh with density data.
         """
-        polyedges = quad_mesh.singularity_polyedge_decomposition()
+        polyedges = quad_mesh.singularity_polyedge_decomposition(strict=strict)
 
         # vertex data
         vertices = {vkey: quad_mesh.vertex_coordinates(vkey) for vkey in quad_mesh.vertices()}
@@ -67,7 +70,7 @@ class CoarseQuadMesh(QuadMesh):
         faces = {fkey: quad_mesh.face_vertices(fkey) for fkey in quad_mesh.faces()}
         adj_edges = {(f1, f2) for f1 in quad_mesh.faces() for f2 in quad_mesh.face_neighbors(f1) if f1 < f2 and quad_mesh.face_adjacency_halfedge(f1, f2) not in singularity_edges}
         coarse_faces_children = {}
-        for i, connected_faces in enumerate(connected_components(adjacency_from_edges(adj_edges))):
+        for i, connected_faces in enumerate(connected_components(vertex_adjacency_from_edges(adj_edges))):
             mesh = Mesh.from_vertices_and_faces(vertices, [faces[face] for face in connected_faces])
             coarse_faces_children[i] = [vkey for vkey in reversed(mesh.boundaries()[0]) if mesh.vertex_degree(vkey) == 2]
 

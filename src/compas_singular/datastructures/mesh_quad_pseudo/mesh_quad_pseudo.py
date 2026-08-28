@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-from compas_singular._compat import geometric_key
+from compas.tolerance import TOL
 
 from ..mesh_quad import QuadMesh
 from compas_singular.utilities import list_split
@@ -28,14 +28,14 @@ class PseudoQuadMesh(QuadMesh):
 
     @classmethod
     def from_vertices_and_faces_with_poles(cls, vertices, faces, poles=[]):
-        pole_map = tuple([geometric_key(pole) for pole in poles])
+        pole_map = tuple([TOL.geometric_key(pole) for pole in poles])
         mesh = cls.from_vertices_and_faces(vertices, faces)
         for fkey in mesh.faces():
             face_vertices = mesh.face_vertices(fkey)
             if len(face_vertices) == 3:
                 mesh.attributes['face_pole'][fkey] = face_vertices[0]
                 for vkey in face_vertices:
-                    if geometric_key(mesh.vertex_coordinates(vkey)) in pole_map:
+                    if TOL.geometric_key(mesh.vertex_coordinates(vkey)) in pole_map:
                         mesh.attributes['face_pole'].update({fkey: vkey})
                         break
         return mesh
@@ -85,6 +85,8 @@ class PseudoQuadMesh(QuadMesh):
         """
 
         fkey = self.halfedge[u][v]
+        if fkey is None:
+            return None
         # if quad
         if len(self.face_vertices(fkey)) == 4:
             w = self.face_vertex_descendant(fkey, v)
@@ -127,7 +129,10 @@ class PseudoQuadMesh(QuadMesh):
             count -= 1
 
             u, v = edges[-1]
-            w, x = self.face_opposite_edge(u, v)
+            opposite = self.face_opposite_edge(u, v)
+            if opposite is None:
+                break
+            w, x = opposite
 
             if (x, w) == edges[0]:
                 break
@@ -152,22 +157,25 @@ class PseudoQuadMesh(QuadMesh):
 
         """
 
+        # see QuadMesh.collect_polyedges: list for a stable seed order, set for O(1) removal
         edges = [(u, v) if self.halfedge[u][v] is not None else (v, u) for u, v in self.edges()]
+        remaining = set(edges)
 
         nb_strip = -1
-        while len(edges) > 0:
+        for u0, v0 in reversed(edges):
+
+            if (u0, v0) not in remaining:
+                continue
+
             nb_strip += 1
 
-            u0, v0 = edges.pop()
             strip_edges = self.collect_strip(u0, v0)
             self.attributes['strips'].update({nb_strip: strip_edges})
 
             for u, v in strip_edges:
                 if u != v:
-                    if (u, v) in edges:
-                        edges.remove((u, v))
-                    elif (v, u) in edges:
-                        edges.remove((v, u))
+                    remaining.discard((u, v))
+                    remaining.discard((v, u))
 
         return self.strips(data=True)
 
@@ -664,7 +672,7 @@ class PseudoQuadMesh(QuadMesh):
 #     vertex_conversion = {vkey: i for i, vkey in enumerate(mesh.vertices())}
 #     new_face_vertices = []
 
-#     poles = [geometric_key(pole) for pole in poles]
+#     poles = [TOL.geometric_key(pole) for pole in poles]
 
 #     for fkey in mesh.faces():
 #         face_vertices = mesh.face_vertices(fkey)[:]
@@ -672,7 +680,7 @@ class PseudoQuadMesh(QuadMesh):
 #             # find pole location
 #             pole = None
 #             for vkey in face_vertices:
-#                 geom_key = geometric_key(mesh.vertex_coordinates(vkey))
+#                 geom_key = TOL.geometric_key(mesh.vertex_coordinates(vkey))
 #                 if geom_key in poles:
 #                     pole = vkey
 #                     break

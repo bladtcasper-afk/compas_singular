@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-from compas_singular._compat import adjacency_from_edges
+from compas.topology import vertex_adjacency_from_edges
 from compas.topology import vertex_coloring
 
 from compas_singular.topology import is_adjacency_two_colorable
@@ -34,7 +34,7 @@ def quad_mesh_strip_2_coloring(quad_mesh):
     """
 
     vertices, edges = quad_mesh.strip_graph()
-    return is_adjacency_two_colorable(adjacency_from_edges(edges))
+    return is_adjacency_two_colorable(vertex_adjacency_from_edges(edges))
 
 
 def quad_mesh_strip_n_coloring(quad_mesh):
@@ -52,7 +52,7 @@ def quad_mesh_strip_n_coloring(quad_mesh):
     """
 
     vertices, edges = quad_mesh.strip_graph()
-    return vertex_coloring(adjacency_from_edges(edges))
+    return vertex_coloring(vertex_adjacency_from_edges(edges))
 
 
 def quad_mesh_polyedge_2_coloring(quad_mesh, edge_output=False):
@@ -73,8 +73,11 @@ def quad_mesh_polyedge_2_coloring(quad_mesh, edge_output=False):
         None if not two-colorable.
     """
 
-    vertices, edges = quad_mesh.polyedge_graph()
-    polyedge_coloring = is_adjacency_two_colorable(adjacency_from_edges(edges))
+    # pinned to the legacy graph: switching to polyedge_graph(legacy=False) drops the
+    # spurious self-loops and is expected to give the same colouring, but that has to
+    # be a deliberate change, not a silent one.
+    vertices, edges = quad_mesh.polyedge_graph(legacy=True)
+    polyedge_coloring = is_adjacency_two_colorable(vertex_adjacency_from_edges(edges))
     if not polyedge_coloring or not edge_output:
         return polyedge_coloring
     else:
@@ -102,8 +105,8 @@ def quad_mesh_polyedge_n_coloring(quad_mesh, edge_output=False):
         A dictionary with polyedge keys pointing to colors. If edge_output, edge keys pointing to colors.
     """
 
-    vertices, edges = quad_mesh.polyedge_graph()
-    polyedge_coloring = vertex_coloring(adjacency_from_edges(edges))
+    vertices, edges = quad_mesh.polyedge_graph(legacy=True)  # see quad_mesh_polyedge_2_coloring
+    polyedge_coloring = vertex_coloring(vertex_adjacency_from_edges(edges))
     if not polyedge_coloring or not edge_output:
         return polyedge_coloring
     else:

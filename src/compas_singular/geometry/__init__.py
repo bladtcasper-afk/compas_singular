@@ -15,6 +15,8 @@ Array functions.
     :toctree: generated/
     :nosignatures:
 
+    circle_evaluate
+    archimedean_spiral_evaluate
     line_array
     rectangular_array
     circular_array
@@ -58,4 +60,11 @@ from .array import *  # noqa: F401 F403
 from .polyline import *  # noqa: F401 F403
 from .projection import *  # noqa: F401 F403
 
-__all__ = [name for name in dir() if not name.startswith('_')]
+import types  # noqa: E402
+
+# Only re-export names bound in this namespace, never the submodules themselves:
+# ``from .foo import *`` also binds ``foo`` as an attribute of this package, and
+# re-exporting that module object shadows any function or subpackage of the same
+# name further up the chain.
+__all__ = [name for name, obj in list(globals().items())
+           if not name.startswith('_') and not isinstance(obj, types.ModuleType)]

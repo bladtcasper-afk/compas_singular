@@ -2,18 +2,74 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
 
+from math import cos
 from math import pi
-from compas_singular._compat import circle_evaluate
-from compas_singular._compat import archimedean_spiral_evaluate
+from math import sin
+
 from compas.geometry import add_vectors
 
 
 __all__ = [
+    'circle_evaluate',
+    'archimedean_spiral_evaluate',
     'line_array',
     'rectangular_array',
     'circular_array',
     'spiral_array'
 ]
+
+
+def circle_evaluate(t, r, z=0):
+    """Evaluate a circle of radius ``r`` centred on the origin at parameter ``t``.
+
+    Parameters
+    ----------
+    t : float
+        The angle in radians.
+    r : float
+        The radius.
+    z : float, optional
+        The elevation of the circle's plane above the XY plane.
+
+    Returns
+    -------
+    list
+        The XYZ coordinates of the point.
+
+    Notes
+    -----
+    Kept rather than routed through :meth:`compas.geometry.Circle.point_at`,
+    which takes a *normalised* parameter in [0, 1] while every caller here works
+    in radians, and which needs a ``Circle`` instance to evaluate at all.
+    """
+    return [r * cos(t), r * sin(t), z]
+
+
+def archimedean_spiral_evaluate(t, a, b, z=0):
+    """Evaluate an archimedean spiral ``r = a + b * theta`` at parameter ``t``.
+
+    Parameters
+    ----------
+    t : float
+        The angle in radians.
+    a : float
+        The offset angle of the spiral.
+    b : float
+        The radial growth per radian.
+    z : float, optional
+        The elevation of the spiral's plane above the XY plane.
+
+    Returns
+    -------
+    list
+        The XYZ coordinates of the point.
+
+    Notes
+    -----
+    COMPAS 2.x has no spiral primitive of any kind, so this has no upstream
+    equivalent to defer to.
+    """
+    return [b * t * cos(t + a), b * t * sin(t + a), z]
 
 
 def line_array(n, d, anchor=[0.0, 0.0, 0.0]):
