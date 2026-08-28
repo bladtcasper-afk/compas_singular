@@ -1,0 +1,8 @@
+# Core runtime dependencies of compas_singular.
+#
+# This file is the single source of truth: pyproject.toml reads it via
+# [tool.setuptools.dynamic], so `pip install -e .` installs exactly these.
+#
+# Known-good combination: compas 2.15.1 on Python 3.12.
+compas>=2.0,<3
+networkx>=2.0
