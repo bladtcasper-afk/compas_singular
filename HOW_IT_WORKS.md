@@ -241,7 +241,6 @@ src/compas_singular/
     mesh_quad_pseudo_coarse/ CoarsePseudoQuadMesh: coarse + poles (the usual coarse mesh type)
     skeleton/               Skeleton (base class SkeletonDecomposition builds on)
     lizard/                 turtle-graphics-style topological editing DSL (see examples/04_lizard.py)
-  _compat.py              COMPAS 0.x/1.x -> 2.x shims compas_singular depends on
   rhino/                  Rhino-only IO/constraints/artists (not used in the headless pipeline)
 ```
 

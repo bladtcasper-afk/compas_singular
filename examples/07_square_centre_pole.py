@@ -39,8 +39,8 @@ from math import pi
 
 from compas.geometry import Line, Point, Polyline, Translation
 
-from compas_singular._compat import geometric_key
-from compas_singular._compat import mesh_smooth_area
+from compas.tolerance import TOL
+from compas.datastructures.mesh.smoothing import mesh_smooth_area
 from compas_singular.algorithms import SkeletonDecomposition, boundary_triangulation
 from compas_singular.datastructures import CoarsePseudoQuadMesh
 
@@ -92,9 +92,9 @@ def to_coordinates(pts):
 def has_pole(mesh, pole):
     """True if ``pole`` survived into the mesh as a declared pole vertex."""
     face_pole = mesh.attributes.get('face_pole') or {}
-    gkey = geometric_key(pole)
+    gkey = TOL.geometric_key(pole)
     return bool(face_pole) and any(
-        geometric_key(mesh.vertex_coordinates(v)) == gkey for v in face_pole.values())
+        TOL.geometric_key(mesh.vertex_coordinates(v)) == gkey for v in face_pole.values())
 
 
 def irregular_vertices(mesh):
@@ -124,7 +124,7 @@ def relax(dense, kmax):
 def report(name, mesh, pole):
     irregular = irregular_vertices(mesh)
     at_pole = [v for v in irregular
-               if geometric_key(mesh.vertex_coordinates(v)) == geometric_key(pole)]
+               if TOL.geometric_key(mesh.vertex_coordinates(v)) == TOL.geometric_key(pole)]
     print(f"  {name:<28} V {mesh.number_of_vertices():>5}  F {mesh.number_of_faces():>5}"
           f"  irregular {len(irregular)}  at pole {len(at_pole)}")
     for v in irregular:

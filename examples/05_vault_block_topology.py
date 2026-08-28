@@ -84,8 +84,8 @@ from compas.geometry import distance_point_point
 
 from compas_singular.algorithms import boundary_triangulation
 from compas_singular.algorithms import SkeletonDecomposition
-from compas_singular._compat import geometric_key
-from compas_singular._compat import mesh_smooth_centroid
+from compas.tolerance import TOL
+from compas.datastructures.mesh.smoothing import mesh_smooth_centroid
 
 
 # =============================================================================
@@ -112,13 +112,13 @@ class RobustSkeletonDecomposition(SkeletonDecomposition):
 
     def store_pole_data(self, poles):
         mesh = self.mesh
-        pole_map = tuple(geometric_key(pole) for pole in poles)
+        pole_map = tuple(TOL.geometric_key(pole) for pole in poles)
         face_poles = {}
         for fkey in mesh.faces():
             if len(mesh.face_vertices(fkey)) == 3:
                 chosen = None
                 for vkey in mesh.face_vertices(fkey):
-                    if geometric_key(mesh.vertex_coordinates(vkey)) in pole_map:
+                    if TOL.geometric_key(mesh.vertex_coordinates(vkey)) in pole_map:
                         chosen = vkey
                         break
                 if chosen is None:
@@ -238,8 +238,8 @@ def generate_block_pattern(outer, inners=None, supports=None, features=None,
 
 def _vertices_at(mesh, points):
     """Mesh vertices whose coordinates match any of ``points`` (by geometric key)."""
-    keys = set(geometric_key(p) for p in points)
-    return [v for v in mesh.vertices() if geometric_key(mesh.vertex_coordinates(v)) in keys]
+    keys = set(TOL.geometric_key(p) for p in points)
+    return [v for v in mesh.vertices() if TOL.geometric_key(mesh.vertex_coordinates(v)) in keys]
 
 
 def _vertices_on_features(mesh, features, tol=0.02):

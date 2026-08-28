@@ -41,7 +41,7 @@ from compas.geometry import centroid_points
 
 from compas_singular.algorithms import boundary_triangulation
 from compas_singular.algorithms import SkeletonDecomposition
-from compas_singular._compat import geometric_key
+from compas.tolerance import TOL
 
 
 # =============================================================================
@@ -54,13 +54,13 @@ class RobustSkeletonDecomposition(SkeletonDecomposition):
 
     def store_pole_data(self, poles):
         mesh = self.mesh
-        pole_map = tuple(geometric_key(pole) for pole in poles)
+        pole_map = tuple(TOL.geometric_key(pole) for pole in poles)
         face_poles = {}
         for fkey in mesh.faces():
             if len(mesh.face_vertices(fkey)) == 3:
                 chosen = None
                 for vkey in mesh.face_vertices(fkey):
-                    if geometric_key(mesh.vertex_coordinates(vkey)) in pole_map:
+                    if TOL.geometric_key(mesh.vertex_coordinates(vkey)) in pole_map:
                         chosen = vkey
                         break
                 if chosen is None:
@@ -163,9 +163,9 @@ def run():
     # trace the fixed pole(s) forward into the densified mesh (geometrically,
     # by coordinate match) so the viewer can single out the singularity that
     # came from the fix, versus the other singularities the layout has anyway
-    pole_gkeys = {geometric_key(fixed_coarse.vertex_coordinates(fixed_coarse.attributes['face_pole'][f]))
+    pole_gkeys = {TOL.geometric_key(fixed_coarse.vertex_coordinates(fixed_coarse.attributes['face_pole'][f]))
                   for f in pole_faces}
-    dense_pole_vertices = [v for v in dense.vertices() if geometric_key(dense.vertex_coordinates(v)) in pole_gkeys]
+    dense_pole_vertices = [v for v in dense.vertices() if TOL.geometric_key(dense.vertex_coordinates(v)) in pole_gkeys]
 
     return dict(outer=outer, feature=feature, trimesh=trimesh,
                 naive_coarse=naive_coarse, problem_faces=problem_faces, crash=crash,
