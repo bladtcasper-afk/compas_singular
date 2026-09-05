@@ -178,3 +178,108 @@ def test_new_graph_pairs_the_two_polyedges_crossing_at_a_vertex(grid):
                    if len(pkeys) == 2 and not grid.is_vertex_singular(vkey))
     assert len(edges) == expected
     assert set(nodes) == set(grid.polyedges())
+
+
+# ==============================================================================
+# Strip data hygiene -- collect_strips and the grammar's new-key choice
+# ==============================================================================
+#
+# Two defects that compounded into a third. ``collect_strips`` used ``update``
+# without clearing, so a strip key that had been DELETED and was then re-assigned
+# landed at the END of the dict's insertion order. That alone leaves stale entries
+# (read as real by ``is_strip_closed``, which only looks at ``strips[skey][0]``),
+# and it also breaks ``grammar_pattern.add_strip``'s ``list(mesh.strips())[-1] + 1``,
+# which then names a strip that already exists and silently overwrites its edges.
+#
+# Measured on the 4 x 4 grid below, before the fix:
+#     after delete_strip(3) + collect_strips() -> [0, 1, 2, 4, 5, 6, 7, 3]
+#     last = 3, max = 7, and ``last + 1`` = 4, which was a live strip.
+
+from compas_singular.datastructures.mesh_quad.grammar_pattern import (  # noqa: E402
+    add_strip as pattern_add_strip)
+from compas_singular.datastructures.mesh_quad.grammar_pattern import (  # noqa: E402
+    delete_strip as pattern_delete_strip)
+
+
+def _square_grid(n):
+    """An ``n`` x ``n`` quad grid, plus ``{(i, j): vertex key}``."""
+    vertices, index = [], {}
+    for i in range(n + 1):
+        for j in range(n + 1):
+            index[i, j] = len(vertices)
+            vertices.append([float(i), float(j), 0.0])
+    faces = [[index[i, j], index[i + 1, j], index[i + 1, j + 1], index[i, j + 1]]
+             for i in range(n) for j in range(n)]
+    return QuadMesh.from_vertices_and_faces(vertices, faces), index
+
+
+@pytest.fixture
+def grid4():
+    """4 x 4 grid: 8 strips, enough to delete one from the middle."""
+    return _square_grid(4)
+
+
+def test_collect_strips_drops_keys_that_no_longer_exist(grid4):
+    """Re-collecting must not leave the old strip count behind."""
+    mesh, _ = grid4
+    mesh.collect_strips()
+    assert len(mesh.attributes['strips']) == 8
+
+    pattern_delete_strip(mesh, 3)
+    mesh.collect_strips()
+
+    # 4 x 4 minus one strip is a 4 x 3 grid: 4 + 3 = 7 strips, not 8.
+    assert len(mesh.attributes['strips']) == 7
+    assert sorted(mesh.attributes['strips']) == list(range(7))
+
+
+def test_collect_strips_leaves_insertion_order_tracking_the_maximum(grid4):
+    """``list(strips())[-1]`` must still be the largest key after a deletion."""
+    mesh, _ = grid4
+    mesh.collect_strips()
+    pattern_delete_strip(mesh, 3)
+    mesh.collect_strips()
+
+    keys = list(mesh.attributes['strips'])
+    assert keys[-1] == max(keys), (
+        'insertion order stopped tracking the maximum: %s' % keys)
+
+
+def test_a_new_strip_key_does_not_name_a_live_strip(grid4):
+    """The compound failure: the key the grammar would pick was already taken."""
+    mesh, _ = grid4
+    mesh.collect_strips()
+    pattern_delete_strip(mesh, 3)
+    mesh.collect_strips()
+
+    for candidate in (list(mesh.strips())[-1] + 1, max(mesh.strips()) + 1):
+        assert candidate not in mesh.attributes['strips'], (
+            'new strip key %r already exists -- adding a strip would overwrite it'
+            % candidate)
+
+
+def test_add_strip_along_a_closed_polyedge_leaves_the_strip_closed(grid4):
+    """Thesis 5.3.1: a closed polyedge unzips into a CLOSED strip."""
+    mesh, index = grid4
+    mesh.collect_strips()
+    before = dict(mesh.attributes['strips'])
+    faces_before = mesh.number_of_faces()
+
+    ring = [index[1, 1], index[2, 1], index[3, 1], index[3, 2],
+            index[3, 3], index[2, 3], index[1, 3], index[1, 2]]
+    skey = pattern_add_strip(mesh, ring + [ring[0]])[0]
+
+    assert skey not in before, 'the new strip overwrote an existing one'
+    assert mesh.is_strip_closed(skey)
+    # eight rungs, so eight new quads
+    assert len(mesh.attributes['strips'][skey]) == 8
+    assert mesh.number_of_faces() == faces_before + 8
+    assert all(len(mesh.face_vertices(f)) == 4 for f in mesh.faces())
+
+
+def test_open_strip_count_matches_the_euler_style_relation(grid4):
+    """Thesis Eq 5.6: S_open == E - 2F. A free check that the strip data is sane."""
+    mesh, _ = grid4
+    mesh.collect_strips()
+    open_strips = [s for s in mesh.attributes['strips'] if not mesh.is_strip_closed(s)]
+    assert len(open_strips) == mesh.number_of_edges() - 2 * mesh.number_of_faces()

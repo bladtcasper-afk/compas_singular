@@ -1,6 +1,6 @@
 from compas_singular.datastructures import QuadMesh
 from compas_singular.datastructures.lizard import Lizard
-from compas_singular._compat import mesh_smooth_centroid
+from compas.datastructures.mesh.smoothing import mesh_smooth_centroid
 from compas_viewer import Viewer
 
 

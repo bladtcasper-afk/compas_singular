@@ -1,0 +1,175 @@
+<title>Frame-field quad meshing &mdash; what it can do today</title>
+<style>
+:root {
+  --paper:#eef1f4; --surface:#ffffff; --line:#c9d2db; --line-soft:#dde4ea;
+  --ink:#12161c; --muted:#5b6673;
+  --accent:#c85a08; --cable:#7a3fb5; --mark:#2f6fd0;
+  --good:#2b6e4c; --good-bg:#e2efe7; --bad:#b23528; --bad-bg:#f7e3e0;
+  --fill:#e5eaef;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --paper:#0e1319; --surface:#161c24; --line:#2c3642; --line-soft:#222b35;
+  --ink:#dfe5ec; --muted:#8c98a6;
+  --accent:#f5842e; --cable:#b083e0; --mark:#6ba3ee;
+  --good:#7fc9a0; --good-bg:#163023; --bad:#f08b7d; --bad-bg:#331d19;
+  --fill:#1d2530;
+} }
+:root[data-theme="dark"] {
+  --paper:#0e1319; --surface:#161c24; --line:#2c3642; --line-soft:#222b35;
+  --ink:#dfe5ec; --muted:#8c98a6;
+  --accent:#f5842e; --cable:#b083e0; --mark:#6ba3ee;
+  --good:#7fc9a0; --good-bg:#163023; --bad:#f08b7d; --bad-bg:#331d19;
+  --fill:#1d2530;
+}
+:root[data-theme="light"] {
+  --paper:#eef1f4; --surface:#ffffff; --line:#c9d2db; --line-soft:#dde4ea;
+  --ink:#12161c; --muted:#5b6673;
+  --accent:#c85a08; --cable:#7a3fb5; --mark:#2f6fd0;
+  --good:#2b6e4c; --good-bg:#e2efe7; --bad:#b23528; --bad-bg:#f7e3e0;
+  --fill:#e5eaef;
+}
+* { box-sizing:border-box; }
+body {
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased;
+}
+.mono,.eyebrow,.stat dt,.stat dd,.chip,.fig-n,.big,.foot {
+  font-family:ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,monospace;
+}
+.wrap { max-width:1080px; margin:0 auto; padding:0 24px 88px; }
+.eyebrow { font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--muted); margin:0; }
+.top { border-bottom:1px solid var(--line); margin-bottom:44px; }
+.top-in { max-width:1080px; margin:0 auto; padding:52px 24px 34px; }
+h1 { font-size:clamp(28px,4.4vw,40px); line-height:1.12; margin:12px 0 0;
+  letter-spacing:-.02em; text-wrap:balance; max-width:20ch; font-weight:640; }
+.lede { margin:16px 0 0; max-width:64ch; color:var(--muted); font-size:17px; }
+.figs { display:flex; flex-wrap:wrap; gap:34px; margin:32px 0 0; }
+.fig-n { font-size:30px; font-weight:600; letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums; display:block; }
+.fig p { margin:2px 0 0; font-size:12.5px; color:var(--muted); max-width:20ch; }
+.fig.acc .fig-n { color:var(--accent); }
+.group { margin:0 0 56px; }
+.group-head { border-top:2px solid var(--ink); padding-top:12px; margin-bottom:22px; }
+.group-head h2 { font-size:21px; margin:6px 0 0; letter-spacing:-.01em; font-weight:620; }
+.blurb { margin:8px 0 0; color:var(--muted); max-width:66ch; font-size:14.5px; }
+.grid { display:grid; gap:14px; grid-template-columns:repeat(auto-fill,minmax(196px,1fr)); }
+.card { background:var(--surface); border:1px solid var(--line-soft);
+  border-radius:3px; padding:14px 14px 12px; }
+.card.flagged { border-color:var(--bad); }
+.plate { background:var(--fill); border-radius:2px; padding:6px; margin-bottom:11px; }
+.plate svg { display:block; width:100%; height:auto; }
+.wall { fill:var(--surface); stroke:var(--ink); stroke-width:1.6;
+  stroke-linejoin:round; vector-effect:non-scaling-stroke; }
+.hole { fill:var(--fill); stroke:var(--ink); stroke-width:1.6;
+  stroke-linejoin:round; vector-effect:non-scaling-stroke; }
+.cable { fill:none; stroke:var(--cable); stroke-width:2.4; stroke-dasharray:5 3.5;
+  stroke-linecap:round; vector-effect:non-scaling-stroke; }
+.card h3 { font-size:14px; margin:0; font-weight:600; letter-spacing:-.005em; }
+.chips { display:flex; flex-wrap:wrap; gap:5px; margin:8px 0 11px; }
+.chip { font-size:10px; letter-spacing:.05em; text-transform:uppercase;
+  padding:2.5px 7px; border-radius:2px; border:1px solid var(--line); color:var(--muted); }
+.chip.route { color:var(--ink); border-color:var(--ink); }
+.chip.good { color:var(--good); background:var(--good-bg); border-color:transparent; }
+.chip.bad { color:var(--bad); background:var(--bad-bg); border-color:transparent; }
+.stats { margin:0; display:flex; flex-direction:column; }
+.stat { display:flex; justify-content:space-between; gap:10px;
+  padding:4.5px 0; border-top:1px solid var(--line-soft); }
+.stat dt { margin:0; font-size:11px; color:var(--muted); letter-spacing:.02em; }
+.stat dd { margin:0; font-size:12px; font-variant-numeric:tabular-nums; }
+.panel { background:var(--surface); border:1px solid var(--line-soft);
+  border-radius:3px; padding:22px; margin:0 0 56px; }
+.panel h2 { font-size:21px; margin:6px 0 0; letter-spacing:-.01em; font-weight:620; }
+.ba { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  margin-top:18px; }
+.ba-cell { border-left:2px solid var(--line); padding-left:14px; }
+.ba-cell.now { border-left-color:var(--accent); }
+.ba-cell h4 { margin:0 0 8px; font-size:11px; letter-spacing:.07em;
+  text-transform:uppercase; color:var(--muted); font-weight:600; }
+.big { font-size:26px; font-variant-numeric:tabular-nums; letter-spacing:-.02em;
+  display:block; }
+.ba-cell.now .big { color:var(--accent); }
+.ba-cell p { margin:6px 0 0; font-size:13px; color:var(--muted); }
+.limits { list-style:none; padding:0; margin:16px 0 0;
+  display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(290px,1fr)); }
+.limits li { border-top:1px solid var(--line); padding-top:11px; }
+.limits strong { display:block; font-size:14px; margin-bottom:3px; font-weight:600; }
+.limits span { color:var(--muted); font-size:13.5px; }
+.foot { margin-top:56px; padding-top:16px; border-top:1px solid var(--line);
+  color:var(--muted); font-size:12.5px; line-height:1.7; }
+a { color:var(--accent); }
+a:focus-visible { outline:2px solid var(--mark); outline-offset:3px; }
+@media (prefers-reduced-motion:reduce) { * { animation:none!important; transition:none!important; } }
+</style>
+
+<header class="top"><div class="top-in">
+  <p class="eyebrow">compas_singular &middot; frame-field front end</p>
+  <h1>What the field front end can mesh today</h1>
+  <p class="lede">A cross-field replacement for the medial-axis decomposition. Every
+  figure below is read from the committed 64-row baseline &mdash; 16 domains across four
+  background resolutions &mdash; not from a description of it.</p>
+  <div class="figs">
+    <div class="fig"><span class="fig-n">14/16</span><p>meshed from the field at every
+      resolution</p></div>
+    <div class="fig"><span class="fig-n">8</span><p>produce an exact 90&deg; grid</p></div>
+    <div class="fig acc"><span class="fig-n">36.9&rarr;25</span><p>degrees off a cable:
+      it now reaches the mesh</p></div>
+    <div class="fig"><span class="fig-n">1</span><p>domain with a known defect</p></div>
+  </div>
+</div></header>
+
+<main class="wrap">
+<section class="group" id="orthogonal"><header class="group-head"><p class="eyebrow">8 domains</p><h2>Exact orthogonal grids</h2><p class="blurb">Straight-walled plates. The field is constant, so the mesh is a true 90&deg; grid and the front end reproduces it exactly &mdash; no approximation, no drift.</p></header><div class="grid"><article class="card"><div class="plate"><svg viewBox="0 0 100 100" role="img" aria-label="outline of square"><path class="wall" d="M8.00 92.00 L92.00 92.00 L92.00 8.00 L8.00 8.00 Z"/></svg></div><h3>square</h3><div class="chips"><span class="chip route">field</span><span class="chip good">clears floor</span></div><dl class="stats"><div class="stat"><dt>patches</dt><dd>1</dd></div><div class="stat"><dt>min angle</dt><dd>90.0&deg;</dd></div><div class="stat"><dt>max angle</dt><dd>90.0&deg;</dd></div><div class="stat"><dt>aspect</dt><dd>1.00</dd></div></dl></article><article class="card"><div class="plate"><svg viewBox="0 0 100 100" role="img" aria-label="outline of L-shape"><path class="wall" d="M8.00 85.00 L92.00 85.00 L92.00 57.00 L43.00 57.00 L43.00 15.00 L8.00 15.00 Z"/></svg></div><h3>L-shape</h3><div class="chips"><span class="chip route">field</span><span class="chip good">clears floor</span></div><dl class="stats"><div class="stat"><dt>patches</dt><dd>3</dd></div><div class="stat"><dt>min angle</dt><dd>90.0&deg;</dd></div><div class="stat"><dt>max angle</dt><dd>90.0&deg;</dd></div><div class="stat"><dt>aspect</dt><dd>1.00</dd></div></dl></article><article class="card"><div class="plate"><svg viewBox="0 0 100 100" role="img" aria-label="outline of T-plate"><path class="wall" d="M8.00 85.00 L92.00 85.00 L92.00 57.00 L64.00 57.00 L64.00 15.00 L36.00 15.00 L36.00 57.00 L8.00 57.00 Z"/></svg></div><h3>T-plate</h3><div class="chips"><span class="chip route">field</span><span class="chip good">clears floor</span></div><dl class="stats"><div class="stat"><dt>patches</dt><dd>4</dd></div><div class="stat"><dt>min angle</dt><dd>90.0&deg;</dd></div><div class="stat"><dt>max angle</dt><dd>90.0&deg;</dd></div><div class="stat"><dt>aspect</dt><dd>1.00</dd></div></dl></article><article class="card"><div class="plate"><svg viewBox="0 0 100 100" role="img" aria-label="outline of U-plate"><path class="wall" d="M8.00 85.00 L92.00 85.00 L92.00 15.00 L71.00 15.00 L71.00 57.00 L29.00 57.00 L29.00 15.00 L8.00 15.00 Z"/></svg></div><h3>U-plate</h3><div class="chips"><span class="chip route">field</span><span class="chip good">clears floor</span></div><dl class="stats"><div class="stat"><dt>patches</dt><dd>5</dd></div><div class="stat"><dt>min angle</dt><dd>90.0&deg;</dd></div><div class="stat"><dt>max angle</dt><dd>90.0&deg;</dd></div><div class="stat"><dt>aspect</dt><dd>1.00</dd></div></dl></article><article class="card"><div class="plate"><svg viewBox="0 0 100 100" role="img" aria-label="outline of plus-plate"><path class="wall" d="M36.00 92.00 L64.00 92.00 L64.00 64.00 L92.00 64.00 L92.00 36.00 L64.00 36.00 L64.00 8.00 L36.00 8.00 L36.00 36.00 L8.00 36.00 L8.00 64.00 L36.00 64.00 Z"/></svg></div><h3>plus-plate</h3><div class="chips"><span class="chip route">field</span><span class="chip good">clears floor</span></div><dl class="stats"><div class="stat"><dt>patches</dt><dd>5</dd></div><div class="stat"><dt>min angle</dt><dd>90.0&deg;</dd></div><div class="stat"><dt>max angle</dt><dd>90.0&deg;</dd></div><div class="stat"><dt>aspect</dt><dd>1.00</dd></div></dl></article><article class="card"><div class="plate"><svg viewBox="0 0 100 100" role="img" aria-label="outline of comb-plate"><path class="wall" d="M8.00 74.00 L92.00 74.00 L92.00 26.00 L80.00 26.00 L80.00 56.00 L68.00 56.00 L68.00 26.00 L56.00 26.00 L56.00 56.00 L44.00 56.00 L44.00 26.00 L32.00 26.00 L32.00 56.00 L20.00 56.00 L20.00 26.00 L8.00 26.00 Z"/></svg></div><h3>comb-plate</h3><div class="chips"><span class="chip route">field</span><span class="chip good">clears floor</span></div><dl class="stats"><div class="stat"><dt>patches</dt><dd>11</dd></div><div class="stat"><dt>min angle</dt><dd>90.0&deg;</dd></div><div class="stat"><dt>max angle</dt><dd>90.0&deg;</dd></div><div class="stat"><dt>aspect</dt><dd>1.00</dd></div></dl></article><article class="card"><div class="plate"><svg viewBox="0 0 100 100" role="img" aria-label="outline of rect with slot"><path class="wall" d="M8.00 78.00 L92.00 78.00 L92.00 22.00 L57.00 22.00 L57.00 57.00 L43.00 57.00 L43.00 22.00 L8.00 22.00 Z"/></svg></div><h3>rect with slot</h3><div class="chips"><span class="chip route">field</span><span class="chip good">clears floor</span></div><dl class="stats"><div class="stat"><dt>patches</dt><dd>5</dd></div><div class="stat"><dt>min angle</dt><dd>90.0&deg;</dd></div><div class="stat"><dt>max angle</dt><dd>90.0&deg;</dd></div><div class="stat"><dt>aspect</dt><dd>1.00</dd></div></dl></article><article class="card"><div class="plate"><svg viewBox="0 0 100 100" role="img" aria-label="outline of square+sq hole"><path class="wall" d="M8.00 92.00 L92.00 92.00 L92.00 8.00 L8.00 8.00 Z"/><path class="hole" d="M41.60 58.40 L58.40 58.40 L58.40 41.60 L41.60 41.60 Z"/></svg></div><h3>square+sq hole</h3><div class="chips"><span class="chip route">field</span><span class="chip good">clears floor</span></div><dl class="stats"><div class="stat"><dt>patches</dt><dd>8</dd></div><div class="stat"><dt>min angle</dt><dd>90.0&deg;</dd></div><div class="stat"><dt>max angle</dt><dd>90.0&deg;</dd></div><div class="stat"><dt>aspect</dt><dd>1.00</dd></div></dl></article></div></section><section class="group" id="curved"><header class="group-head"><p class="eyebrow">5 domains</p><h2>Curved and polygonal boundaries</h2><p class="blurb">Corners the walls cannot absorb push singularities into the interior. Separatrices cut the domain into four-sided patches, and the mesh flows along the field.</p></header><div class="grid"><article class="card"><div class="plate"><svg viewBox="0 0 100 100" role="img" aria-label="outline of pentagon"><path class="wall" d="M19.20 83.60 L75.20 83.60 L92.00 44.40 L47.20 16.40 L8.00 44.40 Z"/></svg></div><h3>pentagon</h3><div class="chips"><span class="chip route">field</span><span class="chip good">clears floor</span></div><dl class="stats"><div class="stat"><dt>patches</dt><dd>5</dd></div><div class="stat"><dt>min angle</dt><dd>65.0&ndash;70.7&deg;</dd></div><div class="stat"><dt>max angle</dt><dd>113.2&deg;</dd></div><div class="stat"><dt>aspect</dt><dd>1.71</dd></div></dl></article><article class="card"><div class="plate"><svg viewBox="0 0 100 100" role="img" aria-label="outline of hexagon"><path class="wall" d="M92.00 50.00 L71.00 13.63 L29.00 13.63 L8.00 50.00 L29.00 86.37 L71.00 86.37 Z"/></svg></div><h3>hexagon</h3><div class="chips"><span class="chip route">field</span><span class="chip good">clears floor</span></div><dl class="stats"><div class="stat"><dt>patches</dt><dd>11</dd></div><div class="stat"><dt>min angle</dt><dd>62.4&ndash;67.9&deg;</dd></div><div class="stat"><dt>max angle</dt><dd>120.0&ndash;120.7&deg;</dd></div><div class="stat"><dt>aspect</dt><dd>3.48</dd></div></dl></article><article class="card"><div class="plate"><svg viewBox="0 0 100 100" role="img" aria-label="outline of disc"><path class="wall" d="M92.00 50.00 L91.64 44.52 L90.57 39.13 L88.80 33.93 L86.37 29.00 L83.32 24.43 L79.70 20.30 L75.57 16.68 L71.00 13.63 L66.07 11.20 L60.87 9.43 L55.48 8.36 L50.00 8.00 L44.52 8.36 L39.13 9.43 L33.93 11.20 L29.00 13.63 L24.43 16.68 L20.30 20.30 L16.68 24.43 L13.63 29.00 L11.20 33.93 L9.43 39.13 L8.36 44.52 L8.00 50.00 L8.36 55.48 L9.43 60.87 L11.20 66.07 L13.63 71.00 L16.68 75.57 L20.30 79.70 L24.43 83.32 L29.00 86.37 L33.93 88.80 L39.13 90.57 L44.52 91.64 L50.00 92.00 L55.48 91.64 L60.87 90.57 L66.07 88.80 L71.00 86.37 L75.57 83.32 L79.70 79.70 L83.32 75.57 L86.37 71.00 L88.80 66.07 L90.57 60.87 L91.64 55.48 Z"/></svg></div><h3>disc</h3><div class="chips"><span class="chip route">field</span><span class="chip good">clears floor</span></div><dl class="stats"><div class="stat"><dt>patches</dt><dd>5&ndash;9</dd></div><div class="stat"><dt>min angle</dt><dd>55.3&ndash;60.7&deg;</dd></div><div class="stat"><dt>max angle</dt><dd>132.1&ndash;142.1&deg;</dd></div><div class="stat"><dt>aspect</dt><dd>2.76</dd></div></dl></article><article class="card"><div class="plate"><svg viewBox="0 0 100 100" role="img" aria-label="outline of ellipse"><path class="wall" d="M92.00 50.00 L91.77 48.12 L91.08 46.26 L89.94 44.44 L88.37 42.68 L86.37 41.00 L83.98 39.42 L81.21 37.96 L78.10 36.62 L74.69 35.44 L71.00 34.41 L67.08 33.56 L62.98 32.88 L58.73 32.39 L54.39 32.10 L50.00 32.00 L45.61 32.10 L41.27 32.39 L37.02 32.88 L32.92 33.56 L29.00 34.41 L25.31 35.44 L21.90 36.62 L18.79 37.96 L16.02 39.42 L13.63 41.00 L11.63 42.68 L10.06 44.44 L8.92 46.26 L8.23 48.12 L8.00 50.00 L8.23 51.88 L8.92 53.74 L10.06 55.56 L11.63 57.32 L13.63 59.00 L16.02 60.58 L18.79 62.04 L21.90 63.38 L25.31 64.56 L29.00 65.59 L32.92 66.44 L37.02 67.12 L41.27 67.61 L45.61 67.90 L50.00 68.00 L54.39 67.90 L58.73 67.61 L62.98 67.12 L67.08 66.44 L71.00 65.59 L74.69 64.56 L78.10 63.38 L81.21 62.04 L83.98 60.58 L86.37 59.00 L88.37 57.32 L89.94 55.56 L91.08 53.74 L91.77 51.88 Z"/></svg></div><h3>ellipse</h3><div class="chips"><span class="chip route">field</span><span class="chip good">clears floor</span></div><dl class="stats"><div class="stat"><dt>patches</dt><dd>10</dd></div><div class="stat"><dt>min angle</dt><dd>24.4&ndash;65.9&deg;</dd></div><div class="stat"><dt>max angle</dt><dd>131.5&ndash;142.7&deg;</dd></div><div class="stat"><dt>aspect</dt><dd>3.00</dd></div><div class="stat"><dt>poles</dt><dd>0&ndash;4</dd></div></dl></article><article class="card"><div class="plate"><svg viewBox="0 0 100 100" role="img" aria-label="outline of stadium"><path class="wall" d="M8.00 66.80 L75.20 66.80 L80.39 65.98 L85.07 63.59 L88.79 59.87 L91.18 55.19 L92.00 50.00 L91.18 44.81 L88.79 40.13 L85.07 36.41 L80.39 34.02 L75.20 33.20 L8.00 33.20 Z"/></svg></div><h3>stadium</h3><div class="chips"><span class="chip route">field</span><span class="chip good">clears floor</span></div><dl class="stats"><div class="stat"><dt>patches</dt><dd>4</dd></div><div class="stat"><dt>min angle</dt><dd>58.2&ndash;60.3&deg;</dd></div><div class="stat"><dt>max angle</dt><dd>129.5&ndash;139.1&deg;</dd></div><div class="stat"><dt>aspect</dt><dd>2.27</dd></div></dl></article></div></section><section class="group" id="guided"><header class="group-head"><p class="eyebrow">2 domains</p><h2>Steered by a cable</h2><p class="blurb">A guide curve constrains the field, and densification now integrates that field inside the patch. The mesh bends onto the cable without the layout splitting.</p></header><div class="grid"><article class="card"><div class="plate"><svg viewBox="0 0 100 100" role="img" aria-label="outline of square+cable"><path class="wall" d="M8.00 92.00 L92.00 92.00 L92.00 8.00 L8.00 8.00 Z"/><path class="cable" d="M16.40 75.20 L50.00 50.00 L83.60 24.80"/></svg></div><h3>square+cable</h3><div class="chips"><span class="chip route">field</span><span class="chip good">clears floor</span></div><dl class="stats"><div class="stat"><dt>patches</dt><dd>1</dd></div><div class="stat"><dt>min angle</dt><dd>42.7&ndash;42.9&deg;</dd></div><div class="stat"><dt>max angle</dt><dd>143.5&ndash;144.2&deg;</dd></div><div class="stat"><dt>aspect</dt><dd>4.03</dd></div></dl></article><article class="card flagged"><div class="plate"><svg viewBox="0 0 100 100" role="img" aria-label="outline of square+ring cable"><path class="wall" d="M8.00 92.00 L92.00 92.00 L92.00 8.00 L8.00 8.00 Z"/><path class="cable" d="M75.20 50.00 L74.34 43.48 L71.82 37.40 L67.82 32.18 L62.60 28.18 L56.52 25.66 L50.00 24.80 L43.48 25.66 L37.40 28.18 L32.18 32.18 L28.18 37.40 L25.66 43.48 L24.80 50.00 L25.66 56.52 L28.18 62.60 L32.18 67.82 L37.40 71.82 L43.48 74.34 L50.00 75.20 L56.52 74.34 L62.60 71.82 L67.82 67.82 L71.82 62.60 L74.34 56.52 L75.20 50.00"/></svg></div><h3>square+ring cable</h3><div class="chips"><span class="chip route">field/polygon</span><span class="chip bad">floor breach</span></div><dl class="stats"><div class="stat"><dt>patches</dt><dd>17&ndash;43</dd></div><div class="stat"><dt>min angle</dt><dd>3.5&ndash;7.4&deg;</dd></div><div class="stat"><dt>max angle</dt><dd>144.3&ndash;180.0&deg;</dd></div><div class="stat"><dt>aspect</dt><dd>23.84</dd></div><div class="stat"><dt>poles</dt><dd>0&ndash;14</dd></div></dl></article></div></section><section class="group" id="fallback"><header class="group-head"><p class="eyebrow">1 domain</p><h2>Fallback only</h2><p class="blurb">No corner anywhere and no separatrix to cut with. An annulus cannot be one patch, so the backstop triangulation covers the domain correctly and nothing more.</p></header><div class="grid"><article class="card"><div class="plate"><svg viewBox="0 0 100 100" role="img" aria-label="outline of disc+round hole"><path class="wall" d="M92.00 50.00 L91.64 44.52 L90.57 39.13 L88.80 33.93 L86.37 29.00 L83.32 24.43 L79.70 20.30 L75.57 16.68 L71.00 13.63 L66.07 11.20 L60.87 9.43 L55.48 8.36 L50.00 8.00 L44.52 8.36 L39.13 9.43 L33.93 11.20 L29.00 13.63 L24.43 16.68 L20.30 20.30 L16.68 24.43 L13.63 29.00 L11.20 33.93 L9.43 39.13 L8.36 44.52 L8.00 50.00 L8.36 55.48 L9.43 60.87 L11.20 66.07 L13.63 71.00 L16.68 75.57 L20.30 79.70 L24.43 83.32 L29.00 86.37 L33.93 88.80 L39.13 90.57 L44.52 91.64 L50.00 92.00 L55.48 91.64 L60.87 90.57 L66.07 88.80 L71.00 86.37 L75.57 83.32 L79.70 79.70 L83.32 75.57 L86.37 71.00 L88.80 66.07 L90.57 60.87 L91.64 55.48 Z"/><path class="hole" d="M66.80 50.00 L66.66 52.19 L66.23 54.35 L65.52 56.43 L64.55 58.40 L63.33 60.23 L61.88 61.88 L60.23 63.33 L58.40 64.55 L56.43 65.52 L54.35 66.23 L52.19 66.66 L50.00 66.80 L47.81 66.66 L45.65 66.23 L43.57 65.52 L41.60 64.55 L39.77 63.33 L38.12 61.88 L36.67 60.23 L35.45 58.40 L34.48 56.43 L33.77 54.35 L33.34 52.19 L33.20 50.00 L33.34 47.81 L33.77 45.65 L34.48 43.57 L35.45 41.60 L36.67 39.77 L38.12 38.12 L39.77 36.67 L41.60 35.45 L43.57 34.48 L45.65 33.77 L47.81 33.34 L50.00 33.20 L52.19 33.34 L54.35 33.77 L56.43 34.48 L58.40 35.45 L60.23 36.67 L61.88 38.12 L63.33 39.77 L64.55 41.60 L65.52 43.57 L66.23 45.65 L66.66 47.81 Z"/></svg></div><h3>disc+round hole</h3><div class="chips"><span class="chip route">triangulation</span><span class="chip good">clears floor</span></div><dl class="stats"><div class="stat"><dt>patches</dt><dd>1320&ndash;4566</dd></div><div class="stat"><dt>min angle</dt><dd>17.9&ndash;26.9&deg;</dd></div><div class="stat"><dt>max angle</dt><dd>156.9&ndash;162.4&deg;</dd></div><div class="stat"><dt>aspect</dt><dd>6.31</dd></div></dl></article></div></section>
+
+<section class="panel">
+  <p class="eyebrow">the objective</p>
+  <h2>A cable is an input to the mesh</h2>
+  <p class="blurb">The field always took guide curves exactly. The mesh never saw them:
+  densification was a Coons patch between coarse edges and never consulted the field. On a
+  square with a hard diagonal cable the dense mesh was identical to the unguided one at
+  every resolution. It no longer is &mdash; and the patch count did not change, so the
+  cable steers the patch interior rather than forcing a split.</p>
+  <div class="ba">
+    <div class="ba-cell"><h4>Field, always</h4><span class="big">0.0&deg;</span>
+      <p>off a hard-constrained cable, tangent or perpendicular</p></div>
+    <div class="ba-cell"><h4>Mesh, before</h4><span class="big">36.9&deg;</span>
+      <p>identical to the unguided grid, however hard the cable pulled</p></div>
+    <div class="ba-cell now"><h4>Mesh, now</h4><span class="big">~25&deg;</span>
+      <p>same single patch, same 100 faces, interior swung onto the cable</p></div>
+    <div class="ba-cell"><h4>Paid for it</h4><span class="big">42.7&deg;</span>
+      <p>minimum angle, down from 90&deg;; aspect 1.00 &rarr; 4.03</p></div>
+  </div>
+</section>
+
+<section class="group">
+  <header class="group-head"><p class="eyebrow">honest bounds</p>
+  <h2>What it still cannot do</h2>
+  <p class="blurb">Each of these is measured rather than assumed, and each has a
+  reproducer in the example scripts.</p></header>
+  <ul class="limits">
+    <li><strong>Reach 0&deg; on a cable</strong><span>Patch boundaries are held fixed
+      &mdash; that is what keeps strip densities consistent &mdash; so the mesh must turn
+      to meet the walls. Closing the last stretch means letting the cable change the
+      layout.</span></li>
+    <li><strong>Steer a pole</strong><span>Pseudo-quad patches keep their Coons interiors.
+      A pole has no continuous branch of the field angle to integrate along its collapsed
+      side.</span></li>
+    <li><strong>Mesh an annulus from the field</strong><span>No corner and no separatrix
+      anywhere, so there is nothing to cut with. The triangulation backstop covers the
+      domain correctly and is not a structured mesh.</span></li>
+    <li><strong>Hold quality under a ring cable</strong><span>The one domain where a cable
+      forces topology: 180&deg; angles at three resolutions, and it drops off the field
+      route at the two finest. A layout defect, not a densification one.</span></li>
+    <li><strong>Non-orthogonal cable families</strong><span>A cross field is four-fold
+      symmetric, so two families crossing at anything but 90&deg; is over-constrained.
+      That needs a frame field and the warp step.</span></li>
+    <li><strong>Curved surfaces</strong><span>The background triangulation is planar and
+      every tangent space is world XY. Z is dropped silently.</span></li>
+  </ul>
+</section>
+
+<p class="foot">baseline.json, 64 rows &middot; quad target 1.0 &middot; backgrounds
+0.6 / 0.5 / 0.4 / 0.3 &middot; outlines drawn from the domain definitions in
+15_baseline.py &middot; ranges span the four resolutions.</p>
+</main>

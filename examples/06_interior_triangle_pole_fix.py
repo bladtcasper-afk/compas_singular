@@ -1,11 +1,26 @@
 """
-06 - Interior-triangle pole crash: cause and fix
-=================================================
+06 - Interior-triangle pole crash: cause and fix (HISTORICAL)
+==============================================================
 
 Companion script to ``INTERIOR_TRIANGLE_POLE_FIX.md``. Reproduces -- then
-fixes -- the ``pole missing`` / ``KeyError`` crash that happens when a
+fixes -- the ``pole missing`` / ``KeyError`` crash that happened when a
 ``polyline_features`` feature line floats free inside the domain (neither end
 touching a boundary).
+
+.. note::
+
+    **The crash no longer reproduces: the fix is in the base class.** Since
+    2026-09-01 ``SkeletonDecomposition.store_pole_data`` records a pole for
+    EVERY triangular face rather than only for one with a point feature at a
+    corner -- which is what ``RobustSkeletonDecomposition`` below was doing. It
+    also picks the corner whose two edges are closest to equal, so the pole's
+    fan densifies evenly, where the shim took ``face_vertices(fkey)[0]``.
+
+    Both paths therefore now succeed and the "naive" one no longer raises. The
+    script is kept as the record of the diagnosis, and because the two paths
+    still make a useful side-by-side of what a pseudo-quad pole does to a
+    layout. ``HOW_IT_WORKS.md`` section 5 has the full account of the
+    curve-feature restoration.
 
 What the viewer shows
 ----------------------
@@ -134,7 +149,7 @@ def run():
     naive = SkeletonDecomposition.from_mesh(trimesh)
     naive_coarse = naive.decomposition_mesh([])  # prints "pole missing" below
     problem_faces = interior_triangles(naive_coarse)
-    print("\nNaive SkeletonDecomposition: {} unresolved interior triangle(s): {}"
+    print("\nNaive SkeletonDecomposition: {} interior triangle(s): {} -- each now carries a pole"
           .format(len(problem_faces), problem_faces))
 
     crash = None
@@ -144,9 +159,9 @@ def run():
         crash = e
         print("Reproduced the crash: collect_strips() -> KeyError({})  <-- expected".format(e))
     else:
-        print("collect_strips() did not crash here -- widen/move the feature "
-              "in build_domain() so both ends stay clear of the boundary.")
-
+        print("collect_strips() did NOT crash -- expected since 2026-09-01: "
+              "the base store_pole_data() now records a pole for every triangle, "
+              "which is what RobustSkeletonDecomposition was added to do.")
     # --- fixed path ----------------------------------------------------------
     fixed = RobustSkeletonDecomposition.from_mesh(trimesh)
     fixed_coarse = fixed.decomposition_mesh([])

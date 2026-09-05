@@ -6,3 +6,8 @@
 # Known-good combination: compas 2.15.1 on Python 3.12.
 compas>=2.0,<3
 networkx>=2.0
+
+# compas_singular.mcp adds NOTHING here on purpose. The MCP server speaks
+# JSON-RPC over stdio with the standard library alone, because the official
+# `mcp` SDK requires Python 3.10 and Rhino 8 ships CPython 3.9.10 -- the
+# interpreter the server and the in-Rhino link both run on.

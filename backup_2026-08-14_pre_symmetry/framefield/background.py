@@ -1,0 +1,295 @@
+"""Step 1 -- a triangulation a field can actually live on.
+
+``compas_singular``'s own ``boundary_triangulation`` puts vertices ONLY on the
+boundaries (see ``algorithms/triangulation.py``); the interior is spanned by a
+few large, often sliver Delaunay triangles whose circumcentres approximate the
+medial axis. That is exactly right for the skeleton front end and useless for a
+field: there is no interior resolution to carry one, and slivers wreck the
+Laplacian.
+
+So the two front ends want opposite triangulations from the same boundary, and
+this module builds the other one: boundary densified to ``target_length``, plus
+an interior grid at the same spacing.
+
+Planar domain, so every tangent space is world XY -- no parallel transport, no
+per-edge connection. ``face_basis`` returns the identity and exists only so the
+surface case does not need an API change.
+"""
+from math import ceil
+
+from compas_singular.datastructures import Mesh   # has .boundaries(); compas core does not
+from compas.geometry import delaunay_triangulation
+from compas.geometry import is_point_in_polygon_xy
+from compas.geometry import distance_point_point
+from compas.geometry import normalize_vector
+from compas.geometry import subtract_vectors
+from compas.geometry import cross_vectors
+from compas.geometry import length_vector
+from compas.itertools import pairwise
+
+
+__all__ = ['BackgroundMesh']
+
+
+def _as_open_loop(points):
+    """Drop a repeated closing point and any consecutive duplicates."""
+    pts = [[float(p[0]), float(p[1]), 0.0] for p in points]
+    out = [pts[0]]
+    for p in pts[1:]:
+        if distance_point_point(p, out[-1]) > 1e-9:
+            out.append(p)
+    if len(out) > 1 and distance_point_point(out[0], out[-1]) < 1e-9:
+        out.pop()
+    return out
+
+
+def _densify_loop(loop, target_length):
+    """Subdivide each segment of a closed loop so no segment exceeds the target."""
+    out = []
+    for a, b in pairwise(loop + loop[:1]):
+        length = distance_point_point(a, b)
+        n = max(1, int(ceil(length / target_length)))
+        for i in range(n):
+            t = i / float(n)
+            out.append([a[k] + (b[k] - a[k]) * t for k in range(3)])
+    return out
+
+
+def _distance_to_loop(p, loop):
+    """Shortest distance from a point to a closed polyline, in XY."""
+    best = float('inf')
+    for a, b in pairwise(loop + loop[:1]):
+        ab = subtract_vectors(b, a)
+        length2 = ab[0] * ab[0] + ab[1] * ab[1]
+        if length2 == 0.0:
+            continue
+        t = ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / length2
+        t = max(0.0, min(1.0, t))
+        q = [a[0] + ab[0] * t, a[1] + ab[1] * t, 0.0]
+        best = min(best, distance_point_point(p, q))
+    return best
+
+
+def _jitter(i, j, amount):
+    """Deterministic sub-cell offset.
+
+    A perfectly regular grid makes every square's four corners cocircular, so
+    Qhull picks a diagonal arbitrarily and the triangulation is not reproducible
+    across runs or platforms. A fixed pseudo-random nudge removes the degeneracy
+    without introducing randomness.
+    """
+    h = (i * 73856093) ^ (j * 19349663)
+    return (((h >> 8) & 0xFFFF) / 65535.0 - 0.5) * amount
+
+
+class BackgroundMesh(object):
+    """A well-shaped triangulation of a planar domain, with boundary tangents.
+
+    Attributes
+    ----------
+    mesh : :class:`compas.datastructures.Mesh`
+        The triangulation. All faces have positive area in XY.
+    outer : list[[x, y, z]]
+        The densified outer boundary, as an open loop (no repeated last point).
+    inners : list[list[[x, y, z]]]
+        The densified inner boundaries (holes), same convention.
+    target_length : float
+        The spacing the triangulation was built at.
+    """
+
+    def __init__(self, mesh, outer, inners, target_length):
+        self.mesh = mesh
+        self.outer = outer
+        self.inners = inners
+        self.target_length = target_length
+        self._boundary_tangents = None
+
+    # ------------------------------------------------------------------
+    # construction
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def from_boundary(cls, outer_boundary, inner_boundaries=None, target_length=None,
+                      margin=0.45):
+        """Triangulate the region inside ``outer_boundary`` and outside the inners.
+
+        Parameters
+        ----------
+        outer_boundary : list[[x, y, z]]
+            The domain outline, closed or open (a repeated last point is dropped).
+        inner_boundaries : list[list[[x, y, z]]], optional
+            Holes.
+        target_length : float, optional
+            Edge-length target. Defaults to 1/25 of the outer boundary's
+            bounding-box diagonal, which gives a few thousand triangles -- enough
+            for a smooth field without making the solve slow.
+        margin : float, optional
+            Interior grid points closer to a boundary than ``margin *
+            target_length`` are dropped, so the grid does not crowd the wall and
+            produce slivers.
+
+        Returns
+        -------
+        BackgroundMesh
+        """
+        outer = _as_open_loop(outer_boundary)
+        inners = [_as_open_loop(loop) for loop in (inner_boundaries or [])]
+
+        xs = [p[0] for p in outer]
+        ys = [p[1] for p in outer]
+        if target_length is None:
+            diagonal = ((max(xs) - min(xs)) ** 2 + (max(ys) - min(ys)) ** 2) ** 0.5
+            target_length = diagonal / 25.0
+
+        outer = _densify_loop(outer, target_length)
+        inners = [_densify_loop(loop, target_length) for loop in inners]
+
+        points = list(outer)
+        for loop in inners:
+            points.extend(loop)
+
+        # interior grid
+        limit = margin * target_length
+        nx = int(ceil((max(xs) - min(xs)) / target_length))
+        ny = int(ceil((max(ys) - min(ys)) / target_length))
+        for i in range(nx + 1):
+            for j in range(ny + 1):
+                p = [min(xs) + (i + 0.5) * target_length + _jitter(i, j, 0.2 * target_length),
+                     min(ys) + (j + 0.5) * target_length + _jitter(j, i, 0.2 * target_length),
+                     0.0]
+                if not is_point_in_polygon_xy(p, outer):
+                    continue
+                if _distance_to_loop(p, outer) < limit:
+                    continue
+                if any(is_point_in_polygon_xy(p, loop) for loop in inners):
+                    continue
+                if any(_distance_to_loop(p, loop) < limit for loop in inners):
+                    continue
+                points.append(p)
+
+        faces = delaunay_triangulation(points)
+        mesh = Mesh.from_vertices_and_faces(points, faces)
+
+        # drop zero-area faces, then faces whose centroid is outside the domain.
+        # centroid rather than circumcentre: a sliver's circumcentre can land far
+        # outside a face that is perfectly inside the domain.
+        for fkey in list(mesh.faces()):
+            a, b, c = [mesh.vertex_coordinates(v) for v in mesh.face_vertices(fkey)]
+            if length_vector(cross_vectors(subtract_vectors(b, a), subtract_vectors(c, a))) < 1e-12:
+                mesh.delete_face(fkey)
+                continue
+            centre = mesh.face_centroid(fkey)
+            if not is_point_in_polygon_xy(centre, outer):
+                mesh.delete_face(fkey)
+            elif any(is_point_in_polygon_xy(centre, loop) for loop in inners):
+                mesh.delete_face(fkey)
+
+        for vkey in list(mesh.vertices()):
+            if not mesh.vertex_faces(vkey):
+                mesh.delete_vertex(vkey)
+
+        return cls(mesh, outer, inners, target_length)
+
+    # ------------------------------------------------------------------
+    # tangent spaces
+    # ------------------------------------------------------------------
+
+    def face_basis(self, fkey):
+        """Orthonormal tangent basis of a face.
+
+        Planar domain, so this is the world XY basis for every face. Kept in the
+        API because the surface case needs it to be per-face, and a caller
+        written against it now will not have to change.
+        """
+        return ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+
+    def boundary_tangents(self):
+        """The adjacent boundary EDGE directions at every boundary vertex.
+
+        Two per vertex (one each side), not one averaged tangent.
+
+        Taking the chord between the two neighbours instead -- the obvious
+        implementation -- is wrong at a corner, and wrong in the worst possible
+        way. At a square's 90-degree corner the chord bisects, giving 45 degrees:
+        exactly halfway between the two arms of the cross, the one direction
+        equally far from both. The field then has to unwind that spurious 45
+        degrees somewhere, and a square comes out with two interior
+        singularities instead of the none it should have.
+
+        The two edge directions are the honest input; ``constraints.from_boundary``
+        combines them in the 4th-power representation, where a right-angle corner's
+        two edges are the SAME cross and cancel no information at all.
+
+        Returns
+        -------
+        dict[int, list[[x, y, z]]]
+        """
+        if self._boundary_tangents is None:
+            tangents = {}
+            for loop in self.mesh.boundaries():
+                n = len(loop)
+                for i, vkey in enumerate(loop):
+                    here = self.mesh.vertex_coordinates(vkey)
+                    prev = self.mesh.vertex_coordinates(loop[(i - 1) % n])
+                    nxt = self.mesh.vertex_coordinates(loop[(i + 1) % n])
+                    tangents[vkey] = [
+                        normalize_vector(subtract_vectors(here, prev)),
+                        normalize_vector(subtract_vectors(nxt, here)),
+                    ]
+            self._boundary_tangents = tangents
+        return self._boundary_tangents
+
+    def boundary_vertices(self):
+        """Set of vertex keys on any boundary."""
+        return set(self.boundary_tangents())
+
+    # ------------------------------------------------------------------
+    # validation
+    # ------------------------------------------------------------------
+
+    def validate(self):
+        """Check the invariants Step 2 relies on.
+
+        Returns
+        -------
+        dict
+            ``ok`` plus the individual counts, so a caller can print them.
+
+        Notes
+        -----
+        Euler characteristic is checked against ``1 - len(holes)`` for a planar
+        domain, which catches a triangulation that has silently torn or kept a
+        face bridging a hole.
+        """
+        mesh = self.mesh
+        report = {
+            'vertices': mesh.number_of_vertices(),
+            'faces': mesh.number_of_faces(),
+            'edges': mesh.number_of_edges(),
+        }
+
+        negative = []
+        for fkey in mesh.faces():
+            a, b, c = [mesh.vertex_coordinates(v) for v in mesh.face_vertices(fkey)]
+            area2 = ((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]))
+            if area2 <= 0.0:
+                negative.append(fkey)
+        report['negative_area_faces'] = len(negative)
+
+        report['triangles_only'] = all(len(mesh.face_vertices(f)) == 3 for f in mesh.faces())
+
+        loops = mesh.boundaries()
+        report['boundary_loops'] = len(loops)
+        report['expected_loops'] = 1 + len(self.inners)
+
+        chi = report['vertices'] - report['edges'] + report['faces']
+        report['euler'] = chi
+        report['expected_euler'] = 1 - len(self.inners)
+
+        report['ok'] = (
+            report['negative_area_faces'] == 0
+            and report['triangles_only']
+            and report['boundary_loops'] == report['expected_loops']
+            and report['euler'] == report['expected_euler']
+        )
+        return report
