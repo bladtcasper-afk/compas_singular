@@ -14,7 +14,7 @@ if compas.RHINO:
 	import System
 
 
-def clean_layer(layer, clean_sublayers=False):
+def clear_layer(layer, clean_sublayers=False):
 	if not rs.IsLayer(layer):
 		print(f"No layer named {layer}. Deleted nothing.")
 		return 0
@@ -44,7 +44,7 @@ def bake_points(points, layer, color=None, clear_existing=True):
 	if not rs.IsLayer(layer):
 		rs.AddLayer(layer, color)
 	if clear_existing:
-		clean_layer(layer)
+		clear_layer(layer)
 
 	guids = rs.AddPoints([point_to_rhino(pt) for pt in points])
 	for guid in guids:
@@ -95,7 +95,7 @@ def bake_polylines(polylines, layer, color=None, clear_existing=True):
 	if not rs.IsLayer(layer):
 		rs.AddLayer(layer, color)
 	if clear_existing:
-		clean_layer(layer)
+		clear_layer(layer)
 
 	guids = []
 	skipped = 0
@@ -139,7 +139,7 @@ def bake_mesh(mesh, layer, color=None, clear_existing=True):
 		rs.AddLayer(layer, color, parent="TopologyProblem")
 		print("Layer did not exist. Added the layer.")
 	if clear_existing:
-		clean_layer(layer)
+		clear_layer(layer)
 
 	# ``face_vertices`` gives vertex KEYS while ``vertices`` is positional, and
 	# the two only agree while the keys happen to be 0..n-1. A repair, a weld or

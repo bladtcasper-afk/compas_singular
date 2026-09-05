@@ -599,8 +599,8 @@ def boundary_corners(loop, limit=pi / 12.0, spacing=None, sharp=SHARP_TURN):
     grouped with anything.
 
     Below ``sharp`` the ambiguity is genuine and no purely local test resolves
-    it, because after ``_densify_loop`` -- which inserts its points ON the chord
-    -- a sampled arc really IS a polygon with 18-degree corners. The same
+    it, because after ``discretise_boundary`` -- which inserts its points ON the
+    chord -- a sampled arc really IS a polygon with 18-degree corners. The same
     vertices, the same angles. What differs is SPACING: a corner of the domain
     stands alone, while a sampled curve turns again a chord later, and again,
     all the way round. So those candidates are grouped into runs by arc-length
@@ -636,7 +636,7 @@ def boundary_corners(loop, limit=pi / 12.0, spacing=None, sharp=SHARP_TURN):
 
     ``sharp`` is not vulnerable to it, and that is the point of choosing an
     ANGLE. An angle has no length scale, so no small feature can be smaller than
-    it, and ``_densify_loop`` only ever subdivides -- it never makes a turn
+    it, and ``discretise_boundary`` only ever subdivides -- it never makes a turn
     coarser -- so a domain that passes at one background passes at all of them.
 
     Measured across every outline in the suite, the two populations do not come

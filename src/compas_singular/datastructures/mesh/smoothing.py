@@ -582,6 +582,53 @@ def smoothing_region(mesh, vertices, kmax=50, damping=0.5, blend=3, constraints=
 
 
 # ==============================================================================
+# Relaxation
+# ==============================================================================
+
+
+def relaxation(mesh, fixed="corners", fixed_vertices = [], constraints=None, q_factor=100, algorithm='forcedensity'):
+    from compas_fd.solvers import fd_constrained_numpy
+
+    if fixed == "corners":
+        fixed = mesh_boundary_corners(mesh)
+    elif fixed == "boundary":
+        boundaries = mesh_boundary_loops(mesh)
+        fixed = list(flatten(boundaries))
+    elif fixed=="manual":
+        fixed = fixed_vertices
+    else:
+        raise ValueError("This type of fixing is not recognised. Choose corners, boundary or manual with fixed_vertices.")
+
+    vertices = mesh.vertices_attributes("xyz")
+    edges = list(mesh.edges())
+    constraints = []
+    q = []
+    q_baseline = 1.0
+    for edge in edges:
+        if mesh.is_edge_on_boundary(edge):
+            q.append(q_factor*q_baseline)
+        else:
+            q.append(q_baseline)
+    loads = [[0, 0, 0] for _ in range(mesh.number_of_vertices())]
+
+    result = fd_constrained_numpy(
+        vertices=vertices,
+        fixed=fixed,
+        edges=edges,
+        forcedensities=q,
+        loads=loads,
+        constraints=constraints,
+        )
+
+    for vertex, attr in mesh.vertices(data=True):
+        attr["x"] = result.vertices[vertex, 0]
+        attr["y"] = result.vertices[vertex, 1]
+        attr["z"] = result.vertices[vertex, 2]
+
+    return mesh
+
+
+# ==============================================================================
 # Main
 # ==============================================================================
 

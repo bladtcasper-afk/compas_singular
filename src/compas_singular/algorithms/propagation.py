@@ -4,7 +4,7 @@ from __future__ import division
 
 from compas.geometry import discrete_coons_patch
 
-from ..utilities import list_split
+from compas_singular.utilities import list_split
 
 
 __all__ = [
@@ -161,41 +161,38 @@ def update_adjacent_face(mesh, u, v, vertices_uv):
 # ==============================================================================
 
 if __name__ == '__main__':
-    pass
+    
 
-    # from compas_singular.datastructures.mesh.mesh import Mesh
+    from compas_singular.datastructures.mesh.mesh import Mesh
+    from compas_viewer import Viewer
+    viewer = Viewer()
 
-    # vertices = [
-    #     [0, 0, 0],
-    #     [1, 0, 0],
-    #     [2, 0, 0],
-    #     [3, 0, 0],
-    #     [3, 1, 0],
-    #     [0, 1, 0],
-    #     [0, 0.5, 0],
-    #     [0, 0.25, 0],
-    #     [4, 0, 0],
-    #     [4, 1, 0],
-    # ]
+    vertices = [
+        [0, 0, 0],
+        [1, 0, 0],
+        [2, 0, 0],
+        [3, 0, 0],
+        [3, 1, 0],
+        [0, 1, 0],
+        [0, 0.5, 0],
+        [0, 0.25, 0],
+        [4, 0, 0],
+        [4, 1, 0],
+    ]
 
-    # faces = [
-    #     [0, 1, 2, 3, 4, 5, 6, 7],
-    #     [3, 8, 9, 4]
-    # ]
+    faces = [
+        [0, 1, 2, 3, 4, 5, 6, 7],
+        [3, 8, 9, 4]
+    ]
 
-    # sources = [1, 2, 6, 7]
+    sources = [1, 2, 6, 7]
 
-    # mesh = Mesh.from_vertices_and_faces(vertices, faces)
+    mesh = Mesh.from_vertices_and_faces(vertices, faces)
 
-    # #quadrangulate_face(mesh, 0, sources)
-    # #quadrangulate_mesh(mesh, sources)
-    # # for vkey in mesh.vertices():
-    # # 	print 'vkey', vkey, mesh.vertex_faces(vkey)
-    # # for fkey in mesh.faces():
-    # # 	print 'fkey', fkey, mesh.face_vertices(fkey)
+    viewer.scene.add(mesh.copy())
 
-    # # plotter = MeshPlotter(mesh)
-    # # plotter.draw_vertices(text='key')
-    # # plotter.draw_edges()
-    # # plotter.draw_faces(text='key')
-    # # plotter.show()
+    quadrangulate_face(mesh, 0, sources)
+    quadrangulate_mesh(mesh, sources)
+
+    viewer.scene.add(mesh)
+    viewer.show()

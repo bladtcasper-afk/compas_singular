@@ -157,6 +157,17 @@ class PseudoQuadMesh(QuadMesh):
 
         """
 
+        # CLEAR FIRST. ``update`` only adds and overwrites, so re-collecting a mesh
+        # that has LOST a strip left the old keys behind -- and worse, a key that was
+        # deleted and is now re-assigned lands at the END of the dict's insertion
+        # order. Measured on a 4x4 grid: delete strip 3, re-collect, and the order is
+        # [0, 1, 2, 4, 5, 6, 7, 3] -- so ``list(strips())[-1]`` is 3 while the maximum
+        # is 7, and ``grammar_pattern.add_strip``'s ``last + 1`` then names strip 4,
+        # which already exists and is silently overwritten. Stale entries are also
+        # read as real by ``is_strip_closed``, which only ever looks at
+        # ``strips[skey][0]``.
+        self.attributes['strips'].clear()
+
         # see QuadMesh.collect_polyedges: list for a stable seed order, set for O(1) removal
         edges = [(u, v) if self.halfedge[u][v] is not None else (v, u) for u, v in self.edges()]
         remaining = set(edges)

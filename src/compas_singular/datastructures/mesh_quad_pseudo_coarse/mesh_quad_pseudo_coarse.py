@@ -21,17 +21,48 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
     def __init__(self, *args, **kwargs):
         super(CoarsePseudoQuadMesh, self).__init__(*args, **kwargs)
 
-    def densification(self, edges_to_curves=None):
+    def densification(self, edges_to_curves=None, field=None):
         """Generate a denser quad mesh from the coarse quad mesh and its strip densities.
+
+        Parameters
+        ----------
+        edges_to_curves : dict, optional
+            A dictionary with edges (u, v) pointing to curve for densification. The curves are lists of XYZ points.
+            Without it, each coarse edge is densified as a straight chord between its two vertices.
+        field : optional
+            A ``CrossField`` (from ``FieldDecomposition.get_field()`` or
+            ``CrossField.from_boundary(...)``). With it, each patch INTERIOR is
+            integrated from the field instead of blended from its own four
+            sides -- which is the only way a guide curve reaches a patch it
+            forced no topology in. The layout does not have to have come from
+            that field: a skeleton layout and a field solved on the same walls
+            work together. Boundaries stay fixed either way, so the result still
+            welds into a mesh whose strips can be collected and edited.
 
         Returns
         -------
         QuadMesh
-            A denser quad mesh.
-        edges_to_curves : dict, optional
-            A dictionary with edges (u, v) pointing to curve for densification. The curves are lists of XYZ points.
-
+            The dense mesh, also stored on this one -- ``get_quad_mesh()``.
         """
+
+
+        if field is not None:
+            # The field owns this: it carries its own background and builds its
+            # own point locator, so a layout from ANY source -- a skeleton
+            # decomposition, a hand-built mesh, one read back out of a document
+            # -- can be densified with patch interiors that follow it, instead of
+            # the bilinear blend of its own four sides that ``discrete_coons_patch``
+            # gives and that never consults a field.
+            #
+            # Imported here and not at module scope: ``framefield.densify``
+            # imports ``PseudoQuadMesh`` and ``meshes_join_and_weld`` from this
+            # package, so a top-level import is a circular one -- this module is
+            # reached while ``compas_singular.datastructures`` is still being
+            # initialised. Nothing about ``field`` is type-checked, so any object
+            # offering ``densify(coarse, edges_to_curves=...)`` works.
+            dense, _stats = field.densify(self, edges_to_curves=edges_to_curves)
+            self.set_quad_mesh(dense)
+            return self.get_quad_mesh()
 
         edge_strip = {}
         for strip, edges in self.strips(data=True):

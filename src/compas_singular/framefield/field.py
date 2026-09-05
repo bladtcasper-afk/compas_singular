@@ -53,7 +53,62 @@ from .constraints import from_boundary
 from .constraints import representation
 
 
-__all__ = ['CrossField', 'wrap_to_period']
+__all__ = ['CrossField', 'field_provenance', 'wrap_to_period']
+
+
+#: Bumped when :meth:`CrossField.save_to_json`'s layout changes in a way a
+#: reader has to notice. :meth:`CrossField.load_from_json` refuses anything
+#: newer than it understands rather than guessing.
+JSON_VERSION = 1
+
+#: Written into every file and checked on load, so pointing this at a coarse
+#: mesh's JSON fails with a sentence instead of a KeyError.
+JSON_TYPE = 'compas_singular.framefield.CrossField'
+
+
+def field_provenance(outer_boundary, inner_boundaries=None, guides=None,
+                     mode='perpendicular', target_length=None, guide_weight=1.0,
+                     guide_band=None, relax=False, tau=None, symmetry='auto'):
+    """**Everything that determines a field, canonicalised for comparison.**
+
+    The signature is :meth:`CrossField.from_boundary`'s, defaults included, and
+    that is load-bearing: :meth:`CrossField.mismatch` compares what a caller
+    would have solved against what was solved, so a parameter that defaults
+    differently in the two places would report a change that did not happen. **A
+    parameter added to** ``from_boundary`` **has to be added here too.**
+
+    ``'auto'`` symmetry is resolved before recording, because the group is what
+    the solve actually used -- storing the string would make a field solved with
+    ``symmetry=None`` compare equal to one solved under the full group.
+
+    The canonicalisation is ``framefield.cache``'s, deliberately. Rounding
+    coordinates and tagging each loop with its ROLE is fiddly enough to get
+    wrong once -- an early version of the cache key hashed holes and guides into
+    one flat list, so the same polyline in either role compared equal -- and a
+    second copy of that logic is how the bug comes back.
+
+    Returns
+    -------
+    dict
+        ``{'geometry': {'outer', 'inners', 'guides'}, 'params': {...}}``, all
+        plain JSON types.
+    """
+    from . import cache
+    from .constraints import as_curve_list
+    from .symmetry import Symmetry
+
+    guides = as_curve_list(guides)
+    if symmetry == 'auto':
+        symmetry = Symmetry.detect(
+            [outer_boundary] + list(inner_boundaries or []) + list(guides or []))
+
+    return {
+        'geometry': cache.canonical_inputs(outer_boundary, inner_boundaries, guides),
+        'params': cache.canonical_parameters({
+            'mode': mode, 'target_length': target_length,
+            'guide_weight': guide_weight, 'guide_band': guide_band,
+            'relax': relax, 'tau': tau, 'symmetry': symmetry}),
+    }
 
 
 def wrap_to_period(delta):
@@ -94,6 +149,45 @@ class CrossField(object):
         self.iterations = iterations
         self.residual = residual
         self._singularities = None
+        #: The guide curves this field was solved with, if any. Read by
+        #: :meth:`densify` to decide whether element quality may be SPENT on
+        #: alignment -- see ``densify._accepts``. Set by :meth:`from_boundary`.
+        self.guides = []
+        #: The symmetry group of the input, or ``None``. Set by
+        #: :meth:`from_boundary`; carried so a caller that solves a field on its
+        #: own is not holding something less than the decomposition would have.
+        self.symmetry = None
+        #: Where ``symmetry.snap_singularities`` moved each singularity, and its
+        #: report. Needed by whoever builds a TRACING tracer -- point location
+        #: does not care. Empty when no symmetry was applied.
+        self.singularity_points = {}
+        self.snap_report = {}
+        #: What this field was solved FROM, canonicalised: the outer boundary,
+        #: the holes, the guides and every solver parameter. ``None`` on a field
+        #: built through :meth:`solve` directly, which never sees the
+        #: boundaries. Set by :meth:`from_boundary`, written by
+        #: :meth:`save_to_json`, and compared by :meth:`mismatch` -- a field
+        #: read back off disk is worthless unless you can tell whether the
+        #: domain moved under it.
+        self.inputs = None
+        #: Lazily built by :meth:`locator`, and deliberately not pickled.
+        self._locator = None
+
+    def __getstate__(self):
+        """Everything but the locator.
+
+        ``framefield.cache`` stores PICKLED objects, and the locator holds a
+        bucket grid with an entry per background face -- pure derived state that
+        rebuilds in milliseconds, inflates the blob, and would be silently stale
+        if the background ever moved under it.
+        """
+        state = dict(self.__dict__)
+        state['_locator'] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._locator = None
 
     # ------------------------------------------------------------------
     # the solve
@@ -420,3 +514,416 @@ class CrossField(object):
         info['iterations'] = self.iterations
         info['residual'] = self.residual
         return info
+
+    # ------------------------------------------------------------------
+    # standing on its own: solving from a domain, and densifying with it
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def from_boundary(cls, outer_boundary, inner_boundaries=None, guides=None,
+                      mode='perpendicular', target_length=None, guide_weight=1.0,
+                      guide_band=None, relax=False, tau=None, symmetry='auto'):
+        """**A field over a domain, with no decomposition around it.**
+
+        Everything :meth:`FieldDecomposition.from_boundary` does up to and
+        including the solve -- background, constraints, solve, symmetrisation --
+        and none of what comes after it. Separatrix tracing and the planar
+        arrangement are the expensive half, and a caller who only wants to
+        DENSIFY with the field has no use for either::
+
+            field = CrossField.from_boundary(outer, guides=cables, target_length=0.5)
+            dense = coarse.densification(field=field)
+
+        which is what lets a layout from anywhere -- a skeleton decomposition, a
+        hand-built mesh, one read back out of a document -- be densified with a
+        field. ``FieldDecomposition.from_boundary`` calls this and then traces.
+
+        Parameters are :meth:`FieldDecomposition.from_boundary`'s, and mean the
+        same things; ``target_length`` is the BACKGROUND spacing, not the quad
+        size.
+
+        Returns
+        -------
+        CrossField
+            With :attr:`guides`, :attr:`symmetry`, :attr:`singularity_points`
+            and :attr:`snap_report` set, so nothing is left behind for a caller
+            that later wants to trace with it.
+        """
+        # Imported here, not at module scope: ``trace`` imports
+        # ``wrap_to_period`` from this module and ``symmetry`` imports this
+        # class, so either at the top is a circular import.
+        from .background import BackgroundMesh
+        from .constraints import as_curve_list
+        from .constraints import from_curves
+        from .symmetry import Symmetry
+        from .symmetry import snap_singularities
+        from .symmetry import symmetrise
+
+        guides = as_curve_list(guides)
+
+        if symmetry == 'auto':
+            symmetry = Symmetry.detect(
+                [outer_boundary] + list(inner_boundaries or []) + list(guides or []))
+
+        background = BackgroundMesh.from_boundary(
+            outer_boundary, inner_boundaries, target_length=target_length,
+            symmetry=symmetry)
+
+        constraints = from_boundary(background)
+        if guides:
+            # ``mode`` is a no-op for a cross field and ``guides`` order no
+            # longer is either -- see from_curves' notes.
+            constraints += from_curves(background, guides, mode=mode,
+                                       weight=guide_weight, band=guide_band)
+
+        field = cls.solve(background, constraints, relax=relax, tau=tau)
+
+        points = {}
+        snap_report = {}
+        if symmetry is not None and symmetry.enabled('field'):
+            # Project the field onto the symmetric subspace. Cheap, and exact:
+            # a 90 degree rotation acts TRIVIALLY on exp(i*4*theta) and every
+            # reflection conjugates it, so the group average is arithmetic.
+            field = symmetrise(field, symmetry)
+        if symmetry is not None and symmetry.enabled('singularities'):
+            # ... and then take each singularity off the arbitrary triangle it
+            # was reported on. Only meaningful after the line above: it snaps to
+            # the minimum of a field it assumes is already symmetric.
+            field, points, snap_report = snap_singularities(field)
+
+        field.guides = list(guides or [])
+        field.symmetry = symmetry
+        field.singularity_points = points
+        field.snap_report = snap_report
+        # ``symmetry`` is the RESOLVED group by now, never the string 'auto',
+        # so what is recorded is what was actually solved under.
+        field.inputs = field_provenance(
+            outer_boundary, inner_boundaries, guides, mode=mode,
+            target_length=target_length, guide_weight=guide_weight,
+            guide_band=guide_band, relax=relax, tau=tau, symmetry=symmetry)
+        return field
+
+    # ------------------------------------------------------------------
+    # provenance -- has the domain moved under this field?
+    # ------------------------------------------------------------------
+
+    def mismatch(self, outer_boundary, inner_boundaries=None, guides=None,
+                 mode='perpendicular', target_length=None, guide_weight=1.0,
+                 guide_band=None, relax=False, tau=None, symmetry='auto'):
+        """**Why this field does not belong to these inputs.** ``None`` if it does.
+
+        Takes what :meth:`from_boundary` takes. Use it on a field read back off
+        disk, before densifying with it::
+
+            field = CrossField.load_from_json('field.json')
+            why = field.mismatch(outer, holes, guides=cables, target_length=0.5)
+            if why:
+                field = CrossField.from_boundary(outer, holes, guides=cables,
+                                                 target_length=0.5)
+
+        A field is a function of its domain. Densifying a layout with a field
+        solved for a DIFFERENT outline is not an error anywhere downstream --
+        every patch interior still integrates, the mesh still welds, the result
+        still passes the quality gate -- it is simply aligned to a shape that is
+        no longer there. Nothing else in the pipeline can catch that, which is
+        the whole reason the inputs are stored.
+
+        Returns
+        -------
+        str or None
+            A one-line description of the FIRST difference found, or ``None``
+            when everything that determines the field agrees.
+        """
+        from . import cache
+
+        if self.inputs is None:
+            return ('this field carries no record of its inputs -- it was built '
+                    'through CrossField.solve rather than from_boundary, so '
+                    'whether it matches cannot be answered')
+
+        other = field_provenance(
+            outer_boundary, inner_boundaries, guides, mode=mode,
+            target_length=target_length, guide_weight=guide_weight,
+            guide_band=guide_band, relax=relax, tau=tau, symmetry=symmetry)
+
+        mine = self.inputs.get('geometry') or {}
+        theirs = other['geometry']
+        labels = {'outer': 'outer boundary', 'inners': 'holes',
+                  'guides': 'guide curves'}
+        for role in ('outer', 'inners', 'guides'):
+            if mine.get(role) != theirs.get(role):
+                return 'the {} changed'.format(labels[role])
+
+        if (self.inputs.get('params') or {}) != other['params']:
+            return 'solver settings changed -- {}'.format(
+                cache.describe_difference(self.inputs.get('params'),
+                                          other['params']))
+        return None
+
+    def matches(self, *args, **kwargs):
+        """Whether this field was solved from these inputs. See :meth:`mismatch`.
+
+        ``False`` when the field carries no provenance at all -- unknown is not
+        the same as equal, and the safe reading of "cannot tell" is "re-solve".
+        """
+        return self.mismatch(*args, **kwargs) is None
+
+    # ------------------------------------------------------------------
+    # serialisation
+    # ------------------------------------------------------------------
+
+    def save_to_json(self, filepath, pretty=False):
+        """**Write this field to a JSON file.**
+
+        The coarse layout has been serialisable all along
+        (``CoarseQuadMesh.to_json``); this is the other half, so a whole
+        field-driven job survives being closed::
+
+            decomposition.get_field().save_to_json('field.json')
+            decomposition.decomposition_mesh().to_json('coarse.json')
+
+            # ... a week later ...
+            field = CrossField.load_from_json('field.json')
+            coarse = CoarsePseudoQuadMesh.from_json('coarse.json')
+            coarse.collect_strips()
+            coarse.set_strips_density_target(0.5)
+            dense = coarse.densification(field=field)
+
+        Written with ``compas.json_dump``, so the background triangulation goes
+        through COMPAS's own encoder and comes back as the right ``Mesh``
+        subclass rather than as a dict.
+
+        **Derived state is not stored, and that is deliberate.** :attr:`theta`
+        is recomputed from :attr:`u` by ``__init__``; the point locator is a
+        bucket grid that rebuilds in milliseconds. Both would inflate the file,
+        and neither can disagree with what it came from if it is never written.
+        :attr:`_singularities` IS stored, because ``snap_singularities``
+        overwrites it and it is not recoverable from ``u`` afterwards.
+
+        Parameters
+        ----------
+        filepath : str
+        pretty : bool, optional
+            Indent the JSON. Off by default -- ``u`` has one entry per
+            background vertex, so a plate at 0.3 spacing is several thousand
+            lines nobody reads.
+
+        Returns
+        -------
+        str
+            ``filepath``, so a save can be chained or logged.
+        """
+        import os
+
+        import compas
+
+        # Same two differences from a bare ``json_dump`` that
+        # ``Mesh.save_to_json`` has from ``to_json``: make the parent directory,
+        # and hand the path back.
+        folder = os.path.dirname(os.path.abspath(filepath))
+        if folder and not os.path.isdir(folder):
+            os.makedirs(folder)
+        compas.json_dump(self.__jsondata__(), filepath, pretty=pretty)
+        return filepath
+
+    def __jsondata__(self):
+        """The payload :meth:`save_to_json` writes: plain types plus one Mesh."""
+        symmetry = None
+        if self.symmetry is not None:
+            symmetry = {'centre': [float(c) for c in self.symmetry.centre],
+                        'names': list(self.symmetry.names()),
+                        'steps': list(self.symmetry.steps)}
+
+        return {
+            'type': JSON_TYPE,
+            'version': JSON_VERSION,
+            'inputs': self.inputs,
+            'background': {
+                'mesh': self.background.mesh,
+                'outer': [[float(c) for c in p] for p in self.background.outer],
+                'inners': [[[float(c) for c in p] for p in loop]
+                           for loop in self.background.inners],
+                'target_length': float(self.background.target_length),
+            },
+            # ``complex`` is the one type here JSON has no opinion about. Python
+            # writes floats with ``repr``, so re/im round-trip EXACTLY -- which
+            # matters, because ``21_edit_coarse.py`` asserts a field is
+            # unchanged to exactly zero.
+            'u': {str(vkey): [value.real, value.imag]
+                  for vkey, value in self.u.items()},
+            'relaxed': bool(self.relaxed),
+            'iterations': self.iterations,
+            'residual': self.residual,
+            'singularities': (None if self._singularities is None else
+                              [[int(fkey), int(index)]
+                               for fkey, index in self._singularities]),
+            'guides': [[[float(c) for c in p] for p in curve]
+                       for curve in (self.guides or [])],
+            'symmetry': symmetry,
+            'singularity_points': {
+                str(fkey): [float(c) for c in point]
+                for fkey, point in (self.singularity_points or {}).items()},
+            'snap_report': self.snap_report or {},
+        }
+
+    @classmethod
+    def load_from_json(cls, filepath, default=None):
+        """**Read a field back.** The inverse of :meth:`save_to_json`.
+
+        Mirrors ``Mesh.load_from_json``, ``default`` included, so a caller
+        resuming a job can ask for both halves the same way::
+
+            field = CrossField.load_from_json(field_path, default=None)
+            coarse = CoarsePseudoQuadMesh.load_from_json(coarse_path)
+            if field is None or field.mismatch(outer, holes, guides=cables):
+                field = CrossField.from_boundary(outer, holes, guides=cables)
+
+        Does NOT check that the field still belongs to your domain -- that needs
+        the domain, which this does not have. Ask :meth:`mismatch` straight
+        afterwards, every time.
+
+        Parameters
+        ----------
+        filepath : str
+        default : optional
+            Returned when the file does not exist, instead of raising. For a
+            caller resuming from a save that may never have been written.
+
+        Returns
+        -------
+        CrossField
+
+        Raises
+        ------
+        ValueError
+            If the file is not a field, or was written by a newer version than
+            this one understands. Both fail here, with a sentence, rather than
+            several frames downstream with a ``KeyError`` about a vertex.
+        """
+        import os
+
+        import compas
+
+        if not os.path.isfile(filepath):
+            return default
+        return cls.__from_jsondata__(compas.json_load(filepath))
+
+    @classmethod
+    def __from_jsondata__(cls, data):
+        """Rebuild from :meth:`__jsondata__`'s payload."""
+        from .background import BackgroundMesh
+        from .symmetry import ELEMENTS
+        from .symmetry import Symmetry
+
+        found = data.get('type') if isinstance(data, dict) else type(data).__name__
+        if found != JSON_TYPE:
+            raise ValueError(
+                'not a CrossField file: expected type {!r}, found {!r}'.format(
+                    JSON_TYPE, found))
+        version = data.get('version')
+        if version is None or version > JSON_VERSION:
+            raise ValueError(
+                'this file is version {!r}; this compas_singular understands up '
+                'to {}. Re-solve the field, or update.'.format(
+                    version, JSON_VERSION))
+
+        bg = data['background']
+        background = BackgroundMesh(bg['mesh'], bg['outer'], bg['inners'],
+                                    bg['target_length'])
+
+        # JSON object keys are always strings. This is the trap
+        # ``PseudoQuadMesh.__from_data__`` exists for and ``test_pipeline.py``
+        # pins: a vertex key left as '17' looks fine until something indexes the
+        # background mesh with it.
+        u = {int(vkey): complex(value[0], value[1])
+             for vkey, value in data['u'].items()}
+
+        field = cls(background, u, relaxed=data.get('relaxed', False),
+                    iterations=data.get('iterations'),
+                    residual=data.get('residual'))
+
+        singularities = data.get('singularities')
+        if singularities is not None:
+            field._singularities = [(int(fkey), int(index))
+                                    for fkey, index in singularities]
+        field.guides = [[list(p) for p in curve]
+                        for curve in data.get('guides') or []]
+        field.singularity_points = {
+            int(fkey): list(point)
+            for fkey, point in (data.get('singularity_points') or {}).items()}
+        field.snap_report = data.get('snap_report') or {}
+        field.inputs = data.get('inputs')
+
+        symmetry = data.get('symmetry')
+        if symmetry is not None:
+            by_name = {element[5]: element for element in ELEMENTS}
+            field.symmetry = Symmetry(
+                symmetry['centre'],
+                [by_name[name] for name in symmetry['names']],
+                symmetry['steps'])
+        return field
+
+    def locator(self):
+        """**Point location on this field's background.** Built once, cached.
+
+        A ``Tracer`` has two jobs and this is the second one. Its headline job is
+        separatrix integration -- launching field lines out of singularities and
+        walking them across the domain -- which needs ``singularity_points``,
+        ``step`` and ``max_length``. Densification uses none of that. What it
+        uses is ``locate(point, hint) -> (fkey, barycentric)``: a patch-interior
+        node has no vertex on the background mesh, so before
+        :meth:`angle_in_face` can say what the field is doing there, something
+        has to find the containing triangle. That is a bucket grid over face
+        bounding boxes and nothing else, so it is derivable from the field alone
+        -- measured bit-identical against a decomposition's own tracer.
+
+        Named ``locator`` rather than ``tracer`` for exactly that reason: the
+        object can trace, but nothing here asks it to.
+        """
+        if self._locator is None:
+            from .trace import Tracer
+            self._locator = Tracer(self, singularity_points=self.singularity_points)
+        return self._locator
+
+    def densify(self, coarse, edges_to_curves=None, spend=None, **kwargs):
+        """**Densify a coarse layout with this field steering patch interiors.**
+
+        Reached as ``coarse.densification(field=field)``; call it directly to get
+        the statistics back as well.
+
+        ``edges_to_curves`` already makes the coarse EDGES follow whatever they
+        came from; this makes the patch INTERIORS follow the field too, instead
+        of a bilinear blend of their own boundaries that never consults it. A
+        guide can then steer the inside of a patch without splitting the patch
+        first -- the only way a guide reaches a mesh on a domain, like a plain
+        square, where it forces no topology at all.
+
+        Parameters
+        ----------
+        coarse : CoarseQuadMesh or CoarsePseudoQuadMesh
+            Densities already set. Strips are collected on demand.
+        edges_to_curves : dict, optional
+            ``{(u, v): polyline}``, as ``densification`` takes it.
+        spend : bool, optional
+            Whether element quality may be spent to satisfy a guide. Defaults to
+            whether this field HAS guides, which is the rule
+            ``FieldDecomposition`` applies: there is no alignment to buy on an
+            unguided domain, so the Coons interior was already right.
+        **kwargs
+            ``stiffness``, ``guard``, ``iterations``, ``tikhonov`` -- passed to
+            :func:`densify.field_densification`.
+
+        Returns
+        -------
+        (QuadMesh, dict)
+            The dense mesh, and the per-patch counts. The mesh is also set on
+            ``coarse``, so ``coarse.get_quad_mesh()`` keeps working.
+        """
+        from .densify import field_densification
+
+        if spend is None:
+            spend = bool(self.guides)
+        dense, stats = field_densification(
+            coarse, self, self.locator(), edges_to_curves=edges_to_curves,
+            spend=spend, **kwargs)
+        return dense, stats

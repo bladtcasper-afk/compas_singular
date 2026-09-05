@@ -112,9 +112,11 @@ def add_strip(mesh, polyedge):
                 mesh.delete_face(face)
                 u1, u2 = left_polyedge[0], right_polyedge[0]
                 new_faces.append(mesh.add_face([v1, u1, u2, v2]))
-
-                mesh_substitute_vertex_in_faces(mesh, v, v1)
-                mesh_substitute_vertex_in_faces(mesh, v, v2)
+                # NOT followed by ``mesh_substitute_vertex_in_faces(mesh, v, v1/v2)``.
+                # ``v`` was deleted above, and those calls pass no ``fkeys``, so they
+                # default to EVERY face in the mesh and delete-and-re-add each one --
+                # twice -- to substitute a vertex that no face references any more.
+                # The ring is already closed by the two faces added above.
         else:
             face = new_faces.pop()
             mesh.delete_face(face)

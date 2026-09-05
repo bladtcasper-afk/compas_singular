@@ -207,7 +207,7 @@ from compas_singular.datastructures import CoarseQuadMesh
 from compas_singular.datastructures.mesh_quad.grammar.add_strip import add_strip
 
 
-__all__ = ['guide_line_mesh', 'guide_band_mesh']
+__all__ = ['guide_line_mesh', 'guide_band_mesh', 'guide_feature_mesh']
 
 
 # =============================================================================
@@ -2064,6 +2064,172 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
         'rails': rails,
         'refine': refine,
         'note': '; '.join(notes) + '; refined x{}{}{}'.format(refine, swung, blocks),
+    }
+    return dense, info
+
+
+# =============================================================================
+# GUIDE C -- let the guide shape the layout, as a curve feature
+# =============================================================================
+
+def guide_feature_mesh(outer_boundary, guides, inner_boundaries=(), point_features=(),
+                       target_length=0.6, edges_to_curves=None):
+    """Build the coarse layout AROUND the guides, by passing them as curve features.
+
+    The other two functions in this module take a coarse mesh that already
+    exists and move it onto the guides. This one is the third option, and the
+    one Oval's thesis describes (SS4.3.2, Figs 4.17-4.19): hand the guides to
+    :func:`~compas_singular.algorithms.boundary_triangulation` as
+    ``polyline_features``, which cuts the Delaunay along them so the medial axis
+    cannot cross them, and let the skeleton decomposition lay the patches out
+    around the cut.
+
+    Which of the three to reach for
+    -------------------------------
+    * :func:`guide_line_mesh` / :func:`guide_band_mesh` -- you HAVE a layout you
+      want to keep and a guide you want it to follow. The patch layout is yours;
+      the guide bends to it (line) or buys a strip (band).
+    * :func:`guide_feature_mesh` -- the guide is a HARD constraint on the design
+      and you are willing to let it decide the layout. The guide is embedded as
+      a continuous course by construction rather than by snapping, and its
+      extremities become singularities of the layout: three-valent where a guide
+      ends on the boundary, a pole where it ends in the interior.
+
+    The price is that you no longer choose the patch layout, and that a guide
+    which ends in the interior costs a singularity that the other two routes do
+    not spend.
+
+    Parameters
+    ----------
+    outer_boundary : list
+        The outer boundary as a list of XYZ coordinates.
+    guides : Polyline | list
+        One curve or a list of curves, in the forms this module accepts
+        everywhere: a ``compas.geometry.Polyline``, a list of ``Point``, or a
+        list of ``[x, y, z]``. Guides that meet are welded at the junction; see
+        :func:`~compas_singular.algorithms.weld_polyline_features`.
+    inner_boundaries : list, optional
+        Holes, as lists of XYZ coordinates.
+    point_features : list, optional
+        Points to become poles.
+    target_length : float, optional
+        Target edge length of the pattern.
+    edges_to_curves : dict, optional
+        Passed through to ``densification`` so coarse edges densify along their
+        curve rather than their chord.
+
+    Returns
+    -------
+    (dense, info)
+        ``info`` carries ``coarse``, ``guides``, ``centrelines``, ``rails``
+        (empty -- this route snaps nothing), ``repair_notes`` from the
+        decomposition, and a ``note``.
+
+    """
+    from compas.geometry import is_point_in_polygon_xy
+
+    from compas_singular.algorithms import as_curves
+    from compas_singular.algorithms import as_points
+    from compas_singular.algorithms import boundary_triangulation
+    from compas_singular.algorithms import SkeletonDecomposition
+
+    def spacing_of(boundary):
+        """The domain's own discretisation, as the median boundary segment."""
+        lengths = sorted(distance_point_point(a, b) for a, b in pairwise(boundary + boundary[:1]))
+        return lengths[len(lengths) // 2] if lengths else 1.0
+
+    def resample(curve, spacing):
+        """Walk the curve and emit a point every `spacing`, keeping both ends.
+
+        A curve feature has to be sampled at the density of everything else, or
+        its segments are not edges of the Delaunay and the topological cut has
+        nothing to cut along. This is what ``discrete_mapping`` does to a Rhino
+        curve before handing it over.
+        """
+        out = [list(curve[0])]
+        for a, b in pairwise(curve):
+            length = distance_point_point(a, b)
+            if length <= 0.0:
+                continue
+            for i in range(1, max(1, int(round(length / spacing))) + 1):
+                t = i / float(max(1, int(round(length / spacing))))
+                out.append([a[k] + t * (b[k] - a[k]) for k in range(3)])
+        return out
+
+    def clip(curve, boundary):
+        """Keep the longest run of the curve that lies inside the domain.
+
+        A guide drawn past the wall -- the usual way to say "all the way across"
+        -- has its outside points thrown away by ``boundary_triangulation``,
+        which leaves the cut short of the wall and the guide with no effect at
+        all. Trim it here instead, and snap the trimmed end onto the nearest
+        boundary point so the extremity lands ON the wall: the thesis's
+        three-valent boundary vertex rather than an interior pole.
+        """
+        inside = [is_point_in_polygon_xy(pt, boundary) for pt in curve]
+        runs, run = [], []
+        for pt, ok in zip(curve, inside):
+            if ok:
+                run.append(pt)
+            elif run:
+                runs.append(run)
+                run = []
+        if run:
+            runs.append(run)
+        if not runs:
+            return [], True
+        best = max(runs, key=lambda r: sum(distance_point_point(a, b) for a, b in pairwise(r)) if len(r) > 1 else 0.0)
+        clipped = len(best) != len(curve)
+        if clipped:
+            # snap each trimmed end to the nearest boundary point, so the cut
+            # reaches the wall and shares its vertex with the boundary
+            first, last = curve.index(best[0]), curve.index(best[-1])
+            if first > 0:
+                best[0] = list(min(boundary, key=lambda q: distance_point_point(q, best[0])))
+            if last < len(curve) - 1:
+                best[-1] = list(min(boundary, key=lambda q: distance_point_point(q, best[-1])))
+        return best, clipped
+
+    curves = as_curves(guides)
+    outer = as_points(outer_boundary, close=False)
+    inners = as_curves(inner_boundaries, close=False)
+    poles = [as_points([p])[0] for p in (point_features or [])]
+
+    spacing = spacing_of(outer)
+    prepared, skipped = [], []
+    for i, curve in enumerate(curves):
+        curve, was_clipped = clip(resample(curve, spacing), outer)
+        if len(curve) < 2:
+            skipped.append(i)
+            continue
+        prepared.append(curve)
+    curves = prepared
+
+    trimesh = boundary_triangulation(outer, inners, curves, poles)
+    decomposition = SkeletonDecomposition.from_mesh(trimesh)
+    coarse = decomposition.decomposition_mesh(poles)
+
+    coarse.collect_strips()
+    coarse.set_strips_density_target(target_length)
+    if edges_to_curves:
+        coarse.densification(edges_to_curves=edges_to_curves)
+    else:
+        coarse.densification()
+    dense = coarse.get_quad_mesh()
+
+    notes = list(getattr(decomposition, 'repair_notes', []))
+    if skipped:
+        notes.append('guide(s) {} lie entirely outside the domain and were skipped'.format(skipped))
+    info = {
+        'coarse': coarse,
+        'guides': curves,
+        'centrelines': curves,
+        'rails': [],
+        'refine': 0,
+        'repair_notes': notes,
+        'note': '{} guide(s) embedded as curve features; {} coarse patches{}'.format(
+            len(curves), coarse.number_of_faces(),
+            '; {} repair note(s)'.format(len(notes)) if notes else ''),
     }
     return dense, info
 

@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
+import os
+
 from compas.datastructures import Mesh
 from compas.geometry import centroid_points
 from compas.geometry import angle_points
@@ -46,6 +48,102 @@ class Mesh(Mesh):
         if isinstance(u, (list, tuple)):
             return super(Mesh, self).edge_point(u, 0.5 if v is None else v)
         return super(Mesh, self).edge_point((u, v), t)
+
+    # ------------------------------------------------------------------------
+    # JSON -- the state a CAD round trip cannot carry
+    # ------------------------------------------------------------------------
+    #
+    # A mesh baked into a document is vertices and faces. Everything a
+    # ``CoarseQuadMesh`` KNOWS lives in ``attributes`` -- ``strips``,
+    # ``strips_density``, ``polyedges``, ``face_pole``, the coarse-to-dense maps
+    # -- and a bake drops all of it. compas serialises that dict, so these two
+    # are the one mechanism that moves a mesh's knowledge and not just its
+    # shape. Measured on a 9-strip plate with a point feature: 9 strips,
+    # per-strip densities including a hand-set 9, and 3 ``face_pole`` entries,
+    # in 2.3 kB.
+
+    def save_to_json(self, filepath, pretty=False):
+        """Write the mesh and everything in :attr:`attributes` to ``filepath``.
+
+        ``to_json`` with two differences worth having: the parent directory is
+        created if it does not exist (``to_json`` raises ``FileNotFoundError``),
+        and the path is returned so a caller can report where it went.
+
+        Extra state goes in :attr:`attributes` rather than a second file -- it
+        is a plain dict and it round-trips::
+
+            coarse.attributes['route'] = 'skeleton'
+            coarse.attributes['solve'] = {'target_length': 0.5, 'mode': 'tangent'}
+            coarse.save_to_json(path)
+
+        Parameters
+        ----------
+        filepath : str
+        pretty : bool, optional
+            Indent the output. Roughly doubles the size; useful while debugging.
+
+        Returns
+        -------
+        str
+            ``filepath``.
+        """
+        folder = os.path.dirname(os.path.abspath(filepath))
+        if folder and not os.path.isdir(folder):
+            os.makedirs(folder)
+        self.to_json(filepath, pretty=pretty)
+        return filepath
+
+    @classmethod
+    def load_from_json(cls, filepath, default=None):
+        """**Construct a mesh from what** :meth:`save_to_json` **wrote.**
+
+        The class comes from the FILE, not from ``cls``: compas stores a
+        ``dtype`` and dispatches on it, so a ``CoarsePseudoQuadMesh`` comes back
+        as one however it is asked for -- ``Mesh.load_from_json`` included.
+        ``cls`` still acts as an assertion, because ``Data.from_json`` refuses
+        anything that is not an instance of it ("The data in the file is not a
+        ..."), so asking through the class you expect is worth doing.
+
+        **Strip keys are repaired here.** JSON object keys are strings, so
+        ``attributes['strips']``, ``['strips_density']`` and ``['polyedges']``
+        come back keyed ``'0'``, ``'1'``, ... The mesh still densifies --
+        everything internal reads whatever keys it finds, verified identical
+        face counts -- but ``get_strip_density(0)`` raises ``KeyError`` and
+        ``sorted(strips())`` puts ``'10'`` before ``'2'``. Both are silent in
+        the ways that matter, so digit-string keys become ints again on the way
+        in and the round trip is invisible.
+
+        Parameters
+        ----------
+        filepath : str
+        default : optional
+            Returned when the file does not exist, instead of raising. For a
+            caller resuming from a cache that may not have been written yet.
+
+        Returns
+        -------
+        Mesh
+            Of whatever class the file names.
+
+        Raises
+        ------
+        TypeError
+            From ``Data.from_json``, if the file holds a mesh that is not an
+            instance of ``cls``.
+        """
+        if not os.path.isfile(filepath):
+            return default
+
+        mesh = cls.from_json(filepath)
+
+        for key in ('strips', 'strips_density', 'polyedges'):
+            table = mesh.attributes.get(key)
+            if not isinstance(table, dict):
+                continue
+            mesh.attributes[key] = {
+                int(k) if isinstance(k, str) and k.lstrip('-').isdigit() else k: v
+                for k, v in table.items()}
+        return mesh
 
     def to_vertices_and_faces(self, keep_keys=True):
 

@@ -130,6 +130,10 @@ from .constraints import as_curve_list
 
 __all__ = [
     'CACHE_VERSION',
+    'canonical_curve',
+    'canonical_inputs',
+    'canonical_parameters',
+    'describe_difference',
     'SolveCache',
     'CACHE',
     'solve',
@@ -162,6 +166,9 @@ SOLVE_PARAMETERS = (
     'guide_band',
     'relax',
     'field_tau',
+    #: ``CrossField.from_boundary``'s spelling of ``field_tau``. Both are here
+    #: so neither lands in ``extra``.
+    'tau',
     'symmetry',
 )
 
@@ -228,7 +235,7 @@ def _digest(obj):
     return hashlib.sha256(blob.encode('utf-8')).hexdigest()
 
 
-def _as_curve(curve):
+def canonical_curve(curve):
     """One curve as a plain, rounded list of ``[x, y, z]``.
 
     Accepts what ``from_boundary`` accepts -- lists, tuples, compas ``Point``s,
@@ -244,7 +251,7 @@ def _as_curve(curve):
     return points
 
 
-def _inputs(outer_boundary, inner_boundaries, guides):
+def canonical_inputs(outer_boundary, inner_boundaries, guides):
     """The geometry, with each loop's ROLE part of what is hashed.
 
     The role tags are what stop a hole and a guide with identical points from
@@ -252,9 +259,9 @@ def _inputs(outer_boundary, inner_boundaries, guides):
     ``Symmetry.detect`` and ``from_curves`` both consume them as sequences.
     """
     return {
-        'outer': _as_curve(outer_boundary),
-        'inners': [_as_curve(loop) for loop in (inner_boundaries or [])],
-        'guides': [_as_curve(curve) for curve in as_curve_list(guides)],
+        'outer': canonical_curve(outer_boundary),
+        'inners': [canonical_curve(loop) for loop in (inner_boundaries or [])],
+        'guides': [canonical_curve(curve) for curve in as_curve_list(guides)],
     }
 
 
@@ -279,7 +286,7 @@ def _plain(value):
     return repr(value)
 
 
-def _parameters(kwargs):
+def canonical_parameters(kwargs):
     """The readable parameter dict that goes into the ``params`` digest.
 
     Only what the caller actually PASSED is recorded, so omitting a parameter
@@ -434,8 +441,8 @@ class SolveCache(object):
 
     def key(self, outer_boundary, inner_boundaries=None, guides=None, **kwargs):
         """The :class:`CacheKey` for one call to ``from_boundary``."""
-        return CacheKey(_inputs(outer_boundary, inner_boundaries, guides),
-                        _parameters(kwargs), environment())
+        return CacheKey(canonical_inputs(outer_boundary, inner_boundaries, guides),
+                        canonical_parameters(kwargs), environment())
 
     # ------------------------------------------------------------------
     # lookup
@@ -497,9 +504,9 @@ class SolveCache(object):
                     return 'framefield source changed since these inputs were last solved'
                 if entry.get('env') != key.env:
                     return 'environment changed -- {}'.format(
-                        _diff(entry.get('environment'), key.environment))
+                        describe_difference(entry.get('environment'), key.environment))
             return 'solver settings changed -- {}'.format(
-                _diff(same_inputs[0].get('parameters'), key.parameters))
+                describe_difference(same_inputs[0].get('parameters'), key.parameters))
 
         for entry in entries:
             if (entry.get('params') == key.params
@@ -643,7 +650,7 @@ class SolveCache(object):
             self._memory_size -= len(blob)
 
 
-def _diff(before, after):
+def describe_difference(before, after):
     """The first differing entry of two readable dicts, as ``'name a -> b'``."""
     before = before or {}
     after = after or {}

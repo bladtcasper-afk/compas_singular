@@ -293,6 +293,11 @@ class FieldDecomposition(object):
         #: regenerating the layout, and the coverage check stops rerouting on it
         #: -- a user who deleted a patch changed the layout on purpose.
         self._edited = False
+        #: The ``poles`` :attr:`mesh` was built with, as a rounded tuple. The
+        #: cache key of :meth:`decomposition_mesh`: the layout is a pure
+        #: function of the (cached) network and these, so asking twice must give
+        #: the same OBJECT back, not an equal one -- see that method.
+        self._mesh_poles = None
         #: What :meth:`edit_coarse` and :meth:`edges_to_curves` made of the
         #: edit. Empty until :meth:`edit_coarse` is called.
         self.edit_notes = {}
@@ -394,58 +399,29 @@ class FieldDecomposition(object):
             every step switches itself off, and the layout is byte-identical to
             what it was.
         """
-        from .symmetry import Symmetry
-        from .symmetry import snap_singularities
-        from .symmetry import symmetrise
-
         if orthogonal is False:
             raise NotImplementedError(
                 'non-orthogonal frame fields need warp.py -- milestone 3. '
                 'Cases A and B (orthogonal stress field, single cable family) '
                 'are handled by the cross field; see the evaluation doc.')
 
-        # Normalise here rather than only in ``from_curves``: ``Symmetry.detect``
-        # below flattens ``loops`` one level, so a lone guide passed unwrapped
-        # would be read as one loop per POINT and fail there instead.
-        guides = as_curve_list(guides)
+        # Background, constraints, solve and symmetrisation are the FIELD's own
+        # business -- nothing in them is specific to decomposing. They live on
+        # ``CrossField.from_boundary``, which a caller can use directly to get a
+        # field with no separatrix tracing behind it, and then densify any layout
+        # with it. Everything below this line is the tracing half.
+        field = CrossField.from_boundary(
+            outer_boundary, inner_boundaries=inner_boundaries, guides=guides,
+            mode=mode, target_length=target_length, guide_weight=guide_weight,
+            guide_band=guide_band, relax=relax, tau=field_tau, symmetry=symmetry)
 
-        if symmetry == 'auto':
-            symmetry = Symmetry.detect(
-                [outer_boundary] + list(inner_boundaries or []) + list(guides or []))
-
-        background = BackgroundMesh.from_boundary(
-            outer_boundary, inner_boundaries, target_length=target_length,
-            symmetry=symmetry)
-
-        constraints = from_boundary(background)
-        if guides:
-            # ``mode`` is a no-op for a cross field and ``guides`` order no
-            # longer is either -- see from_curves' notes.
-            constraints += from_curves(background, guides, mode=mode,
-                                       weight=guide_weight, band=guide_band)
-
-        field = CrossField.solve(background, constraints, relax=relax, tau=field_tau)
-
-        snap_report = {}
-        points = {}
-        if symmetry is not None and symmetry.enabled('field'):
-            # Project the field onto the symmetric subspace. Cheap, and exact:
-            # a 90 degree rotation acts TRIVIALLY on exp(i*4*theta) and every
-            # reflection conjugates it, so the group average is arithmetic.
-            field = symmetrise(field, symmetry)
-        if symmetry is not None and symmetry.enabled('singularities'):
-            # ... and then take each singularity off the arbitrary triangle it
-            # was reported on. Only meaningful after the line above: it snaps to
-            # the minimum of a field it assumes is already symmetric.
-            field, points, snap_report = snap_singularities(field)
-
-        tracer = Tracer(field, singularity_points=points)
+        tracer = Tracer(field, singularity_points=field.singularity_points)
         separatrices, trace_report = tracer.separatrices()
-        out = cls(background, field, separatrices, tracer)
-        out.guides = list(guides or [])
+        out = cls(field.background, field, separatrices, tracer)
+        out.guides = list(field.guides)
         out.trace_report = trace_report
-        out.symmetry = symmetry
-        out.snap_report = snap_report
+        out.symmetry = field.symmetry
+        out.snap_report = field.snap_report
         return out
 
     @classmethod
@@ -473,8 +449,29 @@ class FieldDecomposition(object):
         self.polylines = boundary + others
         return self.polylines
 
-    def decomposition_mesh(self, poles=()):
-        """The coarse quad mesh.
+    def decomposition_mesh(self, poles=(), force=False):
+        """The coarse quad mesh. **The same object every time you ask.**
+
+        The layout is a pure function of the polyline network -- which
+        :meth:`_build` caches -- and ``poles``. It used to be rebuilt from
+        scratch on every call anyway, which made this the one method in the
+        pipeline you could not call twice::
+
+            coarse = d.decomposition_mesh()
+            coarse.collect_strips()
+            coarse.set_strip_density(skey, 9)
+            d.quad_mesh()          # calls decomposition_mesh() again ->
+                                   # a DIFFERENT mesh; the 9 is on the old one
+
+        Nothing errored and the layout looked identical, so the only symptom was
+        a density that had no effect. It now returns :attr:`mesh` unchanged
+        whenever the network and ``poles`` are the ones it was built from, so
+        holding a layout across calls is safe.
+
+        A HAND-EDITED layout is not cached: an explicit call regenerates and
+        discards the edit, which is the behaviour :meth:`edit_coarse` documents
+        and :meth:`quad_mesh` relies on. Pass ``force=True`` to regenerate an
+        unedited one.
 
         Parameters
         ----------
@@ -485,12 +482,22 @@ class FieldDecomposition(object):
             but :func:`repair.solve_non_quad_faces` resolves any triangular
             patch it cannot otherwise repair as a pseudo-quad pole, and a
             position given here decides which of that triangle's corners the
-            collapsed side sits at.
+            collapsed side sits at. Different poles miss the cache.
+        force : bool, optional
+            Rebuild even on a cache hit. For a caller that wants a clean layout
+            back after mutating the one it was given -- densities, strips, moved
+            corners -- since the cached object is the one it mutated.
 
         Returns
         -------
         CoarsePseudoQuadMesh
         """
+        poles_key = tuple(tuple(round(float(c), 6) for c in point)
+                          for point in (poles or ()))
+        if (not force and self.mesh is not None and not self._edited
+                and self._mesh_poles == poles_key):
+            return self.mesh
+
         boundary, others, _ = self._build()
         self.polylines = boundary + others
         self.repair_notes = []
@@ -571,8 +578,46 @@ class FieldDecomposition(object):
                 mesh = fallback
 
         self.mesh = mesh
+        self._mesh_poles = poles_key
         self._edited = False
         return self.mesh
+
+    def coarse_mesh(self, poles=(), force=False):
+        """**The coarse quad layout.** The name both front ends answer to.
+
+        ``SkeletonDecomposition.coarse_mesh`` is the same step by the other
+        method, so a script can swap one class for the other and change nothing
+        else::
+
+            decomposition = FieldDecomposition.from_boundary(...)
+            coarse = decomposition.coarse_mesh()
+            coarse.set_strips_density_target(t=0.5)
+            dense = coarse.densification(field=decomposition.get_field())
+
+        :meth:`decomposition_mesh` is the implementation and keeps working; this
+        is its name in the shared workflow.
+        """
+        return self.decomposition_mesh(poles=poles, force=force)
+
+    def get_field(self):
+        """**The cross field, to hand to** ``densification(field=...)``.
+
+        The field is the whole of what densification needs -- it carries its own
+        background and builds its own point locator, so it travels on its own::
+
+            field = decomposition.get_field()
+            dense = any_coarse_layout.densification(field=field)
+
+        which is how a layout that did NOT come from this decomposition -- a
+        skeleton one, a hand-built one, one read back out of a document -- gets
+        patch interiors that follow the field. The reverse is just as useful:
+        densify this decomposition's own layout WITHOUT passing the field, and
+        the interiors fall back to ``discrete_coons_patch``.
+
+        Named to match ``CoarseQuadMesh.get_quad_mesh``. :attr:`field` is the
+        same object and stays a plain attribute.
+        """
+        return self.field
 
     def edit_coarse(self, geometry, poles=None, snap_tol=None, strict=True):
         """**Take a hand-edited coarse layout in place of the generated one.**
@@ -709,7 +754,8 @@ class FieldDecomposition(object):
             boundary, others, _ = self._build()
             self.polylines = boundary + others + list(self.user_curves)
 
-    def quad_mesh(self, target_length=None, density=None, coarse=None):
+    def quad_mesh(self, target_length=None, density=None, coarse=None,
+                  densities=None):
         """**The deliverable: an all-quad mesh of the domain. Always.**
 
         Use this rather than assembling ``decomposition_mesh`` +
@@ -739,20 +785,60 @@ class FieldDecomposition(object):
 
         Parameters
         ----------
+        **Per-strip densities are respected.** The rule is: an explicit size
+        argument wins, and with no size argument whatever is already set wins::
+
+            d.quad_mesh()                        # keeps every density already
+                                                 # set; fills unset strips from
+                                                 # the background spacing
+            d.quad_mesh(target_length=0.3)       # 0.3 everywhere -- a size
+                                                 # asked for is a size meant
+            d.quad_mesh(target_length=0.3,       # 0.3 everywhere except these
+                        densities={skey: 9})
+
+        so asking for a coarser mesh still works, and setting a strip by hand
+        beforehand is no longer silently discarded. It used to reset every strip
+        on every call, unconditionally.
+
+        Parameters
+        ----------
         target_length : float, optional
-            Target quad edge length. Defaults to the background spacing.
+            Target quad edge length, applied to every strip that ``densities``
+            does not name. Omit it to keep the densities already on the layout;
+            strips with none are filled from the background spacing.
         density : int, optional
-            Fixed subdivision per coarse edge instead of a target length.
+            Fixed subdivision per coarse edge instead of a target length. Same
+            rule as ``target_length`` and takes precedence over it.
         coarse : mesh or list, optional
             A HAND-EDITED coarse layout to densify instead of generating one --
             the same thing :meth:`edit_coarse` takes, and it is put through it.
             Once a layout has been edited it stays in use, so this only has to
             be passed once.
+        densities : dict, optional
+            ``{strip key: density}``, applied over the base pass. A key naming
+            no strip of this layout is reported in :meth:`warnings` rather than
+            raised -- an edit can legitimately remove the strip a density was
+            set on. **Strip keys renumber whenever the layout is rebuilt**, so
+            anything that outlives one call should key its densities
+            geometrically and resolve them just before the call; see
+            ``agent.core.rebuild.apply_densities``, which does exactly that on
+            top of ``address.strip_address``.
 
         Returns
         -------
         :class:`compas_singular.datastructures.QuadMesh`
+
+        See Also
+        --------
+        :func:`compas_singular.agent.core.rebuild.densify_preserving`
+            The same field route for a caller HOLDING STATE: address-keyed
+            densities, and a refusal raises instead of replacing the layout with
+            the triangulation backstop.
         """
+        # A size that was asked for is a size that was meant, and it applies to
+        # every strip. With neither argument there is nothing to override with,
+        # so whatever the layout already carries stands.
+        keep_preset = target_length is None and density is None
         target_length = target_length or self.background.target_length
         if coarse is not None:
             coarse = self.edit_coarse(coarse)
@@ -766,10 +852,27 @@ class FieldDecomposition(object):
         if ok:
             try:
                 coarse.collect_strips()
+                # Strips whose density is NOT the base pass's to set: the ones
+                # named here, plus -- when no size was asked for -- the ones
+                # that already carry one. ``skeys=`` on both setters is what
+                # makes this a filter rather than a second density pass.
+                pinned = set()
+                for skey, value in (densities or {}).items():
+                    if skey in coarse.attributes['strips']:
+                        coarse.set_strip_density(skey, int(value))
+                        pinned.add(skey)
+                    else:
+                        self.repair_notes.append(
+                            'DENSITY: strip {!r} is not a strip of this layout; '
+                            'its density was dropped. Strip keys renumber on '
+                            'every rebuild -- key them geometrically.'.format(skey))
+                if keep_preset:
+                    pinned |= set(coarse.get_strip_densities())
+                todo = [skey for skey in coarse.strips() if skey not in pinned]
                 if density is not None:
-                    coarse.set_strips_density(density)
+                    coarse.set_strips_density(density, skeys=todo)
                 else:
-                    coarse.set_strips_density_target(target_length)
+                    coarse.set_strips_density_target(target_length, skeys=todo)
                 dense = self.densify(coarse)
                 good, why, metrics = self._acceptable(dense)
                 if good:
@@ -798,6 +901,10 @@ class FieldDecomposition(object):
         # note above says so. Do not leave the edited flag set over a mesh that
         # is no longer the user's.
         self._edited = False
+        # ...and it is a quad-split triangulation, not the separatrix layout, so
+        # it must not be handed back as one. Clearing the key makes the next
+        # ``decomposition_mesh()`` rebuild rather than cache-hit on it.
+        self._mesh_poles = None
         self.dense = mesh
         return mesh
 
@@ -830,11 +937,19 @@ class FieldDecomposition(object):
         """
         if coarse is None:
             coarse = self.mesh
-        dense, stats = field_densification(
-            coarse, self.field, self.tracer,
-            edges_to_curves=self.edges_to_curves(),
-            field_aware=self.field_aware,
-            **dict({'spend': bool(self.guides)}, **kwargs))
+        if self.field_aware:
+            # One implementation, on the field -- see ``CrossField.densify``.
+            # ``spend`` is left to its default there, which is the same rule:
+            # quality is spent to satisfy a guide and never otherwise.
+            dense, stats = self.field.densify(
+                coarse, edges_to_curves=self.edges_to_curves(), **kwargs)
+        else:
+            # ``field_aware=False`` reproduces ``discrete_coons_patch`` exactly
+            # and is only ever set to measure the difference -- 16_field_densify.
+            dense, stats = field_densification(
+                coarse, self.field, self.tracer,
+                edges_to_curves=self.edges_to_curves(), field_aware=False,
+                **dict({'spend': bool(self.guides)}, **kwargs))
         self.densify_stats = stats
         if stats.get('guarded') and self.guides:
             # Only worth saying on a GUIDED domain, where a guarded patch means

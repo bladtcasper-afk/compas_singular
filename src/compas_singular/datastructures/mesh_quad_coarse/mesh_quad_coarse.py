@@ -256,7 +256,7 @@ class CoarseQuadMesh(QuadMesh):
     # densification
     # --------------------------------------------------------------------------
 
-    def densification(self, edges_to_curves=None):
+    def densification(self, edges_to_curves=None, field=None):
         """Generate a denser quad mesh from the coarse quad mesh and its strip densities.
 
         Parameters
@@ -265,7 +265,40 @@ class CoarseQuadMesh(QuadMesh):
             A dictionary with edges (u, v) pointing to curve for densification. The curves are lists of XYZ points.
             Without it, each coarse edge is densified as a straight chord between its two vertices, same as
             :meth:`edge_point` gives. Mirrors ``CoarsePseudoQuadMesh.densification``.
+        field : optional
+            A ``CrossField`` (from ``FieldDecomposition.get_field()`` or
+            ``CrossField.from_boundary(...)``). With it, each patch INTERIOR is
+            integrated from the field instead of blended from its own four
+            sides -- which is the only way a guide curve reaches a patch it
+            forced no topology in. The layout does not have to have come from
+            that field: a skeleton layout and a field solved on the same walls
+            work together. Boundaries stay fixed either way, so the result still
+            welds into a mesh whose strips can be collected and edited.
+
+        Returns
+        -------
+        QuadMesh
+            The dense mesh, also stored on this one -- ``get_quad_mesh()``.
         """
+
+        if field is not None:
+            # The field owns this: it carries its own background and builds its
+            # own point locator, so a layout from ANY source -- a skeleton
+            # decomposition, a hand-built mesh, one read back out of a document
+            # -- can be densified with patch interiors that follow it, instead of
+            # the bilinear blend of its own four sides that ``discrete_coons_patch``
+            # gives and that never consults a field.
+            #
+            # Imported here and not at module scope: ``framefield.densify``
+            # imports ``PseudoQuadMesh`` and ``meshes_join_and_weld`` from this
+            # package, so a top-level import is a circular one -- this module is
+            # reached while ``compas_singular.datastructures`` is still being
+            # initialised. Nothing about ``field`` is type-checked, so any object
+            # offering ``densify(coarse, edges_to_curves=...)`` works.
+            dense, _stats = field.densify(self, edges_to_curves=edges_to_curves)
+            self.set_quad_mesh(dense)
+            return self.get_quad_mesh()
+
         edge_strip = {}
         for skey, edges in self.strips(data=True):
             for edge in edges:
@@ -295,91 +328,7 @@ class CoarseQuadMesh(QuadMesh):
             face_meshes[fkey] = QuadMesh.from_vertices_and_faces(vertices, faces)
 
         self.set_quad_mesh(meshes_join_and_weld(list(face_meshes.values())))
-
-    # def geometrical_densification(self):
-    # 	"""Generate a denser quad mesh from the coarse quad mesh and its strip densities.
-
-    # 	WIP!
-
-    # 	Returns
-    # 	-------
-    # 	QuadMesh
-    # 		A denser quad mesh.
-
-    # 	"""
-
-    # 	if self.quad_mesh is None:
-    # 		self.quad_mesh = self.copy()
-    # 		self.polygonal_mesh = self.copy()
-    # 		self.vertex_to_vertex = {vkey: vkey for vkey in self.vertices()}
-
-    # 		self.edge_to_polyedge = {vkey: {} for vkey in self.vertices()}
-    # 		for u, v in self.edges():
-    # 			self.edge_to_polyedge[u][v] = (u, v)
-    # 			self.edge_to_polyedge[v][u] = (v, u)
-
-    # 	quad_mesh = self.quad_mesh
-
-    # 	new_edge_polyline = {}
-
-    # 	for u, v in self.edges():
-    # 		d =  self.get_strip_density(self.edge_strip((u, v)))
-    # 		old_polyline = Polyline([quad_mesh.vertex_coordinates(vkey) for vkey in self.edge_to_polyedge[u][v]])
-    # 		new_polyline = [old_polyline.point(float(i) / float(d)) for i in range(0, d + 1)]
-    # 		new_edge_polyline[(u, v)] = new_polyline
-    # 		new_edge_polyline[(v, u)] = list(reversed(new_polyline))
-
-    # 	meshes = []
-
-    # 	new_edge_polyedge = {}
-    # 	new_vertex_vertex = {}
-
-    # 	for i, fkey in enumerate(self.faces()):
-    # 		ab, bc, cd, da = [new_edge_polyline[edge] for edge in self.face_halfedges(fkey)]
-
-    # 		a, b, c, d = self.face_vertices(fkey)
-    # 		n, m = len(ab), len(bc)
-    # 		vertices, faces = discrete_coons_patch(ab, bc, list(reversed(cd)), list(reversed(da)))
-    # 		meshes.append(QuadMesh.from_vertices_and_faces(vertices, faces))
-    # 		ab, bc, cd, da = list(self.face_halfedges(fkey))
-
-    # 		new_edge_polyedge[ab] = [i, range(0, m)]
-    # 		new_edge_polyedge[tuple(reversed(ab))] = [new_edge_polyedge[ab][0], list(reversed(new_edge_polyedge[ab][1]))]
-
-    # 		new_edge_polyedge[bc] = [i, range(m - 1, n * m, m)]
-    # 		new_edge_polyedge[tuple(reversed(bc))] = [new_edge_polyedge[bc][0], list(reversed(new_edge_polyedge[bc][1]))]
-
-    # 		new_edge_polyedge[cd] = [i, list(reversed(range((n - 1) * m, n * m)))]
-    # 		new_edge_polyedge[tuple(reversed(cd))] = [new_edge_polyedge[cd][0], list(reversed(new_edge_polyedge[cd][1]))]
-
-    # 		new_edge_polyedge[da] = [i, list(reversed(range(0, (n - 1) * m + 1, m)))]
-    # 		new_edge_polyedge[tuple(reversed(da))] = [new_edge_polyedge[da][0], list(reversed(new_edge_polyedge[da][1]))]
-
-    # 		new_vertex_vertex[a] = (new_edge_polyedge[ab][0], new_edge_polyedge[ab][1][0])
-    # 		new_vertex_vertex[b] = (new_edge_polyedge[ab][0], new_edge_polyedge[ab][1][-1])
-    # 		new_vertex_vertex[c] = (new_edge_polyedge[cd][0], new_edge_polyedge[cd][1][0])
-    # 		new_vertex_vertex[d] = (new_edge_polyedge[cd][0], new_edge_polyedge[cd][1][-1])
-
-    # 	self.quad_mesh, old_to_new_vertices = meshes_join_and_weld(meshes, data = True)
-
-    # 	self.vertex_to_vertex = {vkey: old_to_new_vertices[tuple(new_vertex_vertex[vkey])] for vkey in self.vertices()}
-
-    # 	for u, v in self.edges():
-    # 		i, vkeys = new_edge_polyedge[(u, v)]
-    # 		new_polyedge = [old_to_new_vertices[(i, vkey)] for vkey in vkeys]
-
-    # 		if self.vertex_to_vertex[u] == new_polyedge[0]:
-    # 			self.edge_to_polyedge[u][v] = new_polyedge
-    # 			self.edge_to_polyedge[v][u] = list(reversed(new_polyedge))
-
-    # 		elif self.vertex_to_vertex[u] == new_polyedge[-1]:
-    # 			self.edge_to_polyedge[u][v] = list(reversed(new_polyedge))
-    # 			self.edge_to_polyedge[v][u] = new_polyedge
-
-    # 		else:
-    # 			pass
-
-    # 	return self.quad_mesh
+        return self.get_quad_mesh()
 
 
 # ==============================================================================

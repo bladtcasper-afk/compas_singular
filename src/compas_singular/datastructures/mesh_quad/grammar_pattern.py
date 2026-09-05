@@ -165,7 +165,13 @@ def add_strip(mesh, polyedge):
             *list(pairwise(left_polyedge))[i])
 
     # add new strip data
-    new_skey = list(mesh.strips())[-1] + 1
+    #
+    # ``max``, NOT ``list(mesh.strips())[-1]``: that reads the dict's INSERTION
+    # order, which stops tracking the maximum as soon as a key has been deleted and
+    # re-assigned -- see the note in ``collect_strips``. Measured: it returned a key
+    # that already existed, so the new strip overwrote a live one's edge list with
+    # no error anywhere.
+    new_skey = max(mesh.strips()) + 1
     mesh.attributes['strips'][new_skey] = mesh.collect_strip(
         left_polyedge[0], right_polyedge[0])
 
