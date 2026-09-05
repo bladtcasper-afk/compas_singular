@@ -1,0 +1,375 @@
+"""**JSON-RPC 2.0 over stdio: the whole of MCP's transport, in the standard library.**
+
+The official ``mcp`` SDK needs Python 3.10 and this server runs on Rhino's
+interpreter, which is 3.9.10. That is the reason this file exists, but it is not
+the only argument for it: the protocol is a few hundred lines, the server then
+has no third-party dependency at all, and ``agent/runner/backend.py`` already
+made the same call when it declined the SDK's ``tool_runner``.
+
+**Messages are newline-delimited JSON, one per line.** Not ``Content-Length``
+framed -- that is the Language Server Protocol, which MCP resembles but does not
+copy. A message may not contain a raw newline, which ``json.dumps`` guarantees
+for us since it escapes them inside strings.
+
+**Nothing may write to stdout except this module.** One stray ``print`` in a
+library function corrupts the stream and the client sees a parse error with no
+useful cause -- and this library does print: ``helpers.read_coarse`` prints an
+object, ``apply_densities`` prints when verbose. So :func:`serve` captures the
+real stdout for itself and rebinds ``sys.stdout`` to stderr for the whole run.
+A print from anywhere below then lands in the client's log, where it is merely
+noise, instead of in the protocol stream, where it is fatal.
+
+**A notification gets no reply, ever.** A JSON-RPC message with no ``id`` is a
+notification; answering one is a protocol violation that some clients treat as
+fatal. The dispatcher returns ``None`` for those and :func:`serve` writes nothing.
+
+**A tool may attach a picture.** A result carrying :data:`IMAGE_KEY` has it
+lifted out into an ``image`` content block beside the text, so the base64 never
+appears in the JSON the model reads as a result. The protocol stays ignorant of
+what the picture is of.
+
+**A failing TOOL is not a failing CALL.** A tool that refuses returns a normal
+result with ``isError`` set, because the refusal and its reason are what the
+model needs to read and act on. JSON-RPC error objects are reserved for the
+protocol itself -- unknown method, malformed params, unparseable line.
+
+This module knows nothing about meshes. It is handed a *handler* object and asks
+it for tools, resources and prompts; :mod:`compas_singular.mcp.server` supplies
+one. That is what makes the protocol testable with a fake in ``test_protocol.py``.
+"""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import json
+import sys
+import traceback
+
+
+__all__ = [
+    'PROTOCOL_VERSIONS',
+    'PREFERRED_VERSION',
+    'IMAGE_KEY',
+    'JsonRpcError',
+    'Dispatcher',
+    'serve',
+]
+
+
+#: Versions this server can speak, newest first. ``initialize`` echoes the
+#: client's choice when it is one of these, and otherwise answers with the
+#: preferred one and lets the client decide whether to continue.
+PROTOCOL_VERSIONS = ('2025-06-18', '2025-03-26', '2024-11-05')
+PREFERRED_VERSION = PROTOCOL_VERSIONS[0]
+
+PARSE_ERROR = -32700
+INVALID_REQUEST = -32600
+METHOD_NOT_FOUND = -32601
+INVALID_PARAMS = -32602
+INTERNAL_ERROR = -32603
+
+
+class JsonRpcError(Exception):
+    """A fault in the protocol, not in a tool. Becomes an ``error`` object."""
+
+    def __init__(self, code, message, data=None):
+        Exception.__init__(self, message)
+        self.code = code
+        self.message = message
+        self.data = data
+
+    def to_object(self):
+        error = {'code': self.code, 'message': self.message}
+        if self.data is not None:
+            error['data'] = self.data
+        return error
+
+
+#: A tool attaches an image by putting ``{'data': <base64>, 'mimeType': ...}``
+#: under this key. It is pulled out before the payload is rendered as text, so
+#: a hundred kilobytes of base64 never lands in the JSON a model reads. The
+#: underscore marks it as out of band rather than part of the tool's result.
+IMAGE_KEY = '_image'
+
+
+def _text_content(payload):
+    """A result dict as MCP's one and only universally understood content block.
+
+    Tools in this package return plain dicts, the way every other tool layer in
+    this library does. The client wants content blocks, so the dict is rendered
+    as indented JSON inside a text block: readable in a transcript, and parseable
+    by a model without a schema negotiation.
+    """
+    if isinstance(payload, str):
+        text = payload
+    else:
+        text = json.dumps(payload, indent=2, sort_keys=True, default=str)
+    return [{'type': 'text', 'text': text}]
+
+
+class Dispatcher(object):
+    """Turns a decoded JSON-RPC message into a decoded reply, or ``None``.
+
+    Parameters
+    ----------
+    handler : object
+        Supplies the content. Every method is optional, and the ones present
+        decide what :meth:`capabilities` advertises:
+
+        ``list_tools()`` -> ``[{name, description, inputSchema}, ...]``
+        ``call_tool(name, arguments)`` -> ``dict``
+        ``list_resources()`` -> ``[{uri, name, ...}, ...]``
+        ``read_resource(uri)`` -> ``str`` or ``{text, mimeType}``
+        ``list_prompts()`` -> ``[{name, description, arguments}, ...]``
+        ``get_prompt(name, arguments)`` -> ``str`` or ``{description, messages}``
+    name : str, optional
+    version : str, optional
+    instructions : str, optional
+        Shown to the client once, at ``initialize``. Say what the server is for.
+    """
+
+    def __init__(self, handler, name='compas_singular', version='0.1.0',
+                 instructions=None):
+        self.handler = handler
+        self.name = name
+        self.version = version
+        self.instructions = instructions
+        self.initialized = False
+        self.client_version = None
+
+    # --------------------------------------------------------------------
+    # what we can do
+    # --------------------------------------------------------------------
+
+    def capabilities(self):
+        """Advertise only what the handler actually implements.
+
+        Claiming a capability the handler cannot serve means the client calls
+        ``resources/list`` and gets a method-not-found, which some clients treat
+        as a broken server rather than an empty one.
+        """
+        capabilities = {}
+        if hasattr(self.handler, 'list_tools'):
+            capabilities['tools'] = {}
+        if hasattr(self.handler, 'list_resources'):
+            capabilities['resources'] = {}
+        if hasattr(self.handler, 'list_prompts'):
+            capabilities['prompts'] = {}
+        return capabilities
+
+    # --------------------------------------------------------------------
+    # the methods
+    # --------------------------------------------------------------------
+
+    def _initialize(self, params):
+        wanted = (params or {}).get('protocolVersion')
+        self.client_version = wanted
+        version = wanted if wanted in PROTOCOL_VERSIONS else PREFERRED_VERSION
+        result = {
+            'protocolVersion': version,
+            'capabilities': self.capabilities(),
+            'serverInfo': {'name': self.name, 'version': self.version},
+        }
+        if self.instructions:
+            result['instructions'] = self.instructions
+        return result
+
+    def _tools_list(self, params):
+        return {'tools': list(self.handler.list_tools())}
+
+    def _tools_call(self, params):
+        params = params or {}
+        name = params.get('name')
+        if not name:
+            raise JsonRpcError(INVALID_PARAMS, "tools/call needs a 'name'")
+        arguments = params.get('arguments') or {}
+        if not isinstance(arguments, dict):
+            raise JsonRpcError(INVALID_PARAMS, "'arguments' must be an object")
+        payload = self.handler.call_tool(name, arguments)
+        image = None
+        if isinstance(payload, dict) and IMAGE_KEY in payload:
+            image = payload.pop(IMAGE_KEY)
+        failed = isinstance(payload, dict) and payload.get('ok') is False
+        content = _text_content(payload)
+        if image and image.get('data'):
+            content.append({'type': 'image', 'data': image['data'],
+                            'mimeType': image.get('mimeType', 'image/png')})
+        return {'content': content, 'isError': bool(failed)}
+
+    def _resources_list(self, params):
+        return {'resources': list(self.handler.list_resources())}
+
+    def _resources_read(self, params):
+        uri = (params or {}).get('uri')
+        if not uri:
+            raise JsonRpcError(INVALID_PARAMS, "resources/read needs a 'uri'")
+        found = self.handler.read_resource(uri)
+        if found is None:
+            raise JsonRpcError(INVALID_PARAMS, 'no resource at {!r}'.format(uri))
+        if isinstance(found, str):
+            found = {'text': found}
+        return {'contents': [{'uri': uri,
+                              'mimeType': found.get('mimeType', 'text/markdown'),
+                              'text': found.get('text', '')}]}
+
+    def _prompts_list(self, params):
+        return {'prompts': list(self.handler.list_prompts())}
+
+    def _prompts_get(self, params):
+        params = params or {}
+        name = params.get('name')
+        if not name:
+            raise JsonRpcError(INVALID_PARAMS, "prompts/get needs a 'name'")
+        found = self.handler.get_prompt(name, params.get('arguments') or {})
+        if found is None:
+            raise JsonRpcError(INVALID_PARAMS, 'no prompt named {!r}'.format(name))
+        if isinstance(found, str):
+            found = {'messages': [{'role': 'user',
+                                   'content': {'type': 'text', 'text': found}}]}
+        return found
+
+    def _ping(self, params):
+        return {}
+
+    def methods(self):
+        table = {'initialize': self._initialize, 'ping': self._ping}
+        if hasattr(self.handler, 'list_tools'):
+            table['tools/list'] = self._tools_list
+            table['tools/call'] = self._tools_call
+        if hasattr(self.handler, 'list_resources'):
+            table['resources/list'] = self._resources_list
+            table['resources/read'] = self._resources_read
+        if hasattr(self.handler, 'list_prompts'):
+            table['prompts/list'] = self._prompts_list
+            table['prompts/get'] = self._prompts_get
+        return table
+
+    # --------------------------------------------------------------------
+    # dispatch
+    # --------------------------------------------------------------------
+
+    def handle(self, message):
+        """One decoded message in, one decoded reply out (or ``None``).
+
+        Parameters
+        ----------
+        message : dict
+
+        Returns
+        -------
+        dict or None
+            ``None`` for a notification, which must not be answered.
+        """
+        if not isinstance(message, dict):
+            return _error_reply(None, INVALID_REQUEST, 'message is not an object')
+
+        method = message.get('method')
+        message_id = message.get('id')
+        is_notification = 'id' not in message
+
+        if not method:
+            if is_notification:
+                return None
+            return _error_reply(message_id, INVALID_REQUEST, "no 'method'")
+
+        # Notifications carry state changes we acknowledge by acting, not by
+        # replying. ``notifications/initialized`` is the handshake completing.
+        if is_notification:
+            if method == 'notifications/initialized':
+                self.initialized = True
+            return None
+
+        function = self.methods().get(method)
+        if function is None:
+            return _error_reply(message_id, METHOD_NOT_FOUND,
+                                'unknown method {!r}'.format(method))
+        try:
+            return {'jsonrpc': '2.0', 'id': message_id,
+                    'result': function(message.get('params'))}
+        except JsonRpcError as exc:
+            return {'jsonrpc': '2.0', 'id': message_id,
+                    'error': exc.to_object()}
+        except Exception as exc:
+            # An unexpected fault in a handler is this server's bug, not the
+            # client's. Report it as an internal error WITH the traceback on
+            # stderr, so the session survives and the cause is recoverable.
+            traceback.print_exc(file=sys.stderr)
+            return _error_reply(message_id, INTERNAL_ERROR,
+                                '{}: {}'.format(type(exc).__name__, exc))
+
+
+def _error_reply(message_id, code, message, data=None):
+    error = {'code': code, 'message': message}
+    if data is not None:
+        error['data'] = data
+    return {'jsonrpc': '2.0', 'id': message_id, 'error': error}
+
+
+# ==============================================================================
+# the stdio loop
+# ==============================================================================
+
+def serve(dispatcher, stdin=None, stdout=None, guard=True):
+    """Read newline-delimited JSON from stdin, write replies to stdout.
+
+    Returns when stdin closes, which is how an MCP client says it is done.
+
+    **Rebinds** ``sys.stdout`` **to stderr for the duration.** The real stdout is
+    captured here first and used only for protocol frames. Any ``print`` in
+    library code below then goes to the client's log instead of corrupting the
+    stream -- see the module docstring for why that is not hypothetical.
+
+    Parameters
+    ----------
+    dispatcher : Dispatcher
+    stdin : file, optional
+        Defaults to ``sys.stdin``. The tests pass a ``StringIO``.
+    stdout : file, optional
+        Defaults to ``sys.stdout`` as it was when ``serve`` was called.
+    guard : bool, optional
+        Rebind ``sys.stdout`` to stderr for the duration. On by default and
+        independent of ``stdout``, so the tests exercise the same guard
+        production runs under rather than a path only they take.
+    """
+    source = stdin if stdin is not None else sys.stdin
+    sink = stdout if stdout is not None else sys.stdout
+
+    saved = sys.stdout
+    if guard:
+        sys.stdout = sys.stderr
+    try:
+        for line in source:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                message = json.loads(line)
+            except ValueError as exc:
+                _write(sink, _error_reply(None, PARSE_ERROR,
+                                          'invalid JSON: {}'.format(exc)))
+                continue
+            # A batch is a list. Answer each member, and send nothing at all if
+            # every one of them was a notification.
+            if isinstance(message, list):
+                replies = [r for r in (dispatcher.handle(m) for m in message)
+                           if r is not None]
+                for reply in replies:
+                    _write(sink, reply)
+                continue
+            reply = dispatcher.handle(message)
+            if reply is not None:
+                _write(sink, reply)
+    finally:
+        if guard:
+            sys.stdout = saved
+
+
+def _write(sink, payload):
+    """One message, one line, flushed.
+
+    Flushing every message is not optional: the client is blocked on our reply,
+    and a buffered stdout would deadlock the session until the buffer filled.
+    """
+    sink.write(json.dumps(payload, default=str))
+    sink.write('\n')
+    sink.flush()

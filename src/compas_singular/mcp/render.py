@@ -1,0 +1,359 @@
+"""**Drawing the mesh, so the model can look at it instead of only measuring it.**
+
+``inspect`` without a picture reports what somebody thought to measure. Min
+angle, aspect and ``share_below`` are good numbers, and they are blind to
+everything nobody wrote a metric for: a strip that wanders, a boundary the mesh
+has quietly left, a guide it ignored, a point feature that never became a pole.
+Those are visible in a second and invisible in a table.
+
+**Written independently of** ``agent/core/render.py``, **on purpose.** That module
+solves the same problem for the other approach, and its entry points take a
+``MeshEditSession``. Sharing it would put the first dependency between two
+packages whose whole value is that they can be compared. So this is a second
+implementation, and where the two disagree that is a finding rather than a bug
+in one of them.
+
+**Standard library only** -- ``zlib`` and ``struct``. No matplotlib, no viewer,
+nothing that has to be installed into Rhino's interpreter. A PNG is a few chunks
+around a zlib stream, and a line drawing of a quad mesh compresses to almost
+nothing because most of it is white.
+
+**Supersampled rather than anti-aliased analytically.** Everything is drawn at
+:data:`SCALE` times the requested size and box-filtered down. That is a few
+lines instead of a coverage rasteriser, and on line art it is the difference
+between a picture a model can read a kink from and one it cannot.
+
+**What is drawn, and why each of it is there:** the input walls and the guides
+UNDER the mesh in saturated colour, so anywhere the mesh has left its input
+shows as colour escaping from beneath the black. Point features as rings and the
+mesh's own poles as filled discs, so a respected point feature reads as a disc
+inside a ring and an ignored one as an empty ring. Singularities as discs,
+because where they sit is the thing smoothing cannot change.
+"""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import base64
+import struct
+import zlib
+
+
+__all__ = ['LEGEND', 'render_png', 'render_png_base64', 'scene', 'Raster']
+
+
+#: Supersampling factor. 2 is enough to read a kink; 3 costs four times the
+#: memory for a difference nobody has been able to point at.
+SCALE = 2
+
+#: Default canvas. Image cost to a model runs with width times height, so this
+#: is deliberately modest -- large enough to see a wandering polyedge on a mesh
+#: of a few hundred faces, small enough not to dominate a turn.
+DEFAULT_SIZE = 800
+
+#: Refuse to render larger than this. A caller that asks for 4000 is not going
+#: to read four times as much; it is going to spend four times as many tokens.
+MAX_SIZE = 1400
+
+WHITE = (255, 255, 255)
+
+#: What each colour means. Returned WITH the image, because rendering a legend
+#: would mean rendering glyphs, which would mean shipping a font.
+LEGEND = (
+    'orange = the input boundary curves (outer and holes); '
+    'green = the input guide curves; '
+    'magenta ring = an input point feature; '
+    'magenta disc = a pole in the mesh; '
+    'red disc = an irregular interior vertex (a singularity); '
+    'black = the mesh outline; '
+    'grey = the mesh interior edges.'
+)
+
+#: Stroke widths, in supersampled pixels. The ORDER of these two matters more
+#: than either value: see :func:`scene`.
+WALL_WIDTH = 5
+OUTLINE_WIDTH = 9
+GUIDE_WIDTH = 5
+
+COLORS = {
+    'wall': (245, 150, 45),
+    'guide': (40, 165, 95),
+    'point': (205, 55, 190),
+    'pole': (205, 55, 190),
+    'singularity': (225, 45, 45),
+    'edge': (125, 125, 135),
+    'outline': (25, 25, 35),
+}
+
+
+class Raster(object):
+    """An RGB byte buffer that can draw thick lines and discs, and emit a PNG."""
+
+    def __init__(self, width, height, background=WHITE):
+        self.width = int(width)
+        self.height = int(height)
+        self.pixels = bytearray(bytes(background) * (self.width * self.height))
+
+    def _put(self, x, y, color):
+        if 0 <= x < self.width and 0 <= y < self.height:
+            i = (y * self.width + x) * 3
+            self.pixels[i] = color[0]
+            self.pixels[i + 1] = color[1]
+            self.pixels[i + 2] = color[2]
+
+    def disc(self, centre, radius, color):
+        cx, cy = int(round(centre[0])), int(round(centre[1]))
+        radius = int(round(radius))
+        squared = radius * radius
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                if dx * dx + dy * dy <= squared:
+                    self._put(cx + dx, cy + dy, color)
+
+    def ring(self, centre, radius, color, thickness=2):
+        cx, cy = int(round(centre[0])), int(round(centre[1]))
+        radius = int(round(radius))
+        outer = radius * radius
+        inner = max(0, radius - thickness) ** 2
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                d = dx * dx + dy * dy
+                if inner <= d <= outer:
+                    self._put(cx + dx, cy + dy, color)
+
+    def line(self, a, b, color, width=1):
+        """A thick segment, stamped along a DDA walk.
+
+        Stamping a disc per step rather than computing coverage: at SCALE times
+        the output size the difference is gone after the downsample, and this
+        stays fast on a mesh with a few thousand edges.
+        """
+        x0, y0 = a[0], a[1]
+        x1, y1 = b[0], b[1]
+        dx, dy = x1 - x0, y1 - y0
+        steps = int(max(abs(dx), abs(dy))) + 1
+        radius = max(0, (width - 1) // 2)
+        for i in range(steps + 1):
+            t = i / float(steps)
+            x, y = x0 + dx * t, y0 + dy * t
+            if radius:
+                self.disc((x, y), radius, color)
+            else:
+                self._put(int(round(x)), int(round(y)), color)
+
+    def downsample(self, factor):
+        """Box-filter to 1/factor. This is where the anti-aliasing comes from."""
+        if factor <= 1:
+            return self
+        width, height = self.width // factor, self.height // factor
+        out = Raster(width, height)
+        area = factor * factor
+        for y in range(height):
+            for x in range(width):
+                r = g = b = 0
+                for sy in range(factor):
+                    row = (y * factor + sy) * self.width
+                    for sx in range(factor):
+                        i = (row + x * factor + sx) * 3
+                        r += self.pixels[i]
+                        g += self.pixels[i + 1]
+                        b += self.pixels[i + 2]
+                out._put(x, y, (r // area, g // area, b // area))
+        return out
+
+    def to_png(self):
+        """The buffer as PNG bytes: IHDR, one IDAT, IEND."""
+        stride = self.width * 3
+        raw = bytearray()
+        for y in range(self.height):
+            raw.append(0)                      # filter type 0, none
+            raw += self.pixels[y * stride:(y + 1) * stride]
+
+        def chunk(tag, payload):
+            body = tag + payload
+            return (struct.pack('>I', len(payload)) + body
+                    + struct.pack('>I', zlib.crc32(body) & 0xffffffff))
+
+        header = struct.pack('>IIBBBBB', self.width, self.height, 8, 2, 0, 0, 0)
+        return (b'\x89PNG\r\n\x1a\n'
+                + chunk(b'IHDR', header)
+                + chunk(b'IDAT', zlib.compress(bytes(raw), 6))
+                + chunk(b'IEND', b''))
+
+
+# ==============================================================================
+# what to draw
+# ==============================================================================
+
+def _mesh_edges(mesh):
+    """``(interior, outline)`` edge lists, so the mesh's own border reads darker."""
+    interior, outline = [], []
+    for u, v in mesh.edges():
+        segment = (mesh.vertex_coordinates(u), mesh.vertex_coordinates(v))
+        try:
+            on_boundary = mesh.is_edge_on_boundary(u, v)
+        except Exception:
+            on_boundary = False
+        (outline if on_boundary else interior).append(segment)
+    return interior, outline
+
+
+def _singular_points(mesh):
+    """Irregular interior vertices, and poles, separately.
+
+    Poles are separate because a pole is what an input point feature is supposed
+    to have BECOME -- drawing the two alike would hide the thing worth checking.
+    """
+    poles = []
+    getter = getattr(mesh, 'poles', None)
+    if getter is not None:
+        try:
+            poles = [mesh.vertex_coordinates(v) for v in getter()]
+        except Exception:
+            poles = []
+    pole_keys = set()
+    if getter is not None:
+        try:
+            pole_keys = set(getter())
+        except Exception:
+            pole_keys = set()
+    irregular = []
+    for vertex in mesh.vertices():
+        if vertex in pole_keys:
+            continue
+        try:
+            if mesh.is_vertex_on_boundary(vertex):
+                continue
+            if len(mesh.vertex_neighbors(vertex)) != 4:
+                irregular.append(mesh.vertex_coordinates(vertex))
+        except Exception:
+            continue
+    return irregular, poles
+
+
+def _points_of(curve):
+    points = getattr(curve, 'points', None)
+    if points is None:
+        points = curve
+    return [[float(p[0]), float(p[1])] for p in points]
+
+
+def scene(session):
+    """The drawable layers, back to front.
+
+    Walls and guides go UNDERNEATH the mesh deliberately: where the mesh sits on
+    its input the colour is hidden, and where it has drifted the colour shows.
+    That makes "is the input respected" a thing you see rather than measure.
+    """
+    mesh = session.mesh
+    layers = []
+
+    # WALL_WIDTH < OUTLINE_WIDTH is the whole trick, and getting it backwards
+    # makes the picture lie: a wall drawn thicker than the mesh outline shows
+    # orange along every edge even where the mesh sits exactly on it, and a
+    # reader is then told to report a deviation on every mesh. Drawn narrower
+    # and underneath, the orange is completely hidden wherever the mesh is on
+    # its boundary, and appears ONLY where the mesh has actually drifted off.
+    for wall in session.walls:
+        layers.append({'kind': 'path', 'points': _points_of(wall),
+                       'color': COLORS['wall'], 'width': WALL_WIDTH})
+    for guide in session.guides:
+        layers.append({'kind': 'path', 'points': _points_of(guide),
+                       'color': COLORS['guide'], 'width': GUIDE_WIDTH})
+
+    if mesh is not None:
+        interior, outline = _mesh_edges(mesh)
+        layers.append({'kind': 'lines', 'segments': interior,
+                       'color': COLORS['edge'], 'width': 1})
+        layers.append({'kind': 'lines', 'segments': outline,
+                       'color': COLORS['outline'], 'width': OUTLINE_WIDTH})
+
+        irregular, poles = _singular_points(mesh)
+        layers.append({'kind': 'discs', 'points': poles,
+                       'color': COLORS['pole'], 'radius': 11})
+        layers.append({'kind': 'discs', 'points': irregular,
+                       'color': COLORS['singularity'], 'radius': 10})
+
+    # Input point features last, as rings, so a respected one reads as a
+    # magenta disc sitting inside a magenta ring and an ignored one as an
+    # empty ring.
+    layers.append({'kind': 'rings', 'points': [list(p) for p in session.points],
+                   'color': COLORS['point'], 'radius': 19})
+    return layers
+
+
+def _bounds(layers):
+    xs, ys = [], []
+    for layer in layers:
+        if layer['kind'] == 'lines':
+            for a, b in layer['segments']:
+                xs += [a[0], b[0]]
+                ys += [a[1], b[1]]
+        else:
+            for point in layer.get('points', []):
+                xs.append(point[0])
+                ys.append(point[1])
+    if not xs:
+        return None
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+# ==============================================================================
+# rendering
+# ==============================================================================
+
+def render_png(session, width=DEFAULT_SIZE, height=DEFAULT_SIZE, margin=0.06):
+    """The session's mesh and its inputs, as PNG bytes.
+
+    Returns ``None`` when there is nothing to draw at all -- no mesh, no walls,
+    no points -- rather than an empty white square, so a caller can say so
+    instead of showing one.
+    """
+    width = max(160, min(int(width), MAX_SIZE))
+    height = max(160, min(int(height), MAX_SIZE))
+    layers = scene(session)
+    box = _bounds(layers)
+    if box is None:
+        return None
+
+    big = Raster(width * SCALE, height * SCALE)
+    left, bottom, right, top = box
+    span_x = max(right - left, 1e-9)
+    span_y = max(top - bottom, 1e-9)
+    pad = margin * max(span_x, span_y)
+    left, bottom, right, top = left - pad, bottom - pad, right + pad, top + pad
+    scale = min((width * SCALE) / (right - left), (height * SCALE) / (top - bottom))
+    offset_x = (width * SCALE - (right - left) * scale) / 2.0
+    offset_y = (height * SCALE - (top - bottom) * scale) / 2.0
+
+    def project(point):
+        # y is flipped: model space runs up, a raster runs down.
+        return (offset_x + (point[0] - left) * scale,
+                (height * SCALE) - (offset_y + (point[1] - bottom) * scale))
+
+    for layer in layers:
+        color = layer['color']
+        if layer['kind'] == 'lines':
+            for a, b in layer['segments']:
+                big.line(project(a), project(b), color, layer['width'])
+        elif layer['kind'] == 'path':
+            points = layer['points']
+            for i in range(len(points) - 1):
+                big.line(project(points[i]), project(points[i + 1]), color,
+                         layer['width'])
+        elif layer['kind'] == 'discs':
+            for point in layer['points']:
+                big.disc(project(point), layer['radius'], color)
+        elif layer['kind'] == 'rings':
+            for point in layer['points']:
+                big.ring(project(point), layer['radius'], color, thickness=6)
+
+    return big.downsample(SCALE).to_png()
+
+
+def render_png_base64(session, width=DEFAULT_SIZE, height=DEFAULT_SIZE):
+    """The PNG, base64 encoded for an MCP image content block. ``None`` if empty."""
+    data = render_png(session, width=width, height=height)
+    if data is None:
+        return None
+    return base64.b64encode(data).decode('ascii')
