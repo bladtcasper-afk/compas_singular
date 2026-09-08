@@ -7,6 +7,7 @@ import os
 from compas.datastructures import Mesh
 from compas.geometry import centroid_points
 from compas.geometry import angle_points
+from compas.geometry import Point
 
 
 __all__ = ['Mesh']
@@ -248,6 +249,32 @@ class Mesh(Mesh):
 
         return centroid_points([self.vertex_coordinates(vkey) for vkey in self.vertices()])
 
+    def vertex_map(self, view=False):
+        vkeys, _ = self.to_vertices_and_faces()
+
+        vertices = []
+        for vkey in vkeys:
+            vertex = Point(*self.vertex_coordinates(vkey))
+            vertices.append((vkey, vertex))
+
+        if view:
+            from compas_viewer.viewer import Viewer
+            from compas_viewer.scene.tagobject import Tag
+
+            viewer = Viewer()
+            group = viewer.scene.add_group("Vertex map")
+
+            for vertex in vertices:
+                vkey = vertex[0]
+                vertex = vertex[1]
+
+                group.add(vertex, name="Vertex: " + str(vkey))
+                group.add(Tag(text=str(vkey), position=vertex))
+
+            viewer.show()
+            viewer.scene.clear()
+
+        return vertices
 
 # ==============================================================================
 # Main

@@ -6,10 +6,13 @@ from math import floor
 from operator import itemgetter
 
 from compas.geometry import centroid_points
-from compas.geometry import Polyline
+from compas.geometry import Polyline, Brep, Point, Polygon
 from compas.itertools import pairwise
 
+from compas_singular.datastructures.mesh_quad.grammar.add_strip import add_strips
+from compas_singular.datastructures.mesh_quad.grammar.delete_strip import delete_strips
 from compas_singular.utilities import list_split
+
 
 from ..mesh import Mesh
 
@@ -36,6 +39,41 @@ class QuadMesh(Mesh):
             else:
                 yield skey
 
+    def strip_map(self, view=False):
+        skeys = self.strips()
+        strips = []
+        for skey in skeys:
+            fkeys = self.strip_faces(skey)
+            strip_polygons = []
+            for fkey in fkeys:
+                vkeys = self.face_vertices(fkey)
+                face_pts = [Point(*self.vertex_coordinates(vkey)) for vkey in vkeys]
+                strip_polygons.append(Polygon(face_pts))
+
+            strip = Brep.from_polygons(strip_polygons)
+            strips.append((skey, strip))
+
+        if view:
+            from compas_viewer.viewer import Viewer
+            from compas_viewer.scene import Tag
+
+            viewer = Viewer()
+            group = viewer.scene.add_group("Strip map")
+
+            for strip in strips:
+                skey = strip[0]
+                strip = strip[1]
+                # Brep.centroid is not implemented yet.
+                position = centroid_points(strip.points)
+                tag = Tag(text=str(skey), position=position)
+                group.add(strip, name="Strip: " + str(skey))
+                group.add(tag)
+
+            viewer.show()
+            viewer.scene.clear()
+
+        return strips
+
     def polyedges(self, data=False):
         if not bool(self.attributes['polyedges']):
             self.collect_polyedges()
@@ -47,6 +85,40 @@ class QuadMesh(Mesh):
                 yield key, self.attributes['polyedges'][key]
             else:
                 yield key
+
+    def polyedge_map(self, view=False):
+        pkeys = self.polyedges()
+        polyedges = []
+        for pkey in pkeys:
+            vkeys = self.polyedge_vertices(pkey)
+            polyedge_pts = []
+            for vkey in vkeys:
+                pt = Point(*self.vertex_coordinates(vkey))
+                polyedge_pts.append(pt)
+
+            polyedge = Polyline(polyedge_pts)
+            polyedges.append((pkey, polyedge))
+
+        if view:
+            from compas_viewer.viewer import Viewer
+            from compas_viewer.scene import Tag
+
+            viewer = Viewer()
+            group = viewer.scene.add_group("Polyedge map")
+
+            for polyedge in polyedges:
+                pkey = polyedge[0]
+                polyedge = polyedge[1]
+                # Brep.centroid is not implemented yet.
+                position = centroid_points(polyedge.points)
+                tag = Tag(text=str(pkey), position=position)
+                group.add(polyedge, name="Polyedge: " + str(pkey))
+                group.add(tag)
+
+            viewer.show()
+            viewer.scene.clear()
+
+        return polyedges
 
     # --------------------------------------------------------------------------
     # opposite elements
@@ -668,6 +740,14 @@ class QuadMesh(Mesh):
                 remaining.discard((v, u))
 
         return self.strips(data=True)
+
+    def add_strips(self, polyedges):
+        mesh = self
+        add_strips(mesh=mesh, polyedges=polyedges)
+
+    def delete_strips(self, skeys):
+        mesh = self
+        delete_strips(mesh, skeys=skeys)
 
     def is_strip_closed(self, skey):
         """Output whether a strip is closed.
