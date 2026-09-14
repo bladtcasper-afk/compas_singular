@@ -168,12 +168,25 @@ if mode == "whole":
                                  strings=["Sliding", "Fixed"])
     boundary_mode = (boundary_mode or "Sliding").lower()
 
+    point_mode = rs.GetString(message="Point_feature treatment", defaultString="Free",
+                                 strings=["Free", "Fixed"])
+    point_mode = (point_mode or "Free").lower()
+
     algorithm = rs.GetString(message="Select smoothing method", defaultString="Area",
                              strings=["Area", "Centroid", "CenterOfMass", "ForceDensity"])
     algorithm = (algorithm or "Area").lower()
 
     if algorithm=="forcedensity":
-        mesh = relaxation(mesh)
+        fixed = rs.GetString(message="Vertices to fix", defaultString="Corners",
+                                 strings=["Corners", "Boundary", "Manual"])
+        fixed = (fixed or "Corners").lower()
+        
+        fixed_vertices = []
+        if fixed == "manual":    
+            fixed_vertices = pick_vertices("Pick vertices to constrain.")
+
+        mesh = relaxation(mesh, fixed=fixed, fixed_vertices=fixed_vertices, constraints=None, q_factor=10)
+
     else:
         kmax = rs.GetInteger(message="Iterations", number=100, minimum=1)
         damping = rs.GetReal(message="Damping", number=0.5, minimum=0.0, maximum=1.0)
@@ -185,6 +198,8 @@ if mode == "whole":
             constraints = {}
             fixed = all_boundary_vertices()
 
+        if point_mode == "fixed":
+            pass #add possibility to fix point_features and perhaps also guides
         constrained_smoothing(mesh, kmax=kmax, damping=damping,
                             constraints=constraints, algorithm=algorithm, fixed=fixed)
 

@@ -19,6 +19,12 @@ DEFAULT_SETTINGS = {
     "guide_allignment": "tangent",
     #: Target quad edge length for strips with no explicit density.
     "target_length": 0.5,
+    #: Elements across every strip with no explicit density, when
+    #: ``density_mode`` is ``"density"``.
+    "target_density": 5,
+    #: Which global rule step 5 last applied: ``"length"`` or ``"density"``.
+    #: Only consulted when a layout has no densities saved on it.
+    "density_mode": "length",
     #: Whether patch INTERIORS are integrated from the field. Real on the field
     #: route; measured to COST quality on a skeleton layout, whose patch edges
     #: do not follow the field -- aspect 1.99 -> 3.20 on a square with a cable.
@@ -263,6 +269,35 @@ def read_layout(verbose=True):
             cached.number_of_faces(), cached.attributes.get("route", "unknown")))
     return cached, poles, "cache"
 
+
+def resolve_densities(coarse, settings, verbose=True):
+    """The layout's saved densities if every strip has one; otherwise the global rule.
+
+    Shared by step 5 (``CMD_densities``) and step 6 (``CMD_quad_mesh``). A layout
+    from the side-car that step 5 saved keeps its densities as they are. One read
+    from the baked mesh, saved before step 5 ran, or whose strips changed in step
+    4 gets every strip set by ``settings["density_mode"]``: ``"length"`` sizes
+    each strip from ``target_length``, ``"density"`` gives them all
+    ``target_density``. Densities picked per strip are not recovered then -- they
+    were keyed by strips that may no longer exist.
+
+    Returns
+    -------
+    bool
+        True when the densities had to be re-derived.
+    """
+    if coarse.has_densities():
+        return False
+    coarse.attributes['strips_density'] = {}
+    if settings.get("density_mode") == "density":
+        coarse.set_strips_density(int(settings["target_density"]))
+    else:
+        coarse.set_strips_density_target(settings["target_length"])
+    if verbose:
+        print("densities: none saved on the layout -- every strip set by the "
+              "target {}".format(settings.get("density_mode", "length")))
+    return True
+
 # NOTE do the same for layer names
 
 settings = get_settings()
@@ -272,24 +307,25 @@ print(settings)
 #Rhino layer names
 
 LAYERS_KEY = "layers"
-LAYER_NAMES = {
-    "Problem": "TopologyProblem",
-    "Input": "TopologyProblem::InputBoundaries",
-    "Outer": "TopologyProblem::InputBoundaries::Outer",
-    "Inner": "TopologyProblem::InputBoundaries::Inner",
-    "Guides": "TopologyProblem::InputBoundaries::Guides",
-    "PointFeatures": "TopologyProblem::PointFeatures",
-    "Skeleton": "TopologyProblem::Skeleton",
-    "Poles": "TopologyProblem::Skeleton::Poles",
-    "Polylines": "TopologyProblem::Skeleton::Polylines",
-    "Mesh": "TopologyProblem::Skeleton::Mesh",
-    "EdgeCurves": "TopologyProblem::Skeleton::EdgeCurves",
-    "TempEdit": "TopologyProblem::Skeleton::TempEdit",
-    "Densities": "TopologyProblem::Skeleton::Densities",
-    "QuadMesh": "TopologyProblem::QuadMesh",
-    "Dual": "TopologyProblem::QuadMesh::Dual",
-    "Smoothened": "TopologyProblem::QuadMesh::Smoothened",
-    "Area": "TopologyProblem::QuadMesh::Smoothened::Area",
+LAYER_DATA = {
+    "Problem": ("TopologyProblem", None),
+    "Input": ("TopologyProblem::InputBoundaries", None),
+    "Outer": ("TopologyProblem::InputBoundaries::Outer", (255, 0, 0)),
+    "Inner": ("TopologyProblem::InputBoundaries::Inner", (0, 255, 0)),
+    "Guides": ("TopologyProblem::InputBoundaries::Guides", (255, 127, 0)),
+    "PointFeatures": ("TopologyProblem::PointFeatures", (0, 255, 0)),
+    "Skeleton": ("TopologyProblem::Skeleton", None),
+    "Poles": ("TopologyProblem::Skeleton::Poles", None),
+    "Polylines": ("TopologyProblem::Skeleton::Polylines", None),
+    "Mesh": ("TopologyProblem::Skeleton::Mesh", None),
+    "EdgeCurves": ("TopologyProblem::Skeleton::EdgeCurves", (0, 120, 200)),
+    "TempEdit": ("TopologyProblem::Skeleton::TempEdit", (0, 120, 200)),
+    "Densities": ("TopologyProblem::Attributes::Densities", None),
+    "Patterns": ("TopologyProblem::Attributes::Patterns", None),
+    "QuadMesh": ("TopologyProblem::QuadMesh", None),
+    "Dual": ("TopologyProblem::QuadMesh::Dual", None),
+    "Smoothened": ("TopologyProblem::QuadMesh::Smoothened", None),
+    "Area": ("TopologyProblem::QuadMesh::Smoothened::Area", None),
 }
 
 #Rhino file setup
@@ -436,7 +472,8 @@ def reset_project():
         rs.AddLayer(name=project_folder)
 
     #Setup of subfolders
-    rs.AddLayer(name="InputBoundaries", parent=project_folder)
+    for name, color in LAYER_DATA.values():
+        rs.AddLayer(name=name, color=color)
 
     # Say so. A reset that silently stops happening -- if a future Rhino ran
     # this file under a name other than "__main__" -- would look like a command

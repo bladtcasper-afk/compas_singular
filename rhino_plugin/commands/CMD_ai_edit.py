@@ -22,7 +22,7 @@ This is a DRIVER, not an implementation. The session, the tools, the state
 machine and the loop all live in ``compas_singular.agent`` and are tested
 without Rhino in ``examples/agent_tests``. This file supplies the document, the
 prompts and the bake, exactly as ``CMD_edit_coarse_mesh`` supplies picks for
-``CoarseLayoutEditor``. Nothing here decides anything about a mesh.
+``CoarseEditor``. Nothing here decides anything about a mesh.
 
 **The seam is the decomposition object, not geometry.** ``FieldDecomposition``
 is Rhino-free, so it crosses into the agent layer unchanged and no Rhino type

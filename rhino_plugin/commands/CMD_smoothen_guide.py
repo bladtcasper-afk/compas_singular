@@ -36,7 +36,7 @@ The whole algorithm lives in ``compas_singular.editing.guide_chain`` and is meas
 without Rhino, in ``examples/guide_chain_tests``. This file is the picks, the prompts and
 the bake.
 """
-from CMD_start import LAYER_NAMES, import_compas_singular
+from CMD_start import LAYER_DATA, import_compas_singular
 import_compas_singular()
 
 import rhinoscriptsyntax as rs
@@ -64,7 +64,7 @@ HIGHLIGHT_LAYER = "GuideSelection"
 #: The full path, from the one place the layer map is written down. rhinoscriptsyntax
 #: resolves a bare name with FindName, which returns the FIRST layer of that name anywhere
 #: in the document -- fine until a second "Guides" exists somewhere else.
-GUIDE_LAYER = LAYER_NAMES.get("Guides", "Guides")
+GUIDE_LAYER = LAYER_DATA.get("Guides", ("Guides", None))[0]
 
 if not rs.IsLayer("QuadMesh"):
     raise RuntimeError("No dense quad mesh yet -- the QuadMesh layer does not exist.")

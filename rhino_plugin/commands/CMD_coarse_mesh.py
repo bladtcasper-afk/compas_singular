@@ -15,10 +15,10 @@ import compas_rhino as cr
 from compas_rhino.conversions import point_to_rhino
 
 from compas_singular.algorithms import SkeletonDecomposition
+from compas_singular.framefield.decomposition import FieldDecomposition
 from compas_singular.rhino.helpers.helpers import clear_layer, read_boundary_loops, bake_edge_curves, bake_polylines, read_boundaries
 from compas_singular.rhino.coarse_curves import coarse_edges_to_curves, snap_corners_to_walls
-from CMD_start import get_settings
-from CMD_start import get_decomposition
+from CMD_start import get_settings, resolve_relax, resolve_symmetry
 from CMD_start import cache_path, COARSE_CACHE, FIELD_CACHE
 
 #The walls the layout's boundary edges densify ALONG, as a multiple of the
@@ -40,13 +40,22 @@ WALL_SAMPLING_FACTOR = 0.25
 #  d = FieldDecomposition.from_boundary(outline, guides=cables)
 #  mesh = d.quad_mesh(target_length=0.5)
 
-def coarse_from_field(settings):
-    QUAD_TARGET_LENGTH = 1
+def coarse_from_field(settings, outer, inners, guides):
+    """Frame-field decomposition. The mirror of ``coarse_from_skeleton`` above.
 
-    # Solved once per document and reused across steps 3, 4 and 6 -- and
-    # across Rhino restarts. ``CMD_start.get_decomposition`` owns the settings,
-    # the resolvers and the staleness rules; see its docstring.
-    decomposition = get_decomposition()
+    Solved fresh every time this step runs -- unlike steps 4 and 6, which share
+    one solve through ``CMD_start.get_decomposition``, re-solving here is cheap
+    relative to the rest of the step and the user is choosing to (re)build the
+    coarse mesh, so the extra computation when nothing changed is an accepted
+    cost for a call site that reads the same, directly, as
+    ``SkeletonDecomposition.from_boundary`` below.
+    """
+    decomposition = FieldDecomposition.from_boundary(
+        outer, inner_boundaries=inners, guides=guides,
+        mode=settings["guide_allignment"],
+        target_length=settings["triangulation_spacing"],
+        relax=resolve_relax(settings, guides),
+        symmetry=resolve_symmetry(settings))
     print(decomposition.field.report())
     # Print the group: a smaller group than the drawing suggests means the
     # layout is ALLOWED to be less symmetric, and nothing downstream complains.
@@ -71,14 +80,14 @@ def coarse_from_skeleton(settings, outer, inners, line_features, point_features)
     """Medial-axis decomposition. The mirror of ``coarse_from_field`` above.
 
     ``from_boundary`` owns the whole front half: it resamples the walls so no
-    segment is longer than ``target_length`` -- the medial axis is read off a
+    segment is longer than ``spacing`` -- the medial axis is read off a
     Delaunay triangulation of the boundary POINTS, so a four-point square gives
     a two-triangle mesh and a caricature layout -- triangulates them, and
     remembers the domain it was given. ``coarse_mesh`` then takes its poles from
     that domain rather than being handed them a second time.
 
-    ``target_length`` is the BACKGROUND spacing, not the quad size; the quad size
-    is ``settings["target_length"]`` and is applied in step 5.
+    ``spacing`` is the BACKGROUND spacing, not the quad size; the quad size
+    is ``settings["spacing"]`` and is applied in step 5.
 
     **Guides are not passed as polyline features.** They look like the same
     thing and are not: a feature curve CUTS the domain, and the skeleton
@@ -90,8 +99,7 @@ def coarse_from_skeleton(settings, outer, inners, line_features, point_features)
         outer,
         inner_boundaries=inners,
         polyline_features=line_features,
-        point_features=point_features,
-        target_length=settings["triangulation_spacing"])
+        point_features=point_features)
 
     coarse_mesh = decomposition.coarse_mesh()
     # ``decomposition.polylines`` rather than a second ``decomposition_polylines()``
@@ -125,7 +133,7 @@ def main():
                 settings, outer, inners, guides, point_features)
             break
         elif mode == "framefield":
-            coarse_mesh, skeleton, field = coarse_from_field(settings)
+            coarse_mesh, skeleton, field = coarse_from_field(settings, outer, inners, guides)
             break
         elif mode == "exit":
             break
@@ -225,6 +233,7 @@ def main():
         #carries the whole ``attributes`` dict, and the field cannot be baked at
         #all. Written LAST, so a failure in the bake above never leaves a
         #side-car describing a layout the document does not have.
+        coarse_mesh.set_global_face_pattern("ortho")
         coarse_mesh.save_to_json(cache_path(COARSE_CACHE))
         print("layout cached: {}".format(cache_path(COARSE_CACHE, create=False)))
         if field is not None:

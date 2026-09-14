@@ -5,8 +5,15 @@
     reads   Outer / Inner / Guides / PointFeatures    the domain
             TopologyProblem::QuadMesh             the dense mesh
             Mesh + Poles                          the coarse layout, on request
+            Skeleton::Polylines + coarse.json     with pull_coarse
+            the current selection                 with pull, selection=true
     writes  TopologyProblem::QuadMesh             only on a push
             ...::QuadMesh::MCP::Before            the mesh that was there
+            TopologyProblem::Skeleton::{Mesh, Poles, Polylines, EdgeCurves}
+                                                  only on a push_coarse
+            ...::Skeleton::MCP::Before            the layout that was there
+            <document cache>/coarse.json          its strips, densities, patterns
+            TopologyProblem::MCP::Markers::<kind> text dots, on push_markers
     prints  one line per request served
 
 **RUN IT ONCE TO ATTACH, AGAIN TO DETACH.** While it is attached you keep using
@@ -14,8 +21,9 @@ Rhino normally: model, run any other CMD_ command, undo your own work, change
 layers and views. The link only acts when Rhino is idle, and it never acts while
 you are inside a command.
 
-**This is a COURIER, not an implementation.** It understands three verbs --
-``ping``, ``pull``, ``push`` -- and nothing about meshes. Every decision about a
+**This is a COURIER, not an implementation.** It understands six verbs --
+``ping``, ``pull``, ``push``, ``pull_coarse``, ``push_coarse``,
+``push_markers`` -- and nothing about meshes. Every decision about a
 mesh is made by ``compas_singular.mcp`` in a separate process, which is tested
 without Rhino in ``examples/mcp_tests``. Nothing here decides anything.
 
@@ -58,12 +66,29 @@ import Rhino
 import rhinoscriptsyntax as rs
 import scriptcontext as sc
 
+from CMD_start import COARSE_CACHE
+from CMD_start import cache_path
 from CMD_start import ensure_paths
 
 
 ROOT = "TopologyProblem"
 QUADMESH_LAYER = ROOT + "::QuadMesh"
 BEFORE_LAYER = QUADMESH_LAYER + "::MCP::Before"
+
+#: Where the CMD_ commands keep a coarse layout -- ``CMD_coarse_mesh`` writes
+#: these four and ``read_coarse`` / ``CMD_quad_mesh`` / ``CMD_edit_coarse_mesh``
+#: read them. A pushed layout has to land exactly here to be picked up.
+SKELETON = ROOT + "::Skeleton"
+SKELETON_LAYERS = (
+    ("mesh", SKELETON + "::Mesh"),
+    ("poles", SKELETON + "::Poles"),
+    ("polylines", SKELETON + "::Polylines"),
+    ("edge_curves", SKELETON + "::EdgeCurves"),
+)
+#: One flat backup layer, and its leaf is NOT "Mesh" or "Poles": ``read_coarse``
+#: finds the layout by those short names, and a second layer called "Mesh"
+#: anywhere under the root would make that lookup ambiguous.
+COARSE_BEFORE_LAYER = SKELETON + "::MCP::Before"
 
 #: Layers that may be pulled from, by the short name the tool passes.
 PULL_LAYERS = {
@@ -90,13 +115,19 @@ def _bind():
     from compas_singular.mcp.bridge import spool
     from compas_singular.mcp.bridge import wire
     from compas_singular.rhino.helpers.helpers import bake_mesh
+    from compas_singular.rhino.helpers.helpers import bake_polylines
     from compas_singular.rhino.helpers.helpers import clear_layer
+    from compas_singular.rhino.helpers.helpers import curve_points
+    from compas_singular.rhino.helpers.helpers import read_coarse
+    from compas_rhino.conversions import mesh_to_compas
     from compas_singular.rhino.helpers.helpers import read_boundary_loops
     from compas_singular.rhino.helpers.helpers import read_mesh
     from compas_singular.rhino.helpers.helpers import read_polylines
     _BOUND.update({
         "package": compas_singular, "spool": spool, "wire": wire,
-        "bake_mesh": bake_mesh, "clear_layer": clear_layer,
+        "bake_mesh": bake_mesh, "bake_polylines": bake_polylines,
+        "clear_layer": clear_layer, "curve_points": curve_points,
+        "read_coarse": read_coarse, "mesh_to_compas": mesh_to_compas,
         "read_boundary_loops": read_boundary_loops, "read_mesh": read_mesh,
         "read_polylines": read_polylines,
     })
@@ -154,11 +185,89 @@ def _busy():
 
 
 # ======================================================================
-# the three verbs
+# the verbs
 # ======================================================================
 
 def _verb_ping(args):
     return {"document": document_name()}
+
+
+def _point_of(guid):
+    coordinates = rs.PointCoordinates(guid)
+    return [float(coordinates[0]), float(coordinates[1]), float(coordinates[2])]
+
+
+def _read_domain(bound, spacing):
+    """``(outer, inners, guides, points)`` from the domain layers. Reads only.
+
+    NOT ``read_boundaries``: that one DELETES any inner boundary, guide or pole
+    lying outside the outer boundary. Correct for a person driving a selection
+    command, unacceptable for a read.
+    """
+    outer, inners = [], []
+    try:
+        outer, inners = bound["read_boundary_loops"](spacing)
+    except RuntimeError:
+        pass                      # no Outer layer; the tool warns about it
+
+    # ``curve_points``, not ``read_polylines``: that one skips every curve that
+    # is not literally a polyline, so a guide drawn as an arc or a NURBS curve
+    # never reached the server at all -- silently.
+    guides = []
+    for guid in rs.ObjectsByLayer("Guides") or []:
+        try:
+            points = bound["curve_points"](guid, spacing)
+        except Exception:
+            continue
+        if len(points) >= 2:
+            guides.append(points)
+
+    # Read with plain rhinoscriptsyntax: the only helper that reads them is
+    # ``read_boundaries``, which DELETES any that fall outside the outer wall.
+    points = []
+    for guid in rs.ObjectsByLayer("PointFeatures") or []:
+        try:
+            points.append(_point_of(guid))
+        except Exception:
+            continue
+    return outer, inners, guides, points
+
+
+def _read_selection(bound, spacing):
+    """The domain and a mesh from what is SELECTED, whatever layer it is on.
+
+    Closed curves are loops: the one with the largest bounding box is the outer
+    wall and the rest are holes. Open curves are guides, points are point
+    features, and the first mesh is the mesh. Classified by geometry alone, so
+    nothing has to be moved onto the Outer/Inner/Guides layers first.
+    """
+    loops, guides, points, mesh = [], [], [], None
+    for guid in rs.SelectedObjects() or []:
+        try:
+            if rs.IsMesh(guid):
+                if mesh is None:
+                    mesh = bound["mesh_to_compas"](rs.coercemesh(guid))
+            elif rs.IsCurve(guid):
+                curve_points = bound["curve_points"](guid, spacing)
+                if len(curve_points) < 2:
+                    continue
+                if rs.IsCurveClosed(guid):
+                    loops.append(curve_points)
+                else:
+                    guides.append(curve_points)
+            elif rs.IsPoint(guid):
+                points.append(_point_of(guid))
+        except Exception:
+            continue
+
+    def extent(loop):
+        xs = [p[0] for p in loop]
+        ys = [p[1] for p in loop]
+        return (max(xs) - min(xs)) * (max(ys) - min(ys))
+
+    loops.sort(key=extent, reverse=True)
+    outer = loops[0] if loops else []
+    return outer, loops[1:], guides, points, mesh
 
 
 def _verb_pull(args):
@@ -168,47 +277,23 @@ def _verb_pull(args):
     spacing = float(args.get("spacing") or 0.125)
     resolved = PULL_LAYERS.get(layer, layer)
 
-    # NOT ``read_boundaries``: that one DELETES any inner boundary, guide or
-    # pole lying outside the outer boundary. Correct for a person driving a
-    # selection command, unacceptable for a read. These two only read.
-    outer, inners = [], []
-    try:
-        outer, inners = bound["read_boundary_loops"](spacing)
-    except RuntimeError:
-        pass                      # no Outer layer; the tool warns about it
-    try:
-        guides = bound["read_polylines"]("Guides")
-    except Exception:
-        guides = []
-
-    # Point features, read with plain rhinoscriptsyntax rather than through
-    # helpers: the only helper that reads them is ``read_boundaries``, and that
-    # one DELETES any that fall outside the outer boundary. These are drawn by
-    # the server so a person -- or a model looking at the image -- can see
-    # whether each one actually became a pole.
-    points = []
-    for guid in rs.ObjectsByLayer("PointFeatures") or []:
-        try:
-            coordinates = rs.PointCoordinates(guid)
-        except Exception:
-            continue
-        if coordinates is not None:
-            points.append([float(coordinates[0]), float(coordinates[1]),
-                           float(coordinates[2])])
-
-    mesh = None
-    if layer == "Mesh":
-        # The coarse layout carries poles, which a plain mesh read would drop.
-        from compas_singular.rhino.helpers.helpers import read_coarse
-        try:
-            mesh, _poles = read_coarse()
-        except RuntimeError:
-            mesh = None
+    if args.get("selection"):
+        outer, inners, guides, points, mesh = _read_selection(bound, spacing)
+        layer = "(selection)"
     else:
-        try:
-            mesh = bound["read_mesh"](resolved)
-        except RuntimeError:
-            mesh = None
+        outer, inners, guides, points = _read_domain(bound, spacing)
+        mesh = None
+        if layer == "Mesh":
+            # The coarse layout carries poles, which a plain mesh read drops.
+            try:
+                mesh, _poles = bound["read_coarse"]()
+            except RuntimeError:
+                mesh = None
+        else:
+            try:
+                mesh = bound["read_mesh"](resolved)
+            except RuntimeError:
+                mesh = None
 
     return {
         "document": document_name(),
@@ -218,6 +303,51 @@ def _verb_pull(args):
         "guides": [[list(p) for p in g] for g in guides],
         "points": points,
         "mesh": bound["wire"].mesh_to_wire(mesh) if mesh is not None else None,
+    }
+
+
+def _verb_pull_coarse(args):
+    """Read a coarse layout the way ``CMD_start.read_layout`` does. Changes nothing.
+
+    Everything a layout needs to come back as it went out: the baked mesh on
+    ``Skeleton::Mesh`` with its poles, the edge shapes on ``Skeleton::Polylines``,
+    the side-car carrying strips / densities / patterns, and the domain. The
+    side-car is sent as TEXT and matched against the mesh on the server, so the
+    link still decides nothing.
+    """
+    import os
+    bound = _fresh()
+    spacing = float(args.get("spacing") or 0.125)
+    outer, inners, guides, points = _read_domain(bound, spacing)
+
+    mesh = None
+    try:
+        mesh, _poles = bound["read_coarse"]()
+    except RuntimeError:
+        mesh = None
+
+    polylines = []
+    try:
+        polylines = bound["read_polylines"](dict(SKELETON_LAYERS)["polylines"])
+    except Exception:
+        polylines = []
+
+    side_car = None
+    path = cache_path(COARSE_CACHE, create=False)
+    if os.path.isfile(path):
+        with open(path, "r") as stream:
+            side_car = stream.read()
+
+    return {
+        "document": document_name(),
+        "outer": [list(p) for p in outer] if outer else [],
+        "inners": [[list(p) for p in loop] for loop in inners],
+        "guides": [[list(p) for p in g] for g in guides],
+        "points": points,
+        "layout": bound["wire"].mesh_to_wire(mesh) if mesh is not None else None,
+        "polylines": [[list(p) for p in curve] for curve in polylines],
+        "side_car": side_car,
+        "side_car_path": path if side_car is not None else None,
     }
 
 
@@ -279,7 +409,162 @@ def _verb_push(args):
     }
 
 
-VERBS = {"ping": _verb_ping, "pull": _verb_pull, "push": _verb_push}
+def _write_side_car(text):
+    """Write the layout's side-car, keeping the one it replaces. ``(path, backup)``.
+
+    Outside the undo record, necessarily -- Rhino's undo does not reach files.
+    That is safe by design: ``CMD_start.read_layout`` only trusts a side-car
+    whose corners match the mesh on ``Skeleton::Mesh``, so a Ctrl+Z of the push
+    leaves this one unmatched and ignored, and ``coarse_before.json`` still holds
+    what was there.
+    """
+    import os
+    import shutil
+    path = cache_path(COARSE_CACHE)
+    backup = None
+    if os.path.isfile(path):
+        backup = cache_path(COARSE_CACHE + "_before")
+        shutil.copyfile(path, backup)
+    with open(path, "w") as stream:
+        stream.write(text)
+    return path, backup
+
+
+def _verb_push_coarse(args):
+    """Bake a coarse layout where the CMD_ commands look for one. A write.
+
+    Everything is computed by the server: the layout, its poles, the shape of
+    every edge, and the side-car carrying what a bake cannot -- strips, densities
+    and dense patterns. This verb only puts them in the document, the four
+    layers ``CMD_coarse_mesh`` would have written, so ``CMD_densities``,
+    ``CMD_quad_mesh`` and ``CMD_edit_coarse_mesh`` carry on from it.
+    """
+    bound = _fresh()
+    payload = args.get("layout")
+    if not payload:
+        raise ValueError("the push carried no layout")
+    mesh = bound["wire"].mesh_from_wire(payload)
+    side_car = args.get("side_car")
+
+    try:
+        selected = list(rs.SelectedObjects() or [])
+    except Exception:
+        selected = []
+
+    counts = {}
+    serial = sc.doc.BeginUndoRecord("MCP push coarse")
+    try:
+        for _key, layer in SKELETON_LAYERS:
+            ensure_layer(layer)
+        ensure_layer(COARSE_BEFORE_LAYER)
+        bound["clear_layer"](COARSE_BEFORE_LAYER)
+        moved = 0
+        for _key, layer in SKELETON_LAYERS:
+            for guid in rs.ObjectsByLayer(layer) or []:
+                try:
+                    rs.ObjectLayer(guid, COARSE_BEFORE_LAYER)
+                    moved += 1
+                except Exception:
+                    pass
+
+        layers = dict(SKELETON_LAYERS)
+        bound["bake_mesh"](mesh, layers["mesh"], clear_existing=False)
+
+        poles = [list(p) for p in payload.get("poles") or []]
+        counts["poles"] = 0
+        if poles:
+            # RAISES on refusal, like every rs.Add* -- let it: a layout pushed
+            # without its poles would read back with its pseudo-quads unregistered.
+            for guid in rs.AddPoints(poles) or []:
+                rs.ObjectLayer(guid, layers["poles"])
+                counts["poles"] += 1
+
+        for key in ("polylines", "edge_curves"):
+            guids, skipped = bound["bake_polylines"](
+                args.get(key) or [], layers[key], clear_existing=False)
+            counts[key] = len(guids)
+            counts[key + "_skipped"] = skipped
+    finally:
+        sc.doc.EndUndoRecord(serial)
+        try:
+            rs.UnselectAllObjects()
+            alive = [g for g in selected if rs.IsObject(g)]
+            if alive:
+                rs.SelectObjects(alive)
+        except Exception:
+            pass
+
+    side_car_path = backup = None
+    if side_car:
+        side_car_path, backup = _write_side_car(side_car)
+
+    result = {
+        "document": document_name(),
+        "layers": dict(SKELETON_LAYERS),
+        "faces": mesh.number_of_faces(),
+        "vertices": mesh.number_of_vertices(),
+        "before_layer": COARSE_BEFORE_LAYER if moved else None,
+        "moved_aside": moved,
+        "side_car": side_car_path,
+        "side_car_before": backup,
+        "undo_record": "MCP push coarse",
+    }
+    result.update(counts)
+    return result
+
+
+#: Where markers go. Its own branch, so clearing it can never reach a layer that
+#: holds a mesh or a layout.
+MARKERS_LAYER = ROOT + "::MCP::Markers"
+
+
+def _verb_push_markers(args):
+    """Put labelled dots in the document where the server says to look.
+
+    Replaces the previous set, kind by kind, so markers do not pile up. A kind
+    with nothing to mark is cleared too -- an old "worst face" dot left behind
+    after the face was fixed would point at nothing.
+    """
+    bound = _fresh()
+    markers = args.get("markers") or []
+    kinds = sorted(set(args.get("kinds") or []) | set(m.get("kind", "marker") for m in markers))
+
+    try:
+        selected = list(rs.SelectedObjects() or [])
+    except Exception:
+        selected = []
+
+    counts = {}
+    serial = sc.doc.BeginUndoRecord("MCP markers")
+    try:
+        for kind in kinds:
+            layer = ensure_layer(MARKERS_LAYER + "::" + kind)
+            bound["clear_layer"](layer)
+            counts[kind] = 0
+        for marker in markers:
+            layer = MARKERS_LAYER + "::" + marker.get("kind", "marker")
+            # RAISES on refusal like every rs.Add* -- one bad dot is reported by
+            # the exception, not skipped silently.
+            guid = rs.AddTextDot(str(marker.get("text", "")), marker["point"])
+            rs.ObjectLayer(guid, layer)
+            counts[marker.get("kind", "marker")] += 1
+    finally:
+        sc.doc.EndUndoRecord(serial)
+        try:
+            rs.UnselectAllObjects()
+            alive = [g for g in selected if rs.IsObject(g)]
+            if alive:
+                rs.SelectObjects(alive)
+        except Exception:
+            pass
+
+    return {"document": document_name(), "layer": MARKERS_LAYER,
+            "counts": counts, "undo_record": "MCP markers"}
+
+
+VERBS = {"ping": _verb_ping, "pull": _verb_pull, "push": _verb_push,
+         "push_coarse": _verb_push_coarse, "pull_coarse": _verb_pull_coarse,
+         "push_markers": _verb_push_markers}
 
 
 def handle(request_id, verb, args):
@@ -289,8 +574,8 @@ def handle(request_id, verb, args):
     if function is None:
         bound["spool"].answer(
             request_id, False,
-            error="this link understands ping, pull and push, not "
-                  "{!r}".format(verb))
+            error="this link understands {}, not {!r}".format(
+                ", ".join(sorted(VERBS)), verb))
         return
     try:
         result = function(args or {})

@@ -47,8 +47,8 @@ from compas_singular.framefield.quality import mesh_quality
 from CMD_start import get_settings, set_settings
 from CMD_start import cache_path, read_layout, FIELD_CACHE
 from CMD_start import resolve_relax, resolve_symmetry
-# One implementation, shared with CMD_densities -- see density_common.
-from density_common import apply_densities
+# One implementation, shared with CMD_densities.
+from CMD_start import resolve_densities
 
 #The walls the layout's boundary edges densify ALONG, as a multiple of the
 #background spacing. Finer than the background, because these points are the
@@ -135,14 +135,15 @@ def main():
     # ------------------------------------------------------------------
     # densities, then the mesh
     # ------------------------------------------------------------------
-    applied, lost = apply_densities(coarse, settings["target_length"])
-    if lost:
-        print("  re-pick those strips -- they are meshing at the target.")
+    # The densities step 5 saved on the layout. Re-derived only when the layout
+    # has none -- read from the baked mesh, or step 5 never ran -- because
+    # ``densification`` raises KeyError on the first strip without one.
+    resolve_densities(coarse, settings)
 
     if settings["field_aware"] and field is not None:
         dense = coarse.densification(edges_to_curves=edges_to_curves, field=field)
     else:
-        dense = coarse.densification(edges_to_curves=edges_to_curves)
+        dense = coarse.quad_mesh(edges_to_curves=edges_to_curves)
 
     layer = rs.AddLayer("QuadMesh", parent="TopologyProblem")
     clear_layer(layer, clean_sublayers=True)
