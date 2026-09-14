@@ -5,6 +5,7 @@ from __future__ import division
 from .mesh_quad_coarse import *  # noqa: F401 F403
 from .coloring import *  # noqa: F401 F403
 from .coarse_curves import *  # noqa: F401 F403
+from .coarse_network import *  # noqa: F401 F403
 
 import types  # noqa: E402
 

@@ -19,6 +19,7 @@ __all__ = [
     'mesh_move_vertices_by',
     'mesh_move_vertex_to',
     'mesh_move_vertices_to',
+    'is_face_degenerate',
     'trimesh_face_circle',
     'mesh_weld',
     'meshes_join',
@@ -107,6 +108,48 @@ def mesh_move_vertices_to(mesh, key_to_point):
         mesh_move_vertex_to(mesh, point, vkey)
 
 
+#: Relative height below which a triangle counts as flat. The test compares the
+#: doubled area against the longest edge SQUARED, so the quantity is the
+#: triangle's height as a fraction of its own size -- dimensionless, and the same
+#: verdict whether the model is drawn in millimetres or in metres. Double
+#: precision carries ~16 digits, so 1e-12 is four orders of magnitude above the
+#: rounding noise it is meant to catch and many orders below any sliver a
+#: Delaunay triangulation produces on purpose.
+FLATNESS = 1e-12
+
+
+def is_face_degenerate(a, b, c, tol=FLATNESS):
+    """Is a triangle flat -- its three corners collinear, or two of them equal?
+
+    Parameters
+    ----------
+    a, b, c : list
+        The three corners, as ``[x, y, z]``.
+    tol : float, optional
+        Relative height below which the triangle counts as flat.
+
+    Returns
+    -------
+    bool
+
+    Notes
+    -----
+    Deliberately not ``length_vector(cross_vectors(ab, ac)) == 0``. A flat
+    triangle has zero area in exact arithmetic only; in floats the answer
+    depends on WHICH pair of edge vectors the cross product is taken from --
+    the same collinear triple gives 0.0 from ``ab x ac`` and 8e-17 from
+    ``ba x cb``. :func:`trimesh_face_circle` divides by the second, so an exact
+    test on the first let flat faces through to a ZeroDivisionError there.
+    Anything scale-relative is immune to that disagreement, since the two
+    formulations differ only by rounding.
+    """
+    ab = subtract_vectors(b, a)
+    ac = subtract_vectors(c, a)
+    bc = subtract_vectors(c, b)
+    longest = max(length_vector(ab), length_vector(ac), length_vector(bc))
+    return length_vector(cross_vectors(ab, ac)) <= tol * longest ** 2
+
+
 def trimesh_face_circle(mesh, fkey):
     """Circumcircle of a triangular face.
 
@@ -122,6 +165,14 @@ def trimesh_face_circle(mesh, fkey):
     tuple or None
         ``(center, radius, normal)`` -- centre first, which is the ordering
         compas_singular relies on -- or None if the face is not a triangle.
+
+    Raises
+    ------
+    ValueError
+        If the triangle is flat. A flat triangle has no circumcircle, and the
+        closed form below divides by its doubled squared area.
+        :func:`boundary_triangulation` deletes flat faces before any caller here
+        gets to walk them, so reaching this means one was built some other way.
 
     Notes
     -----
@@ -154,6 +205,10 @@ def trimesh_face_circle(mesh, fkey):
 
     normal = normalize_vector(cross_vectors(ab, ac))
     d = 2 * length_vector_sqrd(cross_vectors(ba, cb))
+    if d == 0.0 or is_face_degenerate(a, b, c):
+        raise ValueError(
+            "face {} of the mesh is flat -- its three vertices {}, {} and {} are "
+            "collinear, so it has no circumcircle".format(fkey, a, b, c))
     A = length_vector_sqrd(cb) * dot_vectors(ba, ca) / d
     B = length_vector_sqrd(ca) * dot_vectors(ab, cb) / d
     C = length_vector_sqrd(ba) * dot_vectors(ac, bc) / d

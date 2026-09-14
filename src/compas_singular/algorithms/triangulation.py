@@ -3,9 +3,6 @@ from __future__ import print_function
 from __future__ import division
 
 from compas.geometry import is_point_in_polygon_xy
-from compas.geometry import length_vector
-from compas.geometry import subtract_vectors
-from compas.geometry import cross_vectors
 from compas.geometry import delaunay_triangulation as delaunay_from_points
 from compas.geometry import distance_point_point
 from compas.geometry import intersection_segment_segment_xy
@@ -17,6 +14,7 @@ from compas.tolerance import TOL
 from ..datastructures import Mesh
 from ..datastructures import Network
 from ..datastructures import trimesh_face_circle
+from ..datastructures import is_face_degenerate
 
 
 __all__ = [
@@ -281,12 +279,39 @@ def boundary_triangulation(outer_boundary, inner_boundaries, polyline_features=[
 
     delaunay_mesh = Mesh.from_vertices_and_faces(vertices, faces)
 
-    # delete false faces with aligned vertices
+    # delete false faces with aligned vertices.
+    #
+    # Qhull emits flat simplices wherever the input points are collinear, and
+    # the discretisation above puts a RUN of collinear points along every
+    # straight stretch of wall -- so a polygonal domain makes them by the
+    # dozen. The test has to be scale-relative rather than an exact zero:
+    # a flat triangle's doubled area comes out as 0.0 from one pair of its edge
+    # vectors and as 8e-17 from another, and the next loop divides by the second
+    # formulation. An exact test on the first let those through to a
+    # ZeroDivisionError in ``trimesh_face_circle`` -- seen on a 12-gon wall
+    # around a hexagonal hole, where a third of the flat faces landed on the
+    # wrong side of the disagreement.
+    #
+    # Note what that makes the failure look like from the front end: REDRAWING
+    # THE SAME SHAPE FIXES IT. The corners land on slightly different floats,
+    # the flat faces come out of Qhull in a different vertex order, and the two
+    # formulations happen to agree that time. Nothing about the geometry
+    # changed, so an intermittent crash here is not evidence that the drawing
+    # was at fault.
+    #
+    # The exact test this replaced, kept for reference -- it needs
+    # ``length_vector``, ``subtract_vectors`` and ``cross_vectors`` from
+    # ``compas.geometry`` back at the top of the module to run:
+    #
+    # for fkey in list(delaunay_mesh.faces()):
+    #     a, b, c = [delaunay_mesh.vertex_coordinates(vkey) for vkey in delaunay_mesh.face_vertices(fkey)]
+    #     ab = subtract_vectors(b, a)
+    #     ac = subtract_vectors(c, a)
+    #     if length_vector(cross_vectors(ab, ac)) == 0:
+    #         delaunay_mesh.delete_face(fkey)
     for fkey in list(delaunay_mesh.faces()):
         a, b, c = [delaunay_mesh.vertex_coordinates(vkey) for vkey in delaunay_mesh.face_vertices(fkey)]
-        ab = subtract_vectors(b, a)
-        ac = subtract_vectors(c, a)
-        if length_vector(cross_vectors(ab, ac)) == 0:
+        if is_face_degenerate(a, b, c):
             delaunay_mesh.delete_face(fkey)
 
     # delete faces outisde the borders

@@ -175,7 +175,7 @@ class SkeletonDecomposition(Skeleton):
         # would otherwise be re-sampling this function's own approximation.
         inner_boundaries = list(inner_boundaries or [])
         outer_dense, inners_dense = discretise_boundary(
-            outer_boundary, inner_boundaries, target_length=target_length,
+            outer_boundary, inner_boundaries, spacing=target_length,
             alpha=alpha, d_min=d_min)
         # The features get the SAME sampling as the walls. Thesis eq. 4.1 is
         # stated for every curve, and a feature is cut into the Delaunay along
@@ -450,7 +450,7 @@ class SkeletonDecomposition(Skeleton):
         self.store_pole_data(poles)
         return self.mesh
 
-    def coarse_mesh(self, poles=None, force=False):
+    def coarse_mesh(self, poles=None, force=False) -> CoarsePseudoQuadMesh:
         """**The coarse quad layout. The same object every time you ask.**
 
         The entry point for the workflow::
@@ -568,7 +568,7 @@ class SkeletonDecomposition(Skeleton):
         outer_wall, inner_walls = discretise_boundary(
             self.inputs['outer_boundary'],
             self.inputs.get('inner_boundaries') or [],
-            target_length=wall_sampling, alpha=None, d_min=None)
+            spacing=wall_sampling, alpha=None, d_min=None)
         walls = [outer_wall] + inner_walls
 
         if snap:
@@ -600,7 +600,16 @@ class SkeletonDecomposition(Skeleton):
 
         for polyedge in [bdry + bdry[:1] for bdry in self.boundaries()]:
 
-            splits = set([vkey for vkey in polyedge if vkey in all_splits])
+            # In polyedge ORDER, and unique. It was a set, which is neither:
+            # the ``len(splits) == 1`` branch below indexes it, and ``set[0]``
+            # raises ``TypeError: 'set' object is not subscriptable`` -- hit on a
+            # square with two symmetric curve features, 10 of 48 bulge/spacing
+            # combinations. A set would also make the two-split branch's output
+            # depend on iteration order.
+            splits = []
+            for vkey in polyedge:
+                if vkey in all_splits and vkey not in splits:
+                    splits.append(vkey)
             new_splits = []
 
             if len(splits) == 0:
@@ -807,9 +816,22 @@ class SkeletonDecomposition(Skeleton):
                     # The gap that matters is case 0 -- all three corners
                     # interior -- which neither this code nor S4.2.3.2 covers,
                     # and which is what a free curve extremity produces.
-                    polyline = Polyline(self.decomposition_polyline(*map(lambda x: TOL.geometric_key(mesh.vertex_coordinates(x)), boundary_vertices)))
-                    point = polyline.point_at(t=.5, snap=True)
-                    new_vkey = mesh.add_vertex(attr_dict={'x': point.x, 'y': point.y, 'z': point.z})
+                    # The merge is the point of this case; the decomposition
+                    # polyline is only consulted for WHERE to put the merged
+                    # vertex. There is not always one joining the pair -- a real
+                    # plate raised ``TypeError: 'NoneType' object is not
+                    # iterable`` here -- and the two are coincident anyway, so
+                    # their centroid is the honest fallback.
+                    branch = self.decomposition_polyline(
+                        *map(lambda x: TOL.geometric_key(mesh.vertex_coordinates(x)), boundary_vertices))
+                    if branch is not None:
+                        at = Polyline(branch).point_at(t=.5, snap=True)
+                        point = [at.x, at.y, at.z]
+                    else:
+                        point = centroid_points(
+                            [mesh.vertex_coordinates(vkey) for vkey in boundary_vertices])
+                    new_vkey = mesh.add_vertex(
+                        attr_dict={'x': point[0], 'y': point[1], 'z': point[2]})
 
                     # modify triangular face
                     mesh.delete_face(fkey)
@@ -954,7 +976,7 @@ class SkeletonDecomposition(Skeleton):
             return
 
         try:
-            from ..framefield.repair import solve_non_quad_faces
+            from ..editing.repair import solve_non_quad_faces
         except Exception as exc:      # the frame-field extras are optional
             self.repair_notes.append(
                 'polygonal faces left and the fallback repair is unavailable ({})'.format(exc))

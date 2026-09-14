@@ -137,7 +137,7 @@ class Mesh(Mesh):
 
         mesh = cls.from_json(filepath)
 
-        for key in ('strips', 'strips_density', 'polyedges'):
+        for key in ('strips', 'strips_density', 'polyedges', 'dense_pattern'):
             table = mesh.attributes.get(key)
             if not isinstance(table, dict):
                 continue

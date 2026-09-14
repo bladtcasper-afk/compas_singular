@@ -43,6 +43,7 @@ Operations
     mesh_move_vertices_by
     mesh_move_vertex_to
     mesh_move_vertices_to
+    is_face_degenerate
     trimesh_face_circle
     mesh_weld
     meshes_join
