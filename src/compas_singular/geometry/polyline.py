@@ -147,7 +147,7 @@ def discretise_line(line, spacing):
     return _subdivide_chain(points, spacing)
 
 
-def discretise_boundary(outer, inners=None, target_length=None, alpha=0.04, d_min=5):
+def discretise_boundary(outer, inners=None, alpha=0.04, d_min=5, spacing=None):
     """Discretise closed boundary loops, per Oval's thesis eq. 4.1.
 
     The number of points of each curve ``i`` is
@@ -186,9 +186,6 @@ def discretise_boundary(outer, inners=None, target_length=None, alpha=0.04, d_mi
         as the outer loop, which is the point of taking them here rather than
         loop by loop: a small hole measured against its own bounding box would
         come back far denser than the wall beside it.
-    target_length : float, optional
-        Maximum segment length, given directly. Overrides ``alpha`` when not
-        ``None``.
     alpha : float, optional
         Fraction of ``D`` to use as the target length when ``target_length`` is
         ``None``. ``None`` for both returns the loops unchanged -- the explicit
@@ -196,6 +193,9 @@ def discretise_boundary(outer, inners=None, target_length=None, alpha=0.04, d_mi
     d_min : int, optional
         Fewest points per loop, whatever the target length says. ``None`` or
         ``0`` disables the floor.
+    spacing : float, optional
+        Maximum segment length, given directly. Overrides ``alpha`` when not
+        ``None``.
 
     Returns
     -------
@@ -206,19 +206,19 @@ def discretise_boundary(outer, inners=None, target_length=None, alpha=0.04, d_mi
     outer = _clean_loop(outer)
     inners = [_clean_loop(loop) for loop in (inners or [])]
 
-    if target_length is None and alpha is None:
+    if spacing is None and alpha is None:
         return outer, inners
 
-    if target_length is None:
+    if spacing is None:
         diagonal = bounding_box_diagonal(outer, *inners)
         if diagonal <= 0.0:
             return outer, inners
-        target_length = alpha * diagonal
+        spacing = alpha * diagonal
 
-    target_length = float(target_length)
-    if target_length <= 0.0:
+    spacing = float(spacing)
+    if spacing <= 0.0:
         raise ValueError(
-            'target_length must be positive, got {}'.format(target_length))
+            'spacing must be positive, got {}'.format(spacing))
 
     def one(loop):
         if len(loop) < 2:
@@ -228,10 +228,12 @@ def discretise_boundary(outer, inners=None, target_length=None, alpha=0.04, d_mi
         # ``sum(ceil(l_j / s)) >= ceil(perimeter / s) = d_min`` at this spacing.
         perimeter = sum(distance_point_point(a, b)
                         for a, b in pairwise(loop + loop[:1]))
-        spacing = target_length
+        # Its own name: assigning to ``spacing`` in here would make it local to
+        # ``one`` and unbound on this very line.
+        step = spacing
         if d_min and perimeter > 0.0:
-            spacing = min(spacing, perimeter / float(d_min))
-        return _subdivide(loop, spacing)
+            step = min(spacing, perimeter / float(d_min))
+        return _subdivide(loop, step)
 
     return one(outer), [one(loop) for loop in inners]
 
@@ -243,7 +245,7 @@ def resample_loop(points, spacing=None):
     ``target_length``, and ``None`` returns the loop unchanged. New code should
     call :func:`discretise_boundary`, which also applies eq. 4.1.
     """
-    loop, _ = discretise_boundary(points, target_length=spacing,
+    loop, _ = discretise_boundary(points, spacing=spacing,
                                   alpha=None, d_min=None)
     return loop
 

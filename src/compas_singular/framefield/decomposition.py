@@ -26,17 +26,20 @@ from .constraints import as_curve_list
 from .constraints import from_boundary
 from .constraints import from_curves
 from .densify import field_densification
-from .edit import coarse_from_skeleton
-from .edit import mesh_from_faces
-from .edit import warp_polyline
+# These moved to ``editing`` -- they weld, snap and repair a layout from plain
+# geometry and never needed the field. The import direction is one-way:
+# ``framefield`` may use ``editing``, never the reverse.
+from ..editing.rebuild import coarse_from_skeleton
+from ..editing.rebuild import mesh_from_faces
+from ..editing.rebuild import warp_polyline
 from .field import CrossField
 from .quality import hard_floor
 from .quality import mesh_quality
 from .repair import SHARP_TURN
 from .repair import build_network
-from .repair import densifiable
-from .repair import solve_non_quad_faces
-from .repair import topological_quad_split
+from ..editing.repair import densifiable
+from ..editing.repair import solve_non_quad_faces
+from ..editing.repair import topological_quad_split
 from .trace import Tracer
 
 

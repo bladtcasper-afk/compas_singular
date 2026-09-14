@@ -218,7 +218,7 @@ class BackgroundMesh(object):
             target_length = alpha * bounding_box_diagonal(*loops)
 
         outer, inners = discretise_boundary(outer_boundary, inner_boundaries,
-                                            target_length=target_length,
+                                            spacing=target_length,
                                             d_min=d_min)
 
         points = list(outer)
