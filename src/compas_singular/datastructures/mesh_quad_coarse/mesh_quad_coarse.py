@@ -14,12 +14,23 @@ from compas.geometry import Polyline
 from compas.itertools import pairwise
 from compas.itertools import linspace
 
-from ..mesh import Mesh
-from ..mesh import meshes_join_and_weld
-from ..mesh_quad import QuadMesh
+from compas_singular.datastructures.mesh import Mesh
+from compas_singular.datastructures.mesh import meshes_join_and_weld
+from compas_singular.datastructures.mesh_quad import QuadMesh
+
+from compas_singular.datastructures.mesh_quad_coarse.patterns import (
+    PATTERNS,
+)
 
 
 __all__ = ['CoarseQuadMesh']
+
+
+def _int_key(key):
+    """A key JSON stringified back to the integer it was; anything else as is."""
+    if isinstance(key, str) and key.lstrip('-').isdigit():
+        return int(key)
+    return key
 
 
 class CoarseQuadMesh(QuadMesh):
@@ -27,10 +38,34 @@ class CoarseQuadMesh(QuadMesh):
     def __init__(self, *args, **kwargs):
         super(CoarseQuadMesh, self).__init__(*args, **kwargs)
         self.attributes['strips_density'] = {}
+        self.attributes['dense_pattern'] = {}
         self.attributes['vertex_coarse_to_dense'] = {}
         self.attributes['edge_coarse_to_dense'] = {}
         self.attributes['quad_mesh'] = None
         self.attributes['polygonal_mesh'] = None
+        # The SHAPE of each coarse edge, when it is known. See :meth:`edges_to_curves`.
+        self.attributes['edges_to_curves'] = []
+
+    @classmethod
+    def __from_data__(cls, data):
+        # JSON object keys are always strings, so a saved layout comes back with
+        # strip keys '0', '1', ... -- and nothing fails loudly: strip and density
+        # lookups still agree with each other, but ``get_face_pattern(0)`` misses
+        # '0' and silently densifies every patch as ortho, and ``add_strip``'s
+        # ``max(strips) + 1`` raises. Restore the integer keys, and the edge
+        # tuples JSON turned into lists, as ``PseudoQuadMesh`` does for its poles.
+        mesh = super(CoarseQuadMesh, cls).__from_data__(data)
+        attributes = mesh.attributes
+        attributes['strips'] = {
+            _int_key(skey): [tuple(edge) for edge in edges]
+            for skey, edges in (attributes.get('strips') or {}).items()}
+        attributes['strips_density'] = {
+            _int_key(skey): d
+            for skey, d in (attributes.get('strips_density') or {}).items()}
+        attributes['dense_pattern'] = {
+            _int_key(fkey): pattern
+            for fkey, pattern in (attributes.get('dense_pattern') or {}).items()}
+        return mesh
 
     # --------------------------------------------------------------------------
     # constructors
@@ -120,6 +155,48 @@ class CoarseQuadMesh(QuadMesh):
         self.attributes['polygonal_mesh'] = polygonal_mesh
 
     # --------------------------------------------------------------------------
+    # edge curvature getter and setter
+    # --------------------------------------------------------------------------
+
+    def edges_to_curves(self):
+        """``{(u, v): polyline}`` -- the shape of every coarse edge that has one.
+
+        A coarse edge is a straight chord as far as the layout is concerned; the
+        layout is a topological quad graph and has to stay one, because strips,
+        densities, poles and ``add_strip`` are all defined on it. So the SHAPE of
+        each edge lives here, and :meth:`densification` picks it up.
+
+        Empty unless something put curves here -- a layout from
+        ``from_coarse_polylines``, or any caller of :meth:`set_edges_to_curves`. A
+        mesh from ``from_quad_mesh``, ``from_vertices_and_faces`` or
+        ``from_polylines`` has none, so it densifies exactly as it always has.
+
+        Returns
+        -------
+        dict[tuple[int, int], list[[x, y, z]]]
+            Keyed one way round per edge. ``densification`` looks up ``(v, u)`` and
+            reverses when ``(u, v)`` is absent, so both directions are covered.
+        """
+        return {(u, v): points
+                for u, v, points in self.attributes.get('edges_to_curves') or []}
+
+    def set_edges_to_curves(self, edges_to_curves):
+        """Remember the shape of each coarse edge. ``None`` or ``{}`` clears it.
+
+        Stored as a list of ``[u, v, points]`` rather than as the dict itself:
+        ``attributes`` round-trips through ``save_to_json``, and ``json.dumps``
+        refuses tuple keys. The same problem ``PseudoQuadMesh.__from_data__``
+        already solves for ``face_pole``, solved here by not creating it.
+
+        Parameters
+        ----------
+        edges_to_curves : dict[tuple[int, int], list[[x, y, z]]] or None
+        """
+        self.attributes['edges_to_curves'] = [
+            [u, v, [list(point) for point in points]]
+            for (u, v), points in (edges_to_curves or {}).items()]
+
+    # --------------------------------------------------------------------------
     # element child-parent relation getters
     # --------------------------------------------------------------------------
 
@@ -159,6 +236,21 @@ class CoarseQuadMesh(QuadMesh):
     # --------------------------------------------------------------------------
     # density setters
     # --------------------------------------------------------------------------
+
+    def has_densities(self):
+        """Does every strip already carry a density?
+
+        True for a layout loaded from a file its densities were saved to. False
+        for one with no densities set, or one whose strips changed since -- a
+        partial table is treated as none, because :meth:`densification` raises
+        ``KeyError`` on the first strip it cannot find.
+
+        Returns
+        -------
+        bool
+        """
+        table = self.attributes.get('strips_density') or {}
+        return bool(table) and all(skey in table for skey in self.strips())
 
     def set_strip_density(self, skey, d):
         """Set the densty of one strip.
@@ -253,6 +345,47 @@ class CoarseQuadMesh(QuadMesh):
         self.set_strips_density(n)
 
     # --------------------------------------------------------------------------
+    # dense pattern setters and getters
+    # --------------------------------------------------------------------------
+
+    def dense_patterns(self):
+        if self.attributes['dense_pattern']=={}:
+            self.attributes['dense_pattern'] = {fkey:'ortho' for fkey in self.faces()}
+        return self.attributes['dense_pattern']
+
+    def get_face_pattern(self, fkey):
+        fkeys = list(self.faces())
+        if fkey not in fkeys:
+            raise ValueError(f'The face key does not correspond to any face of the mesh. Allowed fkeys are: {fkeys}')
+
+        face_patterns = self.attributes['dense_pattern']
+        if fkey not in face_patterns:
+            self.attributes['dense_pattern'][fkey] = 'ortho'
+            print('This face did not have a patterns assigned to it yet. Defaulting to ortho.')
+        return self.attributes['dense_pattern'][fkey]
+
+    def get_faces_with_pattern(self, pattern):
+        if pattern not in PATTERNS:
+            raise ValueError(f'This is not an allowed pattern type. Possible patterns are: {PATTERNS}')
+        face_patterns = self.dense_patterns()
+        return [fkey for fkey, face_pattern in face_patterns.items() if face_pattern==pattern]
+
+    def set_face_pattern(self, fkey, pattern):
+        fkeys = list(self.faces())
+        if fkey not in fkeys:
+            raise ValueError(f'The face key does not correspond to any face of the mesh. Allowed fkeys are: {fkeys}')
+        if pattern not in PATTERNS:
+            raise ValueError(f'This is not an allowed pattern type. Possible patterns are: {PATTERNS}')
+        self.attributes['dense_pattern'][fkey] = pattern
+
+    def set_global_face_pattern(self, pattern):
+        if pattern not in PATTERNS:
+            raise ValueError(f'This is not an allowed pattern type. Possible patterns are: {PATTERNS}')
+        fkeys = self.faces()
+        for fkey in fkeys:
+            self.set_face_pattern(fkey, pattern)
+
+    # --------------------------------------------------------------------------
     # densification
     # --------------------------------------------------------------------------
 
@@ -280,6 +413,12 @@ class CoarseQuadMesh(QuadMesh):
         QuadMesh
             The dense mesh, also stored on this one -- ``get_quad_mesh()``.
         """
+        # A layout that KNOWS the shape of its edges -- one from
+        # ``from_coarse_polylines``, say -- does not make the caller hand them back.
+        # A layout from any other constructor stores none, so this is ``{}``, which
+        # is falsy and falls through to the straight-chord branch exactly as before.
+        if edges_to_curves is None:
+            edges_to_curves = self.edges_to_curves()
 
         if field is not None:
             # The field owns this: it carries its own background and builds its
