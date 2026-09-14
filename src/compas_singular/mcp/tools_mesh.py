@@ -16,13 +16,22 @@ from __future__ import print_function
 
 import math
 
+from ..datastructures.mesh.smoothing import automated_boundary_constraints
 from ..datastructures.mesh.smoothing import boundary_constrained_smoothing
+from ..datastructures.mesh.smoothing import constrained_smoothing
+from ..datastructures.mesh.smoothing import relaxation
 from ..datastructures.mesh.smoothing import smoothing_region
+from ..editing.guide_chain import GuideCurve
+from ..editing.guide_chain import attach_chain
+from ..editing.guide_chain import collect_polyedges
+from ..editing.guide_chain import guide_chain
+from ..editing.guide_chain import mean_edge_length
 from ..framefield.relax import relax_mesh
 from . import render
 from .describe import describe
 from .handle import SelectorError
 from .handle import describe_selector
+from .handle import resolve
 from .handle import select
 from .handle import vertex_handle
 from .library import thresholds
@@ -232,7 +241,8 @@ def _singularity_handles(mesh, limit=24):
     'Every step taken in this session, with the quality before and after each '
     'one and any remarks attached to it. Use this to see what has already been '
     'tried before spending another step, and after a context compaction to '
-    'recover what you were doing.',
+    'recover what you were doing. A step an undo took back is still listed, '
+    'with undone=true -- it is what was tried and rejected.',
     read_only=True, idempotent=True, title='Session history')
 def _t_history(session):
     steps = []
@@ -240,6 +250,8 @@ def _t_history(session):
         steps.append({
             'step': entry['step'],
             'action': entry['action'],
+            'layer': entry.get('layer'),
+            'undone': bool(entry.get('undone')),
             'before': entry.get('before'),
             'after': entry.get('after'),
             'all_improved': entry.get('all_improved'),
@@ -297,11 +309,12 @@ def _t_snapshot(session, label=''):
 
 @tool(
     'undo',
-    'Put every vertex back where the last snapshot had it, and drop the steps '
-    'taken since. Use it when a pass reports all_improved false. Refuses if the '
-    'topology has changed since the snapshot, because a map of positions cannot '
-    'restore that -- no tool in this version changes topology, so that refusal '
-    'should not occur.',
+    'Put every vertex back where the last snapshot had it, and mark the '
+    'dense-mesh steps taken since as undone (coarse-layout steps are '
+    "coarse_undo's business and are left alone). Use it when a pass reports "
+    'all_improved false. Refuses if the topology has changed since the '
+    'snapshot, because a map of positions cannot restore that -- no tool in '
+    'this version changes dense topology, so that refusal should not occur.',
     destructive=True, title='Undo to last snapshot')
 def _t_undo(session):
     ok, detail = session.undo()
@@ -506,3 +519,208 @@ def _t_smooth_region(session, region, kmax=50, damping=0.5, blend=3):
                     region=describe_selector(region), selected=note,
                     core_vertices=len(keys), moved_vertices=len(weights or {}),
                     kmax=int(kmax), damping=float(damping), blend=int(blend))
+
+
+def _guide_points(curve):
+    """Plain points from a ``Polyline`` or an already-bare point list."""
+    return getattr(curve, 'points', curve)
+
+
+@tool(
+    'smooth_guides',
+    'Attach the mesh to its guide curves and smooth. For each guide curve '
+    'pulled from Rhino, chooses the longest run of one polyedge that already '
+    'follows it -- not built up vertex by vertex, CHOSEN, so it cannot fold a '
+    'face the way a radius-based pick can -- moves it onto the guide, and '
+    'runs a constrained smoothing pass with every attached vertex, plus the '
+    'boundary, held. Every guide is selected BEFORE any is attached, so the '
+    'result does not depend on guide order. A boundary vertex is never moved '
+    'onto a guide -- at most it slides along its own wall, since moving it '
+    'would take the wall with it. UNLIKE relax THIS HAS NO GATE: it applies '
+    'what it is told and can make the mesh worse, so it snapshots first and '
+    'reports all_improved. Refuses if no guide curves are loaded.',
+    properties={
+        'tolerance_factor': {
+            'type': 'number',
+            'description': 'How far off a guide a chain vertex may sit, as a '
+                           'multiple of the mesh mean edge length. Default '
+                           '2.0.'},
+        'max_angle': {
+            'type': 'number',
+            'description': "Degrees the polyedge may run off the guide's "
+                           'tangent and still be selected -- this is what '
+                           'cuts a chain where it veers away near the ends. '
+                           'Default 30. Pass 90 to turn this gate off and '
+                           'select on distance alone.'},
+        'hold': {
+            'type': 'string', 'enum': ['fixed', 'sliding'],
+            'description': "How an attached INTERIOR vertex is held. "
+                           "'fixed' (default) pins it where it lands; "
+                           "'sliding' re-projects it every iteration so it "
+                           'may travel along the guide but never leave it.'},
+        'boundary': {
+            'type': 'string', 'enum': ['sliding', 'fixed'],
+            'description': "What an UNATTACHED boundary vertex does. "
+                           "'sliding' (default) lets it slide along the "
+                           "walls; 'fixed' pins it."},
+        'kmax': {'type': 'integer',
+                 'description': 'Iterations. Default 100.'},
+        'damping': {'type': 'number',
+                    'description': 'Between 0 and 1. Default 0.5.'},
+    },
+    title='Smooth to guide curves')
+def _t_smooth_guides(session, tolerance_factor=2.0, max_angle=30.0,
+                     hold='fixed', boundary='sliding', kmax=100, damping=0.5):
+    refusal = _needs_mesh(session)
+    if refusal:
+        return refusal
+    if not session.guides:
+        return {'ok': False,
+                'reason': 'no guide curves are loaded -- rhino_pull reads '
+                          'them from the document; without any there is '
+                          'nothing to attach to'}
+    if hold not in ('fixed', 'sliding'):
+        return {'ok': False,
+                'reason': "hold must be 'fixed' or 'sliding'; got "
+                          '{!r}'.format(hold)}
+    if boundary not in ('sliding', 'fixed'):
+        return {'ok': False,
+                'reason': "boundary must be 'sliding' or 'fixed'; got "
+                          '{!r}'.format(boundary)}
+
+    mesh = session.mesh
+    try:
+        polyedges = collect_polyedges(mesh)
+    except Exception as exc:
+        return {'ok': False,
+                'reason': 'could not collect polyedges: {}: {}'.format(
+                    type(exc).__name__, exc)}
+    average = mean_edge_length(mesh)
+    tolerance = float(tolerance_factor) * average
+
+    proposals, refused = [], []
+    for index, guide in enumerate(session.guides):
+        guide_curve = GuideCurve(_guide_points(guide))
+        selected, info = guide_chain(mesh, guide_curve, tolerance=tolerance,
+                                     max_angle=float(max_angle),
+                                     polyedges=polyedges)
+        if not selected:
+            refused.append({'guide': index, 'reason': info.get('reason', '')})
+            continue
+        proposals.append((index, guide_curve, selected))
+
+    if not proposals:
+        return {'ok': False,
+                'reason': 'no guide attached a chain -- widen tolerance_factor '
+                          'or max_angle',
+                'refused': refused}
+
+    before = session.quality()
+    session.snapshot('before smooth_guides')
+
+    attached, moved = {}, set()
+    for index, guide_curve, selected in proposals:
+        moves, constraints = attach_chain(mesh, selected, guide_curve, hold=hold)
+        for vertex, xyz in moves.items():
+            mesh.vertex_attributes(vertex, 'xyz', xyz)
+        attached.update(constraints)
+        moved.update(moves)
+
+    if boundary == 'sliding':
+        constraints = automated_boundary_constraints(
+            mesh, curves=session.walls or None)
+        fixed = None
+    else:
+        constraints = {}
+        fixed = [v for loop in mesh.vertices_on_boundaries() for v in loop
+                if v not in attached]
+    constraints.update(attached)
+
+    try:
+        constrained_smoothing(mesh, kmax=int(kmax), damping=float(damping),
+                              constraints=constraints, algorithm='area',
+                              fixed=fixed)
+    except Exception as exc:
+        return {'ok': False,
+                'reason': 'smoothing failed: {}: {}'.format(
+                    type(exc).__name__, exc)}
+
+    return _outcome(session, 'smooth_guides', before,
+                    guides_attached=len(proposals), guides_refused=refused,
+                    vertices_moved_onto_guides=len(moved),
+                    vertices_constrained=len(constraints),
+                    hold=hold, boundary=boundary,
+                    kmax=int(kmax), damping=float(damping))
+
+
+@tool(
+    'relax_fdm',
+    'Force-density relaxation: fixed vertices held, everything else finds a '
+    'minimal-tension shape under uniform force density, with boundary edges '
+    'weighted q_factor times heavier than interior ones so the outline holds '
+    'its shape. Needs the compas_fd package; a clean refusal comes back if it '
+    "is not installed. THIS PASS HAS NO GATE, and there is currently no way "
+    "to steer it with custom constraints or loads -- the underlying "
+    "function's own 'constraints' argument is not wired up and is not "
+    'exposed here, so do not expect anything except the fixed set to hold '
+    'its place. Snapshots first and reports all_improved; undo if that is '
+    'false.',
+    properties={
+        'fixed': {
+            'type': 'string', 'enum': ['corners', 'boundary', 'manual'],
+            'description': "Which vertices are held. 'corners' (default) -- "
+                           "just the boundary kinks. 'boundary' -- every "
+                           "boundary vertex. 'manual' -- exactly "
+                           "fixed_vertices."},
+        'fixed_vertices': {
+            'type': 'array', 'items': {'type': 'string'},
+            'description': "Vertex handles to hold. Only used when "
+                           "fixed='manual'."},
+        'q_factor': {
+            'type': 'number',
+            'description': 'How much heavier a boundary edge is weighted '
+                           'than an interior one. Default 100.'},
+    },
+    title='Relax (force density)')
+def _t_relax_fdm(session, fixed='corners', fixed_vertices=None, q_factor=100.0):
+    refusal = _needs_mesh(session)
+    if refusal:
+        return refusal
+    if fixed not in ('corners', 'boundary', 'manual'):
+        return {'ok': False,
+                'reason': "fixed must be 'corners', 'boundary' or 'manual'; "
+                          'got {!r}'.format(fixed)}
+    resolved_fixed = []
+    if fixed == 'manual':
+        if not fixed_vertices:
+            return {'ok': False,
+                    'reason': "fixed='manual' needs a non-empty "
+                              'fixed_vertices list'}
+        missing = []
+        for item in fixed_vertices:
+            key, how = resolve(session.mesh, item)
+            if key is None:
+                missing.append(item)
+            else:
+                resolved_fixed.append(key)
+        if missing:
+            return {'ok': False,
+                    'reason': 'could not place {} of {} handles: {}'.format(
+                        len(missing), len(fixed_vertices),
+                        ', '.join(missing[:3]))}
+
+    before = session.quality()
+    session.snapshot('before relax_fdm')
+    try:
+        relaxation(session.mesh, fixed=fixed, fixed_vertices=resolved_fixed,
+                  q_factor=float(q_factor))
+    except ImportError as exc:
+        return {'ok': False,
+                'reason': 'relax_fdm needs the compas_fd package, which is '
+                          'not installed: {}'.format(exc)}
+    except Exception as exc:
+        return {'ok': False,
+                'reason': 'relax_fdm failed: {}: {}'.format(
+                    type(exc).__name__, exc)}
+    return _outcome(session, 'relax_fdm', before, fixed=fixed,
+                    q_factor=float(q_factor))

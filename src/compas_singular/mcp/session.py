@@ -14,11 +14,18 @@ because it has to; this one does not have to, and the difference is one of the
 things the two approaches are meant to be compared on.
 
 **That cheapness is bought with an assumption, so it is checked.** A position map
-only restores a mesh whose topology has not changed underneath it. Version 1 has
-no tool that changes topology, so the assumption holds -- but :meth:`undo`
-verifies the vertex and face counts anyway and refuses rather than silently
-writing coordinates into the wrong mesh. When a topology tool is added, that
-refusal is the thing that will say so.
+only restores a mesh whose topology has not changed underneath it. :attr:`mesh`
+-- the dense mesh -- still has no tool that changes its topology, so the
+assumption holds for it exactly as before: :meth:`undo` verifies the vertex and
+face counts anyway and refuses rather than silently writing coordinates into
+the wrong mesh.
+
+A topology tool HAS since been added, but scoped to :attr:`coarse` -- the
+coarse layout a strip can be added to or removed from -- and it does not reuse
+this position-map undo at all. A coarse layout is small enough that a whole-mesh
+copy is still cheap, so :meth:`snapshot_coarse` and :meth:`undo_coarse` keep
+their own stack of copies rather than positions. The dense mesh and its undo
+are untouched by any of this.
 
 **The history is the deliverable, not a side effect.** Every step records what
 was asked, what changed, and the quality before and after. The model reads it
@@ -43,6 +50,15 @@ __all__ = ['MeshSession', 'UNDO_DEPTH']
 #: an undo per step would still grow without bound.
 UNDO_DEPTH = 20
 
+#: Actions that change the COARSE layout, and so belong to its undo stack.
+#: Everything else in the history belongs to the dense mesh. ``coarse_densify``
+#: is dense: it reads the layout and replaces the dense mesh.
+COARSE_ACTIONS = frozenset(('create_coarse_mesh', 'coarse_set_density',
+                            'coarse_set_pattern', 'coarse_add_strip',
+                            'coarse_remove_strip', 'coarse_divide',
+                            'coarse_move_corner', 'rhino_pull_coarse',
+                            'coarse_load'))
+
 
 class MeshSession(object):
     """The mesh in hand, the geometry constraining it, and what has been done."""
@@ -61,15 +77,31 @@ class MeshSession(object):
         self.points = []
         #: Where the mesh came from: ``{'kind': 'rhino'|'file', ...}``.
         self.source = None
+        #: The coarse layout, once ``create_coarse_mesh`` has built one --
+        #: a ``CoarsePseudoQuadMesh``, or ``None``. Independent of :attr:`mesh`:
+        #: pulling a new dense mesh does not clear this, because
+        #: ``coarse_densify`` adopts ITS OWN output through the same path and
+        #: clearing the layout that just produced it would be wrong.
+        self.coarse = None
+        #: The ``SkeletonDecomposition`` that built :attr:`coarse`, kept so
+        #: ``coarse_densify`` can ask it for curved-boundary edge shapes.
+        self.decomposition = None
         self.history = []
         self.remarks = []
         self.started = time.time()
         self._undo = []
+        #: The coarse layout's own undo stack -- whole-mesh copies, not
+        #: positions. See the module docstring for why the two are different.
+        self._coarse_undo = []
         #: Monotonic counters behind :attr:`visually_current`. Numbers rather
         #: than a bool because "seen since the last change" is the question, and
         #: a bool would need resetting in every tool that moves a vertex.
         self._changed_at = 0
         self._seen_at = 0
+        #: The same pair for the coarse layout, which ``rhino_push_coarse``
+        #: gates on exactly as ``rhino_push`` gates on the dense mesh's.
+        self._coarse_changed_at = 0
+        self._coarse_seen_at = 0
 
     # --------------------------------------------------------------------
     # loading
@@ -81,7 +113,14 @@ class MeshSession(object):
         Clears the undo stack: a snapshot of the previous mesh's positions
         cannot be applied to this one, and keeping it would only offer an undo
         that must refuse.
+
+        **Drops the coarse layout if the domain changed.** A layout was
+        decomposed from particular walls, guides and points, and its editor
+        reads them back from here -- densifying or editing it against a
+        different domain mixes two problems silently. The same domain pulled
+        again keeps it, so pulling a mesh to go with a layout costs nothing.
         """
+        old_domain = self._domain()
         self.mesh = mesh
         if walls is not None:
             self.walls = _as_polylines(walls)
@@ -89,12 +128,23 @@ class MeshSession(object):
             self.guides = _as_polylines(guides)
         if points is not None:
             self.points = [list(p) for p in points]
+        if self.coarse is not None and self._domain() != old_domain:
+            self.coarse = None
+            self.decomposition = None
+            self._coarse_undo = []
         self.source = source
         self._undo = []
         # A newly adopted mesh has never been looked at.
         self._changed_at = 1
         self._seen_at = 0
         return self
+
+    def _domain(self):
+        """Walls, guides and points as plain nested lists, for comparison."""
+        def curves(items):
+            return [[list(p) for p in getattr(c, 'points', c)] for c in items]
+        return (curves(self.walls), curves(self.guides),
+                [list(p) for p in self.points])
 
     @property
     def loaded(self):
@@ -148,6 +198,19 @@ class MeshSession(object):
         """
         return self._seen_at >= self._changed_at
 
+    def mark_coarse_seen(self):
+        """Record that the coarse layout has been drawn and looked at."""
+        self._coarse_seen_at = self._coarse_changed_at
+
+    @property
+    def coarse_visually_current(self):
+        """Whether the coarse LAYOUT has been looked at since it last changed.
+
+        Bumped by every recorded coarse step and by ``undo_coarse``, so an edit
+        that was refused -- and recorded nothing -- does not demand another look.
+        """
+        return self.coarse is not None and self._coarse_seen_at >= self._coarse_changed_at
+
     # --------------------------------------------------------------------
     # undo
     # --------------------------------------------------------------------
@@ -156,17 +219,28 @@ class MeshSession(object):
         return dict((key, list(self.mesh.vertex_coordinates(key)))
                     for key in self.mesh.vertices())
 
-    def snapshot(self, label=''):
-        """Remember where every vertex is, so a step can be taken back."""
+    def snapshot(self, label='', whole=False):
+        """Remember where every vertex is, so a step can be taken back.
+
+        ``whole=True`` keeps a COPY of the mesh instead of its positions -- what
+        a dense topology edit (``dense_add_line`` / ``dense_remove_line``) needs,
+        since a position map cannot put back faces that are gone. Both kinds
+        share one stack, so ``undo`` always takes back the latest step, whichever
+        kind it was.
+        """
         if self.mesh is None:
             return None
-        self._undo.append({
+        entry = {
             'label': label,
-            'positions': self.positions(),
             'vertices': self.mesh.number_of_vertices(),
             'faces': self.mesh.number_of_faces(),
             'step': len(self.history),
-        })
+        }
+        if whole:
+            entry['mesh'] = self.mesh.copy()
+        else:
+            entry['positions'] = self.positions()
+        self._undo.append(entry)
         while len(self._undo) > UNDO_DEPTH:
             self._undo.pop(0)
         return label
@@ -187,11 +261,15 @@ class MeshSession(object):
         if not self._undo:
             return False, 'nothing to undo -- no snapshot has been taken'
         entry = self._undo.pop()
+        if 'mesh' in entry:
+            self.mesh = entry['mesh']
+            self._mark_undone(entry['step'], 'dense')
+            self.mark_changed()
+            return True, entry['label'] or 'the last snapshot'
         if (entry['vertices'] != self.mesh.number_of_vertices()
                 or entry['faces'] != self.mesh.number_of_faces()):
-            # Not reachable in version 1, which has no topology tool. Kept
-            # because the day one is added, this is the check that says the
-            # position-map undo no longer covers it.
+            # Reachable since the dense line tools: a POSITION snapshot taken
+            # before a topology edit that was not itself undone first.
             return False, ('the mesh has {} vertices and {} faces, but the '
                            'snapshot was taken at {} and {} -- a position undo '
                            'cannot restore a changed topology'.format(
@@ -200,10 +278,63 @@ class MeshSession(object):
                                entry['vertices'], entry['faces']))
         for key, xyz in entry['positions'].items():
             self.mesh.vertex_attributes(key, 'xyz', xyz)
-        del self.history[entry['step']:]
+        self._mark_undone(entry['step'], 'dense')
         # An undo moves every vertex, so the last picture is out of date too.
         self.mark_changed()
         return True, entry['label'] or 'the last snapshot'
+
+    # --------------------------------------------------------------------
+    # coarse-layout undo -- a different stack, because a strip edit changes
+    # topology and a position map cannot restore that
+    # --------------------------------------------------------------------
+
+    def snapshot_coarse(self, label=''):
+        """Remember the coarse layout whole, so a strip edit can be undone."""
+        if self.coarse is None:
+            return None
+        self._coarse_undo.append({'label': label, 'mesh': self.coarse.copy(),
+                                  'step': len(self.history)})
+        while len(self._coarse_undo) > UNDO_DEPTH:
+            self._coarse_undo.pop(0)
+        return label
+
+    def can_undo_coarse(self):
+        return bool(self._coarse_undo)
+
+    def undo_coarse(self):
+        """Restore the coarse layout to its most recent snapshot.
+
+        Returns
+        -------
+        tuple
+            ``(True, label)``, or ``(False, reason)``.
+        """
+        if self.coarse is None:
+            return False, 'no coarse layout is loaded'
+        if not self._coarse_undo:
+            return False, 'nothing to undo -- no coarse snapshot has been taken'
+        entry = self._coarse_undo.pop()
+        self.coarse = entry['mesh']
+        self._coarse_changed_at += 1
+        self._mark_undone(entry['step'], 'coarse')
+        return True, entry['label'] or 'the last coarse snapshot'
+
+    def _mark_undone(self, step, layer):
+        """Flag the steps an undo took back -- of ITS layer only.
+
+        Flagged, not deleted. The two undo stacks interleave in one history, so
+        deleting from a position would take the other layer's steps with it;
+        and a step's index is what its remarks hang on, so deleting would hand
+        those remarks to whatever step reuses the index. A taken-back step is
+        also what "already tried" means, which is worth keeping.
+        """
+        for entry in self.history[step:]:
+            if entry.get('layer') == layer:
+                entry['undone'] = True
+
+    def live_steps(self):
+        """The history minus every step an undo took back."""
+        return [entry for entry in self.history if not entry.get('undone')]
 
     # --------------------------------------------------------------------
     # the record
@@ -212,9 +343,12 @@ class MeshSession(object):
     def record(self, action, before=None, after=None, **detail):
         """Append a step. Returns the entry, so a tool can report it back."""
         entry = {'step': len(self.history), 'action': action,
+                 'layer': 'coarse' if action in COARSE_ACTIONS else 'dense',
                  'at': time.time(), 'before': before, 'after': after}
         entry.update(detail)
         self.history.append(entry)
+        if entry['layer'] == 'coarse':
+            self._coarse_changed_at += 1
         return entry
 
     def add_remark(self, text, about=None):
@@ -229,6 +363,7 @@ class MeshSession(object):
     def state(self):
         """A small summary. The reading in prose is ``describe``'s job."""
         mesh = self.mesh
+        coarse = self.coarse
         return {
             'loaded': self.loaded,
             'source': self.source,
@@ -237,10 +372,16 @@ class MeshSession(object):
             'walls': len(self.walls),
             'guides': len(self.guides),
             'points': len(self.points),
-            'steps': len(self.history),
+            'steps': len(self.live_steps()),
+            'undone_steps': len(self.history) - len(self.live_steps()),
             'remarks': len(self.remarks),
             'undo_depth': len(self._undo),
             'visually_current': self.visually_current,
+            'coarse_loaded': coarse is not None,
+            'coarse_faces': coarse.number_of_faces() if coarse else None,
+            'coarse_strips': len(list(coarse.strips())) if coarse else None,
+            'coarse_undo_depth': len(self._coarse_undo),
+            'coarse_visually_current': self.coarse_visually_current,
         }
 
     def __repr__(self):

@@ -37,10 +37,18 @@ back.
 Scope
 =====
 
-Version 1 **reads and improves**: pull an existing mesh, smooth or relax it, push
-it back. It does not solve a field and does not edit topology. That is why it
-needs neither numpy nor scipy nor :mod:`~compas_singular.framefield`'s solver --
-only compas, and the standard library.
+**Reads and improves** an existing mesh: pull one, smooth or relax it, push it
+back. **Builds and edits a coarse layout, too**: from a domain's boundary, line
+and point features, via a topological-skeleton decomposition -- not a frame
+field, and not a read of hand-drawn patch curves -- through to a densified
+dense mesh, with strip add/remove as the only topology edit either mesh ever
+gets. The DENSE mesh's own topology is never changed by any tool here.
+
+No field is solved anywhere in this package, which is why it does not need
+:mod:`~compas_singular.framefield`'s solver. It does now reach for numpy/scipy
+(the skeleton decomposition's triangulation) and, for ``relax_fdm`` only,
+``compas_fd`` -- a missing one of those is a clean tool refusal, not an
+import-time failure of the server itself.
 
 Modules
 =======

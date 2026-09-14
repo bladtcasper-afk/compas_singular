@@ -56,12 +56,66 @@ the kind of defect this is meant to remove.
 Area-weighted rather than centroid on purpose: centroid smoothing equalises edge
 lengths, which fights the grading a frame-field mesh is supposed to have.
 
+## `smooth_guides` -- when the mesh has guide curves
+
+Attaches the longest run of one polyedge that already follows each guide,
+moves it onto the guide, and smooths with those vertices (plus the boundary)
+held. The chain is CHOSEN, not built up vertex by vertex or by a radius round
+the curve -- both of those were tried and both fold faces or zigzag. Every
+guide is selected before any is attached, so the result does not depend on
+guide order.
+
+A boundary vertex is never moved onto a guide, only slid along its own wall --
+attaching it would take the wall with it. **No gate**, same as
+`smooth_boundary_constrained`: snapshot first, check `all_improved`.
+
+Refuses cleanly if `session.guides` is empty -- nothing was pulled with a
+guide curve on it, or none was loaded. Widen `tolerance_factor` or `max_angle`
+if a guide gets nothing; both are explained in the tool description.
+
+## `relax_fdm` -- force-density relaxation
+
+Wraps `datastructures.mesh.smoothing.relaxation`. Fixed vertices held,
+everything else finds a minimal-tension shape, boundary edges weighted
+`q_factor` times heavier than interior ones.
+
+**Two real gaps, not polish left for later.** The underlying function's own
+`constraints` argument is computed and then silently discarded before the
+solve runs, and its `algorithm` argument is accepted but never read. Neither
+is exposed as a tool parameter for exactly that reason -- there would be
+nothing behind it. Do not reach for this tool expecting to steer it beyond the
+`fixed` set; it is closer to a specialised alternative to `relax` than a
+general constrained solve. Needs `compas_fd` installed; a missing package is a
+clean refusal, not a traceback.
+
+No gate, same as the other ungated passes here -- snapshot first, check
+`all_improved`.
+
+## `dense_add_line` / `dense_remove_line` -- when smoothing is not the answer
+
+When the layout itself is the limit -- a band of elements too wide or too many
+-- no smoother fixes it. These change the dense mesh's topology: a whole strip
+is added beside, or removed through, the polyedge of an edge you name.
+`dense_plan_line_removal` first. Three limits:
+
+- **refused on any mesh with a pole** -- a pole's triangle fan has no strips;
+- **lost on re-densifying** -- if the change can be made on the coarse layout,
+  make it there;
+- `dense_add_line` opens the new strip with plain centroid smoothing, and on the
+  test L the verdict after it was "unusable" -- follow it with `relax` or
+  `smooth_boundary_constrained`, and `compare` the result.
+
+`undo` takes a line edit back like any other step.
+
 ## Order
 
 1. `inspect` -- read `share_below` before choosing.
 2. `relax` -- cheap, gated, usually enough.
 3. If still poor and the problem is general: `smooth_boundary_constrained`.
 4. If still poor and the problem is local: `smooth_region` on the worst faces.
-5. `inspect` again, and `undo` anything that did not help.
+5. If the mesh has guide curves it should follow: `smooth_guides`.
+6. `relax_fdm` is a different kind of pass, not a rung on this ladder -- reach
+   for it deliberately, not as a fallback when the others plateau.
+7. `inspect` again, and `undo` anything that did not help.
 
 Two passes that change nothing mean the layout is the limit. Say so.

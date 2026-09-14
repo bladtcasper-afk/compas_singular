@@ -21,6 +21,9 @@ from __future__ import print_function
 
 from . import library
 from . import registry
+from . import tools_coarse     # noqa: F401  -- registers its tools
+from . import tools_checks     # noqa: F401  -- registers its tools
+from . import tools_dense      # noqa: F401  -- registers its tools
 from . import tools_io         # noqa: F401  -- registers its tools
 from . import tools_library    # noqa: F401  -- registers its tools
 from . import tools_mesh       # noqa: F401  -- registers its tools
@@ -33,19 +36,37 @@ from .session import MeshSession
 __all__ = ['Handler', 'build', 'INSTRUCTIONS']
 
 
-INSTRUCTIONS = """Improve an existing quad mesh from the compas_singular library.
+INSTRUCTIONS = """Build, and improve, a quad mesh from the compas_singular library.
 
-Pull a mesh from the open Rhino document with rhino_pull (or work on one already
-loaded), measure it with inspect, improve it with relax / smooth_region /
-smooth_boundary_constrained, and push it back with rhino_push.
+Two ways in. Pull a mesh from the open Rhino document with rhino_pull (from
+the domain layers, or selection=true for whatever is selected), measure it with
+inspect, improve it with relax / smooth_region / smooth_boundary_constrained /
+smooth_guides / relax_fdm, change its topology with dense_add_line /
+dense_remove_line, and push it back with rhino_push -- rhino_push_markers puts
+dots on its worst faces and singularities for the person to see. Or build one from a domain: with a boundary
+loaded (run check_inputs first -- the skeleton route builds wrong quietly),
+create_coarse_mesh / coarse_set_density / coarse_densify take it from a
+boundary, plus optional line and point features, to a dense quad mesh, and
+coarse_add_strip / coarse_remove_strip / coarse_divide / coarse_move_corner /
+coarse_set_pattern edit the coarse layout before that final step. coarse_inspect with image=true draws the layout
+with every strip coloured and numbered -- look before editing a strip.
+coarse_save / coarse_load keep a layout across sessions; rhino_push_coarse
+hands it to the CMD_ commands in Rhino (CMD_densities, CMD_quad_mesh) and
+rhino_pull_coarse brings an edited one back. Read guidance://coarse for that
+sequence. compare reads two steps of history back side by side.
 
 Read guidance://quality and guidance://smoothing before choosing a smoother --
 they carry the measurements that decide which one is right, and the order to try
 them in. inspect's share_below is what separates one bad face from a generally
 slack mesh.
 
-This version reads and improves. It does not solve a frame field and does not
-change topology."""
+This version does not solve a frame field: a coarse layout comes from a
+topological-skeleton decomposition, and a densified patch interior is blended
+from its own four sides. Both meshes' topology can be edited: the coarse
+layout's by adding, removing or dividing a strip (the last also along a drawn
+curve), the dense mesh's by adding or removing a line -- which re-densifying
+discards, and which refuses on a mesh with a pole. Reading a hand-drawn
+skeleton back in is not exposed yet."""
 
 
 class Handler(object):
@@ -101,8 +122,21 @@ class Handler(object):
         state = session.state()
         lines = ['# This session', '']
         if not session.loaded:
-            lines.append('Nothing is loaded. Call rhino_pull to take a mesh '
-                         'out of the open Rhino document.')
+            if session.coarse is not None:
+                lines.append(
+                    'No dense mesh is loaded, but a coarse layout is: {} '
+                    'face(s), {} strip(s). Call coarse_densify for a dense '
+                    'mesh, or coarse_inspect to read the layout.'.format(
+                        state['coarse_faces'], state['coarse_strips']))
+            elif session.walls:
+                lines.append(
+                    'No mesh is loaded, but a boundary is: {} wall(s). Call '
+                    'create_coarse_mesh to build a coarse layout from it, or '
+                    'rhino_pull again on a layer that has a mesh.'.format(
+                        state['walls']))
+            else:
+                lines.append('Nothing is loaded. Call rhino_pull to take a '
+                             'mesh out of the open Rhino document.')
             return '\n'.join(lines)
 
         source = session.source or {}
@@ -121,9 +155,10 @@ class Handler(object):
                      False: 'did NOT improve all three',
                      None: 'no change'}
             for entry in session.history:
-                lines.append('{}. `{}` -- {}'.format(
+                lines.append('{}. `{}` -- {}{}'.format(
                     entry['step'] + 1, entry['action'],
-                    marks.get(entry.get('all_improved'), '')))
+                    marks.get(entry.get('all_improved'), ''),
+                    ' (UNDONE)' if entry.get('undone') else ''))
                 for remark in session.remarks_for(entry['step']):
                     lines.append('   - {}'.format(remark))
         loose = [r for r in session.remarks if r['step'] >= len(session.history)]

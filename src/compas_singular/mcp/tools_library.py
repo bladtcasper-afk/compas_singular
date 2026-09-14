@@ -107,12 +107,15 @@ def _t_save_example(session, name, verdict, lesson=None, instruction=None):
     steps = []
     for entry in session.history:
         skip = ('step', 'action', 'at', 'before', 'after', 'improved',
-                'all_improved')
+                'all_improved', 'layer', 'undone')
         steps.append({
             'action': entry['action'],
             'arguments': dict((k, v) for k, v in entry.items()
                               if k not in skip),
             'all_improved': entry.get('all_improved'),
+            # Kept, not dropped: a rejected attempt is the evidence recall is
+            # meant to return. A reader filters on this if it wants the route.
+            'undone': bool(entry.get('undone')),
             'note': '; '.join(session.remarks_for(entry['step'])) or None,
         })
 

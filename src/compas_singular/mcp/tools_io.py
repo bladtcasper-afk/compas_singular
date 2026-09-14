@@ -61,7 +61,10 @@ def _t_load_mesh(session, path, walls=None):
                 'reason': '{} holds a {}, not a mesh'.format(
                     path, type(mesh).__name__)}
 
-    session.adopt(mesh, walls=walls or [], guides=[],
+    had_coarse = session.coarse is not None
+    # A mesh file carries no guides or point features, so none survive from
+    # whatever was loaded before -- they would belong to a different domain.
+    session.adopt(mesh, walls=walls or [], guides=[], points=[],
                   source={'kind': 'file', 'name': os.path.basename(path),
                           'path': path})
     metrics = session.quality()
@@ -74,6 +77,10 @@ def _t_load_mesh(session, path, walls=None):
            'walls': len(session.walls),
            'quality': metrics, 'reading': told['reading'],
            'verdict': told['verdict'], 'worst_face_at': told['worst_face_at']}
+    if had_coarse and session.coarse is None:
+        out['coarse_cleared'] = ('these walls differ from the domain the '
+                                 'coarse layout was built from, so the layout '
+                                 'was dropped')
     if not session.walls:
         out['warning'] = ('no walls were given, so boundary vertices have '
                           'nothing true to slide along. Smoothing will still '
