@@ -294,7 +294,7 @@ def _t_move_corner(session, label, x, y, project=True):
     if vkey is None:
         return _fail('no vertex labelled {!r} on this layout'.format(label))
     z = session.mesh.vertex_coordinates(vkey)[2]
-    ok = session.coarse_editor.move_vertex(vkey, [x, y, z], project=project)
+    ok, _notes = session.coarse_editor.move_vertex(vkey, [x, y, z], project=project)
     if not ok:
         return _fail(session.coarse_editor.last_reason)
     session.record('move_corner', label=label)
@@ -303,7 +303,7 @@ def _t_move_corner(session, label, x, y, project=True):
     return _done(label=label, moved_to=moved)
 
 
-@tool('insert_curve',
+@tool('divide',
       'Cut the layout with a drawn line, arc or polyline: every coarse edge it '
       'crosses is split and every patch it passes through is split in two. The '
       'rule the cut is checked against is that every patch of the RESULT has '
@@ -323,12 +323,12 @@ def _t_move_corner(session, label, x, y, project=True):
                      'description': 'Continue a short cut along the strip to the wall.'},
       },
       required=('points',), stage=('coarse',))
-def _t_insert_curve(session, points, extend=True):
+def _t_divide(session, points, extend=True):
     pts = [list(p) + [0.0] * (3 - len(p)) for p in points]
-    ok = session.coarse_editor.insert_curve(pts, extend=extend)
+    ok, _notes = session.coarse_editor.divide(pts, extend=extend)
     if not ok:
         return _fail(session.coarse_editor.last_reason)
-    session.record('insert_curve', points=len(pts), extend=bool(extend))
+    session.record('divide', points=len(pts), extend=bool(extend))
     carry = session.refresh_book()
     return _done(faces=session.mesh.number_of_faces(),
                  cut=dict(session.coarse_editor.last_cut or {}),
@@ -343,7 +343,7 @@ def _t_insert_curve(session, points, extend=True):
       'a boundary. No cheap test predicts every failure -- on one measured '
       'layout 10 of 20 strips left a non-manifold result and poles were not the '
       'discriminator -- so this performs the deletion on a copy and reports what '
-      'came out. Always call this before delete_strip.',
+      'came out. Always call this before remove_strip.',
       properties={'label': {'type': 'string',
                             'description': 'An edge label, e.g. "e12".'}},
       required=('label',), stage=('coarse',))
@@ -356,7 +356,7 @@ def _t_plan_strip_deletion(session, label):
     return _done(label=label, plan=plan)
 
 
-@tool('delete_strip',
+@tool('remove_strip',
       'Delete the strip through an edge. A quad layout cannot lose a single '
       'edge -- removing one merges two patches into a hexagon -- so the unit of '
       'deletion is the whole strip, wall to wall. This COLLAPSES a band and welds '
@@ -364,15 +364,15 @@ def _t_plan_strip_deletion(session, label):
       'side, and no such operation exists. Call plan_strip_deletion first.',
       properties={'label': {'type': 'string'}},
       required=('label',), stage=('coarse',))
-def _t_delete_strip(session, label):
+def _t_remove_strip(session, label):
     book = session.book()
     edge = book.edge(label) if book else None
     if edge is None:
         return _fail('no edge labelled {!r} on this layout'.format(label))
-    ok = session.coarse_editor.delete_strip(edge)
+    ok, _notes = session.coarse_editor.remove_strip(edge)
     if not ok:
         return _fail(session.coarse_editor.last_reason)
-    session.record('delete_strip', label=label)
+    session.record('remove_strip', label=label)
     carry = session.refresh_book()
     return _done(faces=session.mesh.number_of_faces(),
                  deletion=dict(session.coarse_editor.last_deletion or {}),
@@ -402,7 +402,8 @@ def _t_reset_coarse(session):
       'layout is refused rather than silently replaced.',
       stage=('coarse',), confirm=True)
 def _t_commit(session):
-    ok, notes = session.coarse_editor.commit()
+    layout, notes = session.coarse_editor.commit()
+    ok = layout is not None
     if not ok:
         return _fail(notes.get('error', session.coarse_editor.last_reason),
                      notes=notes)

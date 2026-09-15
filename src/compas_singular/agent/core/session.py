@@ -8,7 +8,7 @@ there are:
 ``'field'``
     A field is solved and its separatrices traced. There is no layout yet.
 ``'coarse'``
-    A coarse layout exists and :class:`CoarseLayoutEditor` is holding it.
+    A coarse layout exists and :class:`CoarseEditor` is holding it.
 ``'dense'``
     A dense mesh exists and :class:`DenseMeshEditor` is holding it.
 
@@ -18,7 +18,7 @@ generated from the one above it, so going back means regenerating and the edit
 below has nowhere to live.
 
 * ``dense -> coarse`` throws away every dense edit. A hand-edited dense mesh has
-  no layout that reproduces it -- see ``editing/dense_mesh.py``.
+  no layout that reproduces it -- see ``editing/denseeditor.py``.
 * ``coarse -> field`` throws away the layout, its edits, the densities and the
   dense mesh. A re-solve returns a NEW ``FieldDecomposition``; it does not
   mutate the one in hand.
@@ -47,8 +47,8 @@ from __future__ import print_function
 
 import pickle
 
-from ...editing.coarse_layout import CoarseLayoutEditor
-from ...editing.dense_mesh import DenseMeshEditor
+from ...editing.coarseeditor import CoarseEditor
+from ...editing.denseeditor import DenseMeshEditor
 from .address import AddressBook
 # ``DensifyRefused`` is deliberately NOT caught here: ``rebuild_dense`` lets it
 # propagate, because the caller has to be told a density was rejected rather
@@ -233,8 +233,15 @@ class MeshEditSession(object):
             # Note this clears ``repair_notes`` -- decomposition_mesh() does, and
             # that is the documented behaviour, not an accident here.
             self.decomposition.decomposition_mesh()
-        self.coarse_editor = CoarseLayoutEditor(
-            self.decomposition, loops=loops, snap_tol=snap_tol)
+        # The editor is anchored on the LAYOUT now, not on the decomposition:
+        # the walls, the traced separatrices and the field are extracted here and
+        # handed over, and nothing it does reaches back into the decomposition.
+        self.coarse_editor = CoarseEditor(
+            self.decomposition.mesh,
+            field=self.decomposition.get_field(),
+            loops=loops if loops is not None else self.decomposition._loops(),
+            polylines=self.decomposition.polylines or (),
+            snap_tol=snap_tol)
         self.stage = 'coarse'
         self._book = None
         self.record('enter_coarse',

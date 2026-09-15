@@ -40,7 +40,7 @@ __all__ = [
 
 
 #: Decimals an address is rounded at. The resolution ``geometric_key`` and
-#: ``CoarseLayoutEditor.PRECISION`` already use.
+#: ``CoarseEditor.PRECISION`` already use.
 PRECISION = 3
 
 

@@ -112,8 +112,11 @@ def _coarse_section(session, max_labels):
     out['poles'] = len(mesh.attributes.get('face_pole') or {})
     out['vertices'] = mesh.number_of_vertices()
     out['edges'] = mesh.number_of_edges()
-    out['edited'] = bool(session.decomposition._edited)
-    out['user_curves'] = len(session.decomposition.user_curves or [])
+    # Read off the EDITOR, not the decomposition: a commit writes into the
+    # layout it was given and no longer marks the decomposition as edited.
+    editor = session.coarse_editor
+    out['edited'] = bool(editor is not None and editor.committed)
+    out['user_curves'] = len(editor.curves) if editor is not None else 0
 
     book = session.book()
     if book is not None:

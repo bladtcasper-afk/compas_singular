@@ -49,7 +49,7 @@ policies, and no argument works around them.
    exist, so say so rather than looking for it.
 3. A STRIP RUNS WALL TO WALL, OR ALL THE WAY ROUND. Anything less leaves a
    five-sided face. This is why a cut has to reach the boundary at both ends,
-   and why `insert_curve` offers `extend` to finish a short one for you.
+   and why `divide` offers `extend` to finish a short one for you.
 4. STRIP OPERATIONS NEED AN ALL-QUAD MESH. The triangle fan around a pole has no
    opposite edge, so a strip through a pole is undefined. On a mesh with poles,
    `add_line` and `remove_line` refuse and `move_vertex` still works."""
