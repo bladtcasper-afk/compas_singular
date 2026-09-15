@@ -89,11 +89,12 @@ def coarse_from_skeleton(settings, outer, inners, line_features, point_features)
     ``spacing`` is the BACKGROUND spacing, not the quad size; the quad size
     is ``settings["spacing"]`` and is applied in step 5.
 
-    **Guides are not passed as polyline features.** They look like the same
-    thing and are not: a feature curve CUTS the domain, and the skeleton
-    decomposition of a domain cut by one leaves faces that are not quads --
-    see ``examples/10_curve_features.py``. A guide is only meaningful to the
-    field route, which steers the layout onto it instead of cutting along it.
+    **Guides are passed as polyline features**, so here they CUT the domain and
+    the layout is built around them: each guide becomes a chain of mesh edges,
+    a guide ending on a wall a three-valent boundary vertex, a free end a
+    singularity. The field route instead steers the layout onto a guide without
+    cutting along it. See ``HOW_IT_WORKS.md`` section 5 for what still does not
+    work.
     """
     decomposition = SkeletonDecomposition.from_boundary(
         outer,
@@ -143,8 +144,9 @@ def main():
     
     #Bake results
     if coarse_mesh and skeleton:
+        rs.EnableRedraw(False)
         clear_layer("Skeleton", clean_sublayers = True) #Clean Layer before adding objects
-
+        
         #BEFORE the bake, or the baked mesh and the edge curves disagree about where
         #the corners are. A boundary corner of the layout IS a point of the domain
         #boundary, but nothing upstream puts it there -- the background
@@ -239,6 +241,8 @@ def main():
         if field is not None:
             field.save_to_json(cache_path(FIELD_CACHE))
             print("field cached:  {}".format(cache_path(FIELD_CACHE, create=False)))
+        
+        rs.EnableRedraw(True)
 
 
 if __name__ == "__main__":

@@ -665,6 +665,10 @@ rs.HideObjects(mesh_guids)
 
 redraw()
 lock_state = scene.unlock()
+rs.LayerVisible("Poles", False)
+rs.LayerVisible("Polylines", False)
+rs.LayerVisible("EdgeCurves", False)
+rs.LayerVisible("QuadMesh", False)
 
 try:
     while True:
@@ -708,6 +712,7 @@ finally:
 if COMMITTED is None:
     print("nothing committed -- '{}' is unchanged.".format(MESH_LAYER))
 else:
+    rs.EnableRedraw(False)
     # ``commit()`` mutated the layout read at the top of this file in place, so
     # this IS ``coarse`` -- returned as well so the reference is explicit.
     committed = COMMITTED
@@ -762,6 +767,8 @@ else:
         loops=[outer_loop] + inner_loops,
         polylines=read_polylines(POLYLINE_LAYER))
     _guids, skipped = bake_edge_curves(curves.values(), EDGE_CURVE_LAYER)
+    skeleton = coarse.polylines()
+    bake_polylines(skeleton, "Polylines")
     print("coarse edges: {}".format(tally))
     if skipped:
         print("  {} edge curve(s) Rhino refused -- those edges densify as "
@@ -791,5 +798,11 @@ else:
     committed.attributes.setdefault("route", "field")
     committed.attributes["edited"] = True
     committed.save_to_json(cache_path(COARSE_CACHE))
+    rs.EnableRedraw(True)
+
+rs.LayerVisible("Poles", True)
+rs.LayerVisible("Polylines", True)
+rs.LayerVisible("EdgeCurves", True)
+rs.LayerVisible("QuadMesh", True)
 
 print("next: CMD_densities")
