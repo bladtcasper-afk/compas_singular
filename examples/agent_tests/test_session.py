@@ -304,8 +304,12 @@ check("  the stage", s.stage == "coarse", s.stage)
 check("  the layout", s.mesh.number_of_faces() == faces_before,
       "{} vs {}".format(s.mesh.number_of_faces(), faces_before))
 check("  and the label", label == "before dense", label)
-check("editor came back wired to its decomposition",
-      s.coarse_editor.decomposition is s.decomposition)
+# The editor no longer holds the decomposition -- it holds the LAYOUT. The
+# property this pins is unchanged though: the session pickles everything in one
+# call precisely so shared references come back shared rather than duplicated,
+# and the editor's target is the decomposition's own mesh object.
+check("editor came back wired to the layout it edits",
+      s.coarse_editor.target is s.decomposition.mesh)
 
 
 # ======================================================================
@@ -325,7 +329,10 @@ n_labels = (len(before.vertices) + len(before.edges) + len(before.faces))
 
 vkey = next(v for v in s.mesh.vertices() if not s.mesh.is_vertex_on_boundary(v))
 p = s.mesh.vertex_coordinates(vkey)
-moved_ok = s.coarse_editor.move_vertex(vkey, [p[0] + 0.3, p[1] + 0.3, p[2]])
+# Unpacked: ``move_vertex`` returns ``(ok, notes)`` and a 2-tuple is always
+# truthy, so checking the bare return would pass even on a refusal.
+moved_ok, _notes = s.coarse_editor.move_vertex(
+    vkey, [p[0] + 0.3, p[1] + 0.3, p[2]])
 check("moved an interior corner", moved_ok, s.coarse_editor.last_reason)
 
 ok, notes = s.coarse_editor.commit()

@@ -475,6 +475,9 @@ def main():
         summary += "\n\nWhat it said:\n{}".format(result.text[:600])
     rs.MessageBox(summary, 0 | 64, "AI edit")
 
+    print("next: CMD_smoothen / CMD_smoothen_guide or CMD_dual on the result, "
+          "CMD_edit_quad_mesh to hand-edit it, or run CMD_ai_edit again to continue.")
+
 
 # ``main()`` is called only under this guard because every other CMD_ file that
 # imports from this one would otherwise run it on import -- the same reason

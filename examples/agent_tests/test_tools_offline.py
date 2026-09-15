@@ -160,13 +160,13 @@ check("  and reports boundaries_lost as a count",
       isinstance(plan["boundaries_lost"], int), plan["boundaries_lost"])
 
 faces_before = s.mesh.number_of_faces()
-r = run(s, "delete_strip", label=e_labels[0])
+r = run(s, "remove_strip", label=e_labels[0])
 if plan["ok"]:
-    check("delete_strip agreed with its plan", r["ok"], r.get("reason"))
+    check("remove_strip agreed with its plan", r["ok"], r.get("reason"))
     check("  and shrank the layout", s.mesh.number_of_faces() < faces_before,
           "{} -> {}".format(faces_before, s.mesh.number_of_faces()))
 else:
-    check("delete_strip refused where the plan said it would", r["ok"] is False)
+    check("remove_strip refused where the plan said it would", r["ok"] is False)
     check("  leaving the layout alone",
           s.mesh.number_of_faces() == faces_before)
 
