@@ -38,7 +38,7 @@ from ..geometry import discretise_boundary
 from ..geometry import discretise_line
 from ..utilities import list_split
 
-from .propagation import quadrangulate_mesh
+from .propagation import quadrangulate_faces
 
 
 __all__ = ['SkeletonDecomposition']
@@ -143,8 +143,8 @@ class SkeletonDecomposition(Skeleton):
             The holes, same convention.
         polyline_features : list[list[[x, y, z]]], optional
             Feature curves the decomposition must follow. See
-            ``examples/10_curve_features.py`` for what these do and where they
-            still break.
+            ``examples/000_testing.py`` for every benchmark stage by stage, and
+            ``HOW_IT_WORKS.md`` section 5 for what still does not work.
         point_features : list[[x, y, z]], optional
             Points the decomposition must pass through. They become the POLES of
             the layout, and :meth:`coarse_mesh` takes them from here.
@@ -257,6 +257,24 @@ class SkeletonDecomposition(Skeleton):
         """
         return [vkey for fkey in self.singular_faces() for vkey in self.face_vertices(fkey)]
 
+    def free_tip_vertices(self):
+        """Get the indices of the free extremities of the curve features.
+
+        A curve feature whose extremity is off the boundary is a slit in the
+        Delaunay mesh, and the domain wraps all the way around its end: a boundary
+        vertex with an interior angle of 360 degrees (see
+        :meth:`boundary_interior_angle`). Thesis S4.3.2 makes that extremity a
+        singularity of the layout, so it must stay a node of the decomposition.
+
+        Returns
+        -------
+        list
+            List of vertex keys.
+
+        """
+        return [vkey for bdry in self.vertices_on_boundaries() for vkey in bdry
+                if self.boundary_interior_angle(vkey) > 2 * pi - 0.05]
+
     # --------------------------------------------------------------------------
     # branches
     # --------------------------------------------------------------------------
@@ -348,7 +366,13 @@ class SkeletonDecomposition(Skeleton):
             for i, key in hits + [(None, None)]:
                 if run and (i is None or i - run[-1][0] > 1):
                     if len(run) > 1:
-                        shared = self.feature_points[c][run[0][0]]
+                        # A chain extremity -- free tip, wall landing, junction --
+                        # keeps its node. Moving its graft one sample inward, as
+                        # chain order would whenever the chain runs towards it,
+                        # leaves the extremity with no branch at all.
+                        last = len(self.feature_points[c]) - 1
+                        ends = [j for j, _ in run if j in (0, last)]
+                        shared = self.feature_points[c][ends[0] if ends else run[0][0]]
                         for _, member in run:
                             move[member] = shared
                     run = []
@@ -405,8 +429,13 @@ class SkeletonDecomposition(Skeleton):
         branches += self.branches_splitting_boundary_kinks()
         branches += self.branches_splitting_flipped_faces()
         branches += self.branches_splitting_collapsed_boundaries()
+        # Free feature tips are split points like corners. Both sides of the slit
+        # join into one segment here, so a grafted tip has only two branches -- the
+        # graft and the segment -- and would be merged through, losing the
+        # singularity at the extremity (Fig 4.21) and cutting across the feature.
+        splits = [self.vertex_coordinates(vkey) for vkey in self.corner_vertices() + self.free_tip_vertices()]
         self.polylines = graph_polylines(Network.from_lines([(u, v) for polyline in branches for u, v in pairwise(polyline)]),
-                                         splits=[self.vertex_coordinates(vkey) for vkey in self.corner_vertices()])
+                                         splits=splits)
         return self.polylines
 
     def decomposition_polyline(self, geom_key_1, geom_key_2):
@@ -774,9 +803,10 @@ class SkeletonDecomposition(Skeleton):
         The two consequences: it cannot act on a triangle whose corners are all
         interior, and it never fires at a curve feature, because
         ``from_polylines`` has already welded the topological cut shut so no
-        corner there answers ``is_vertex_on_boundary``. That is why a free curve
-        extremity stays a pole instead of collapsing to the two-valent
-        singularity of Fig 4.22b.
+        corner there answers ``is_vertex_on_boundary``. A free extremity touched
+        by one singular face is a two-valent vertex anyway (see
+        :meth:`free_tip_vertices`); one touched by several stays a pole, which
+        Fig 4.22b would collapse to two-valent and this does not.
         """
         mesh = self.mesh
 
@@ -885,7 +915,7 @@ class SkeletonDecomposition(Skeleton):
         Such a face is repaired by propagating the seam: the odd vertex is
         carried across the patch to the opposite side and the patch is relaid as
         a discrete Coons patch of quads. This is the step of Fig. 4.20d in Oval's
-        thesis, and :func:`~compas_singular.algorithms.propagation.quadrangulate_mesh`
+        thesis, and :func:`~compas_singular.algorithms.propagation.quadrangulate_faces`
         is its implementation.
 
         Notes
@@ -919,25 +949,50 @@ class SkeletonDecomposition(Skeleton):
         # the cut, do not agree on their boundary valency: a branch landed on one
         # side only. Collect them over every component BEFORE welding -- welding
         # inside this loop is what used to reduce self.mesh to the last piece.
-        source_map = []
-        for mesh in supermesh.exploded():
-            candidate_map = {TOL.geometric_key(mesh.vertex_coordinates(vkey)): [] for vkey in mesh.vertices()}
+        #
+        # The valencies are gathered over ALL components. The two copies of a
+        # position usually sit in different components, and a map rebuilt per
+        # component only ever holds one of them -- no source was ever found.
+        components = list(supermesh.exploded())
+        candidate_map = {}
+        for mesh in components:
             for boundary in mesh.vertices_on_boundaries():
                 for vkey in boundary:
-                    candidate_map[TOL.geometric_key(mesh.vertex_coordinates(vkey))].append(mesh.vertex_degree(vkey))
-            source_map += [geom_key for geom_key, valencies in candidate_map.items() if len(list(set(valencies))) > 1]
-        source_map = tuple(source_map)
+                    candidate_map.setdefault(TOL.geometric_key(mesh.vertex_coordinates(vkey)), []).append(mesh.vertex_degree(vkey))
+        source_map = set(geom_key for geom_key, valencies in candidate_map.items() if len(set(valencies)) > 1)
+
+        # A seam vertex is a source only for the face on the side NO branch landed
+        # on -- the copy with the lower valency -- and a genuine corner of the
+        # faces on the other side. Record which, per face, keyed by the positions
+        # of its vertices so it survives the weld. Per COPY rather than per
+        # component: around a free feature both sides are one component.
+        flat_by_face = {}
+        for mesh in components:
+            for fkey in mesh.faces():
+                face_vertices = mesh.face_vertices(fkey)
+                geom_keys = [TOL.geometric_key(mesh.vertex_coordinates(vkey)) for vkey in face_vertices]
+                flat = set(geom_key for vkey, geom_key in zip(face_vertices, geom_keys)
+                           if geom_key in source_map and mesh.vertex_degree(vkey) < max(candidate_map[geom_key]))
+                if flat:
+                    flat_by_face[frozenset(geom_keys)] = flat
 
         self.mesh = mesh_weld(supermesh)
         mesh = self.mesh
 
-        sources = [vkey for vkey in mesh.vertices() if TOL.geometric_key(mesh.vertex_coordinates(vkey)) in source_map]
+        face_sources = {}
+        for fkey in mesh.faces():
+            face_vertices = mesh.face_vertices(fkey)
+            geom_keys = [TOL.geometric_key(mesh.vertex_coordinates(vkey)) for vkey in face_vertices]
+            flat = flat_by_face.get(frozenset(geom_keys))
+            if flat:
+                face_sources[fkey] = [vkey for vkey, geom_key in zip(face_vertices, geom_keys) if geom_key in flat]
 
-        # A seam vertex is a source for the polygonal face on one side of the cut
-        # and a genuine corner of the quad on the other. One global source list
-        # is still safe, because quadrangulate_mesh only rewrites faces whose
-        # length is not 4 and so never reaches the quad.
-        quadrangulate_mesh(mesh, sources)
+        # A seam strip that closes on itself never ends. Give up on it, keep the
+        # layout as it was, and leave its polygons to repair_polygonal_faces.
+        before = mesh.copy()
+        if not quadrangulate_faces(mesh, face_sources, max_faces=3 * mesh.number_of_faces()):
+            self.mesh = before
+            self.repair_notes.append('seam propagation did not terminate; polygonal faces left to the fallback repair')
 
     def quadrangulate_polygonal_faces_wip(self):
         pass

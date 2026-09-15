@@ -321,15 +321,21 @@ def boundary_triangulation(outer_boundary, inner_boundaries, polyline_features=[
             delaunay_mesh.delete_face(fkey)
 
     # topological cut along the feature polylines through unwelding
-    vertex_map = {TOL.geometric_key(delaunay_mesh.vertex_coordinates(vkey)): vkey for vkey in delaunay_mesh.vertices()}
+    #
+    # A feature point that is also a wall point, or the end of another chain, is
+    # in ``vertices`` twice, and only one copy is used by the triangulation. The
+    # map must point at THAT copy: pointing at the unused one makes the cut edge
+    # a non-edge, so a feature landing on a wall was never cut through there --
+    # the line stayed a slit, its end segments uncut and its corners lost.
+    vertex_map = {}
+    for vkey in delaunay_mesh.vertices():
+        key = TOL.geometric_key(delaunay_mesh.vertex_coordinates(vkey))
+        if key not in vertex_map or delaunay_mesh.vertex_faces(vkey):
+            vertex_map[key] = vkey
     edges = [edge for polyline in polyline_features for edge in pairwise([vertex_map[TOL.geometric_key(point)] for point in polyline])]
     mesh_unweld_edges(delaunay_mesh, edges)
 
-    # Record the cut. The unwelding above does not separate the first and last
-    # segment of a chain -- their end vertices are never split -- so the faces
-    # either side of those segments stay adjacent and the skeleton would run
-    # straight across the feature there (thesis Fig 4.20a). ``Skeleton``
-    # discounts those adjacencies; see ``Skeleton.real_neighbors``.
+    # Record the cut, for ``Skeleton.real_neighbors``.
     # The features as point chains. The grafting needs to know which samples
     # belong to the same curve, and in what order -- see
     # ``SkeletonDecomposition.branches_singularity_to_boundary``.

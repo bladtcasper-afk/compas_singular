@@ -41,14 +41,15 @@ class Skeleton(Mesh):
         """The adjacent faces of ``fkey``, excluding any across a curve feature.
 
         Thesis S4.3.2 makes a topological cut along each curve feature so that no
-        skeleton branch crosses one (Fig 4.20a vs 4.20b). ``mesh_unweld_edges``
-        leaves the FIRST and LAST segment of a chain uncut -- their end vertices
-        are never split -- so the faces either side of that segment stay adjacent
-        and the skeleton runs straight across the feature there.
+        skeleton branch crosses one (Fig 4.20a vs 4.20b). A complete cut leaves no
+        adjacency across a feature edge, and then this is the same as
+        ``face_neighbors``.
 
-        Excluding those adjacencies restores what the cut was meant to do,
-        without touching the mesh. It is what makes the corner where a feature
-        lands an END face, so that PRUNING can remove the branch running to it.
+        It was written for an incomplete cut: until 2026-09-15 the cut never
+        reached a wall landing or a junction (a duplicate-vertex lookup in
+        ``boundary_triangulation``), the faces either side of a line's end segment
+        stayed adjacent, and the skeleton ran across the feature there. Kept as a
+        safeguard; removing it changes no benchmark once the cut is complete.
 
         Returns
         -------

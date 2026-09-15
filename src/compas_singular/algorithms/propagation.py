@@ -2,13 +2,20 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
+from math import pi
+from math import radians
+
+from compas.geometry import angle_vectors
 from compas.geometry import discrete_coons_patch
+from compas.geometry import length_vector
+from compas.geometry import subtract_vectors
 
 from compas_singular.utilities import list_split
 
 
 __all__ = [
     'quadrangulate_mesh',
+    'quadrangulate_faces',
     'quadrangulate_face',
     'discrete_coons_patch_mesh',
     'update_adjacent_face'
@@ -48,9 +55,84 @@ def quadrangulate_mesh(mesh, sources):
                 sources_to_visit += new_sources
 
 
+def quadrangulate_faces(mesh, face_sources, max_faces=None):
+    """Quadrangulate the polygonal faces of a mesh, each from ITS OWN sources.
+
+    :func:`quadrangulate_mesh` takes one list of sources for the whole mesh. That
+    is not enough for the seams of a curve feature: a discrepancy is a
+    straight-through vertex of the face on one side of the feature and a genuine
+    corner of the faces on the other. On a straight feature both discrepancies of
+    a patch pair sit in both faces, so each face sees two sources and three
+    corners, and :func:`quadrangulate_face` -- which needs exactly four corners --
+    leaves it alone.
+
+    Parameters
+    ----------
+    mesh : Mesh
+        The mesh to quadrangulate, modified in place.
+    face_sources : dict
+        Face keys pointing to the vertex keys that are sources for that face.
+    max_faces : int, optional
+        Stop once the mesh has more faces than this.
+
+    Returns
+    -------
+    bool
+        False if the propagation was stopped at ``max_faces``. The mesh is then
+        left part-way and should be discarded.
+
+    Notes
+    -----
+    A vertex the propagation creates lies on a straight edge, and is a source
+    only in the faces it still passes straight through. Once the face it was
+    added to is split, it is a genuine corner of the new faces; a second strip
+    crossing the same region must not treat it as a source there.
+
+    A strip can close on itself -- around a crossing of two features, say -- and
+    then never ends. ``max_faces`` is what stops it.
+
+    """
+    created = set()
+    todo = [fkey for fkey in mesh.faces() if len(mesh.face_vertices(fkey)) > 4]
+
+    count = 1000
+    while todo and count:
+        count -= 1
+        if max_faces is not None and mesh.number_of_faces() > max_faces:
+            return False
+
+        fkey = todo.pop()
+        if not mesh.has_face(fkey) or len(mesh.face_vertices(fkey)) == 4:
+            continue
+
+        sources = [vkey for vkey in mesh.face_vertices(fkey)
+                   if vkey in face_sources.get(fkey, ()) or (vkey in created and is_straight_through(mesh, fkey, vkey))]
+        new_sources = quadrangulate_face(mesh, fkey, sources)
+        created.update(new_sources)
+        todo += [nbr for vkey in new_sources for nbr in mesh.vertex_faces(vkey) if len(mesh.face_vertices(nbr)) > 4]
+
+    return True
+
+
+def is_straight_through(mesh, fkey, vkey, tol=0.5):
+    """Does face ``fkey`` pass straight through vertex ``vkey``, within ``tol`` degrees?"""
+    face_vertices = mesh.face_vertices(fkey)
+    i = face_vertices.index(vkey)
+    xyz = mesh.vertex_coordinates(vkey)
+    u = subtract_vectors(mesh.vertex_coordinates(face_vertices[i - 1]), xyz)
+    v = subtract_vectors(mesh.vertex_coordinates(face_vertices[(i + 1) % len(face_vertices)]), xyz)
+    if not length_vector(u) or not length_vector(v):
+        return False
+    return angle_vectors(u, v) > pi - radians(tol)
+
+
 def quadrangulate_face(mesh, fkey, sources):
 
     face_vertices = mesh.face_vertices(fkey)[:]
+
+    # a face that passes through a vertex twice cannot be split into its sides
+    if len(set(face_vertices)) != len(face_vertices):
+        return []
 
     # differentiate sources and non sources
     sources = [vkey for vkey in face_vertices if vkey in sources]
