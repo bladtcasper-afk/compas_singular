@@ -107,7 +107,13 @@ def add_strip(mesh, polyedge):
                 u1, u2 = left_polyedge[-2], right_polyedge[-2]
                 face = new_faces.pop()
                 mesh.delete_face(face)
-                new_faces.append(mesh.add_face([v1, u1, u2, v2]))
+                # ``[u1, v1, v2, u2]``, as every other rung of the strip. This was
+                # ``[v1, u1, u2, v2]`` -- the same quad REVERSED -- so it shared a
+                # same-direction halfedge with both its neighbours: the mesh still
+                # passed ``is_manifold`` but every strip walk through that face went
+                # wrong. The closing face below is right as it is: from the last
+                # vertex to the first, ``v`` plays the role ``u`` plays here.
+                new_faces.append(mesh.add_face([u1, v1, v2, u2]))
                 face = new_faces.pop(0)
                 mesh.delete_face(face)
                 u1, u2 = left_polyedge[0], right_polyedge[0]
@@ -141,7 +147,7 @@ def add_strip(mesh, polyedge):
 
     # for fkey in mesh.faces():
     #    print(mesh.face_vertices(fkey))
-    n = update_strip_data(mesh, full_updated_polyedge, old_vkeys_to_new_vkeys)
+    n = update_strip_data(mesh, full_updated_polyedge, old_vkeys_to_new_vkeys, closed=is_closed)
     # print(left_polyedge, right_polyedge)
     return n, old_vkeys_to_new_vkeys
 
@@ -158,11 +164,21 @@ def add_element_end(mesh, u, v):
     pass
 
 
-def update_strip_data(mesh, full_updated_polyedge, old_vkeys_to_new_vkeys):
+def update_strip_data(mesh, full_updated_polyedge, old_vkeys_to_new_vkeys, closed=False):
+    """Bring ``attributes['strips']`` up to date after a strip was added.
+
+    ``closed`` matters: a closed polyedge arrives here without its repeated end
+    vertex, so ``pairwise`` used to skip the closing edge. The strip crossing it
+    was then treated as a PARALLEL strip and reached for a vertex the insertion
+    had deleted -- ``KeyError`` on every closed polyedge, measured 3 of 3 on the
+    rings around a hole in a densified plate.
+    """
+    sequence = full_updated_polyedge + full_updated_polyedge[:1] if closed else full_updated_polyedge
+
     # orthogonal strips
     orth_to_update = {}
     # orth_skeys = []
-    for old_u, old_v in pairwise(full_updated_polyedge):
+    for old_u, old_v in pairwise(sequence):
         new_u = old_vkeys_to_new_vkeys[old_u][0]
         new_v = old_vkeys_to_new_vkeys[old_v][0]
         skey = mesh.edge_strip((old_u, old_v))

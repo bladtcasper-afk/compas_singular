@@ -124,6 +124,15 @@ class QuadMesh(Mesh):
     # opposite elements
     # --------------------------------------------------------------------------
 
+    def is_strip_face(self, fkey):
+        """Whether a strip can cross this face: it has four sides.
+
+        A face of any other degree has no opposite edge, so a strip walk treats it
+        as it treats the boundary and stops there. ``PseudoQuadMesh`` also admits
+        its pole triangles.
+        """
+        return len(self.face_vertices(fkey)) == 4
+
     def face_opposite_edge(self, u, v):
         """Returns the opposite edge in the quad face.
 
@@ -138,12 +147,23 @@ class QuadMesh(Mesh):
         -------
         (w, x) : tuple, None
             The opposite edge.
-            None if (u, v) is a boundary halfedge, i.e. has no face.
+            None if (u, v) is a boundary halfedge, i.e. has no face, or if its face
+            is not a quad.
+
+        Notes
+        -----
+        The ``None`` for a face that is not a quad is not a formality. Without it
+        a triangle ``[u, v, w]`` answered ``(w, u)`` -- an ADJACENT edge -- so a
+        strip walk turned a corner inside it and carried on. Measured on a dense
+        mesh read back from Rhino, where a pole fan is plain triangles: strips
+        through the fan came out 13 edges long instead of 7, and ``add_strip``
+        raised on 10 of 13 lines that never went near the pole, because it updates
+        those corrupted strips.
 
         """
 
         fkey = self.halfedge[u][v]
-        if fkey is None:
+        if fkey is None or not self.is_strip_face(fkey):
             return None
         w = self.face_vertex_descendant(fkey, v)
         x = self.face_vertex_descendant(fkey, w)
@@ -667,9 +687,15 @@ class QuadMesh(Mesh):
         -------
         strip : list
             The list of the edges in strip.
+
+        Notes
+        -----
+        A face that is not a quad ends the strip exactly like the boundary does --
+        see :meth:`is_strip_face` -- so on a mesh with polygons a strip runs from
+        wall or polygon to wall or polygon.
         """
 
-        if self.halfedge[u0][v0] is None:
+        if not self._crosses(u0, v0):
             if not both_sides:
                 return [(u0, v0)]
             u0, v0 = v0, u0
@@ -691,15 +717,22 @@ class QuadMesh(Mesh):
 
             edges.append((x, w))
 
-            if w not in self.halfedge[x] or self.halfedge[x][w] is None:
+            if not self._crosses(x, w):
                 if not both_sides:
                     break
                 edges = [(v, u) for u, v in reversed(edges)]
                 u, v = edges[-1]
-                if v not in self.halfedge[u] or self.halfedge[u][v] is None:
+                if not self._crosses(u, v):
                     break
 
         return edges
+
+    def _crosses(self, u, v):
+        """Whether a strip walk can continue across the halfedge ``(u, v)``."""
+        if v not in self.halfedge[u]:
+            return False
+        fkey = self.halfedge[u][v]
+        return fkey is not None and self.is_strip_face(fkey)
 
     def collect_strips(self):
         """Collect the strip data and store it in the mesh data attributes.
@@ -814,7 +847,10 @@ class QuadMesh(Mesh):
 
         """
 
-        return [self.halfedge[u][v] for u, v in self.strip_edges(skey) if self.halfedge[u][v] is not None]
+        # ``is_strip_face``: the last edge of a strip that ENDS at a polygon has that
+        # polygon ahead of it, and it is not one of the strip's faces.
+        return [self.halfedge[u][v] for u, v in self.strip_edges(skey)
+                if self.halfedge[u][v] is not None and self.is_strip_face(self.halfedge[u][v])]
 
     def face_strips(self, fkey):
         """Return the two strips of a face.

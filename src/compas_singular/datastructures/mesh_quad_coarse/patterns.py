@@ -759,4 +759,12 @@ def reconcile_strip_densities(coarse, patterns):
             if old != d:
                 coarse.set_strip_density(skey, d)
                 changed[skey] = (old, d)
+
+    if changed:
+        print('reconcile_strip_densities: {} strip(s) raised to fit the '
+              'diagonal/fan pattern(s): {}'.format(
+                  len(changed),
+                  ', '.join('{} {}->{}'.format(skey, old, new)
+                            for skey, (old, new) in sorted(changed.items()))))
+
     return changed

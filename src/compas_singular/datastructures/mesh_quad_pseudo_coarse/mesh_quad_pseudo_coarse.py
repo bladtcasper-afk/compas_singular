@@ -1,8 +1,8 @@
 from __future__ import absolute_import, division, print_function
 
 from compas.datastructures.mesh.mesh import Mesh
-from compas.geometry import Polyline, discrete_coons_patch
-from compas.itertools import linspace, pairwise
+from compas.geometry import discrete_coons_patch
+from compas.itertools import pairwise
 from compas.tolerance import TOL
 
 from compas_singular.datastructures.mesh import meshes_join_and_weld
@@ -143,15 +143,27 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
     # densification
     # --------------------------------------------------------------------------
 
-    def quad_mesh(self, edges_to_curves=None, field=None, pattern_overwrite=None):
+    def quad_mesh(self, boundary_curvature=True, skeleton_curvature=True,
+                 overwrite_edges_to_curves=None, field=None, pattern_overwrite=None):
         """Generate a dense quad mesh from this layout, in a chosen pattern.
 
         Parameters
         ----------
-        edges_to_curves : dict, optional
+        boundary_curvature : bool, optional
+            Use the shape :meth:`edges_to_curves` has stored for edges on the
+            layout's own boundary, instead of chording them. Defaults to True.
+            Ignored -- treated as True -- when ``overwrite_edges_to_curves`` is
+            given. See :meth:`densify`.
+        skeleton_curvature : bool, optional
+            Same, for the edges that are NOT on the boundary -- the interior
+            edges a skeleton or field decomposition traced as separatrices.
+            Defaults to True. Ignored -- treated as True -- when
+            ``overwrite_edges_to_curves`` is given.
+        overwrite_edges_to_curves : dict, optional
             Coarse edges ``(u, v)`` pointing to a curve to densify them along,
-            each curve a list of XYZ points. Without it, a coarse edge is
-            densified as a straight chord between its two vertices.
+            each curve a list of XYZ points, overriding whatever
+            :meth:`edges_to_curves` has stored -- for every edge, regardless of
+            ``boundary_curvature`` / ``skeleton_curvature``.
         field : optional
             A ``CrossField``. Only valid with the ``ortho`` pattern -- see
             :meth:`densification`.
@@ -177,9 +189,13 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
         It divides its sides like every other pattern, so it welds against any
         neighbour.
         """
-        return self.densify(pattern_overwrite=pattern_overwrite, edges_to_curves=edges_to_curves, field=field)
+        return self.densify(pattern_overwrite=pattern_overwrite,
+                            boundary_curvature=boundary_curvature,
+                            skeleton_curvature=skeleton_curvature,
+                            overwrite_edges_to_curves=overwrite_edges_to_curves, field=field)
 
-    def densify(self, pattern_overwrite=None, edges_to_curves=None, field=None):
+    def densify(self, pattern_overwrite=None, boundary_curvature=True, skeleton_curvature=True,
+               overwrite_edges_to_curves=None, field=None):
         """Build one dense patch per coarse face and weld them together.
 
         The loop is the whole of it: take a face's four sides, ask the pattern
@@ -192,13 +208,27 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
         ----------
         pattern : str, optional
             A key of ``PATTERNS``.
-        edges_to_curves : dict, optional
+        boundary_curvature : bool, optional
+            Use the stored :meth:`edges_to_curves` shape for edges on the
+            layout's own boundary. Defaults to True. Ignored -- treated as True
+            -- when ``overwrite_edges_to_curves`` is given.
+        skeleton_curvature : bool, optional
+            Same, for the interior edges. Defaults to True. Ignored -- treated
+            as True -- when ``overwrite_edges_to_curves`` is given.
+        overwrite_edges_to_curves : dict, optional
+            Overrides whatever :meth:`edges_to_curves` has stored, for every
+            edge.
         field : optional
 
         Returns
         -------
         QuadMesh
         """
+        if overwrite_edges_to_curves is not None:
+            edges_to_curves = overwrite_edges_to_curves
+        else:
+            edges_to_curves = self._filtered_edges_to_curves(boundary_curvature, skeleton_curvature)
+
         if field is not None:
             # The field owns this: it carries its own background and builds its
             # own point locator, so a layout from ANY source -- a skeleton
@@ -320,22 +350,7 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
         polylines = []
         for u, v in self.face_halfedges(fkey):
             d = self.get_strip_density(edge_strip[u, v])
-
-            if edges_to_curves:
-                # d + 1 points (not d) to match the straight-chord branch below --
-                # linspace(0, 1, d) samples one point short and raises for d == 1.
-                if (u, v) in edges_to_curves:
-                    curve = Polyline(edges_to_curves[u, v])
-                    polyline = [curve.point_at(t) for t in linspace(0, 1, d + 1)]
-                else:
-                    curve = Polyline(edges_to_curves[v, u])
-                    polyline = [curve.point_at(t) for t in linspace(0, 1, d + 1)]
-                    polyline = polyline[::-1]
-            else:
-                curve = Polyline([self.vertex_coordinates(u), self.vertex_coordinates(v)])
-                polyline = [curve.point_at(float(i) / float(d)) for i in range(0, d + 1)]
-
-            polylines.append(polyline)
+            polylines.append(self._create_patch_edge(u, v, d, edges_to_curves))
 
         if self.is_face_pseudo_quad(fkey):
             pole = self.attributes['face_pole'][fkey]
@@ -345,14 +360,23 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
         return [ab, bc, cd[::-1] if cd else None, da[::-1] if da else None]
 
     # NOTE old densification has to be phased out
-    def densification(self, edges_to_curves=None, field=None):
+    def densification(self, boundary_curvature=True, skeleton_curvature=True,
+                      overwrite_edges_to_curves=None, field=None):
         """Generate a denser quad mesh from the coarse quad mesh and its strip densities.
 
         Parameters
         ----------
-        edges_to_curves : dict, optional
-            A dictionary with edges (u, v) pointing to curve for densification. The curves are lists of XYZ points.
-            Without it, each coarse edge is densified as a straight chord between its two vertices.
+        boundary_curvature : bool, optional
+            Use the stored :meth:`edges_to_curves` shape for edges on the
+            layout's own boundary. Defaults to True. Ignored -- treated as True
+            -- when ``overwrite_edges_to_curves`` is given.
+        skeleton_curvature : bool, optional
+            Same, for the interior edges. Defaults to True. Ignored -- treated
+            as True -- when ``overwrite_edges_to_curves`` is given.
+        overwrite_edges_to_curves : dict, optional
+            A dictionary with edges (u, v) pointing to a curve for
+            densification, overriding whatever :meth:`edges_to_curves` has
+            stored -- for every edge. The curves are lists of XYZ points.
         field : optional
             A ``CrossField`` (from ``FieldDecomposition.get_field()`` or
             ``CrossField.from_boundary(...)``). With it, each patch INTERIOR is
@@ -368,12 +392,10 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
         QuadMesh
             The dense mesh, also stored on this one -- ``get_quad_mesh()``.
         """
-        # A layout that KNOWS the shape of its edges -- one from
-        # ``from_coarse_polylines``, say -- does not make the caller hand them back.
-        # A layout from any other constructor stores none, so this is ``{}``, which
-        # is falsy and falls through to the straight-chord branch exactly as before.
-        if edges_to_curves is None:
-            edges_to_curves = self.edges_to_curves()
+        if overwrite_edges_to_curves is not None:
+            edges_to_curves = overwrite_edges_to_curves
+        else:
+            edges_to_curves = self._filtered_edges_to_curves(boundary_curvature, skeleton_curvature)
 
         if field is not None:
             # The field owns this: it carries its own background and builds its
@@ -406,26 +428,7 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
             polylines = []
             for u, v in self.face_halfedges(fkey):
                 d = self.get_strip_density(edge_strip[u, v])
-
-                if edges_to_curves:
-                    # d + 1 points (not d) to match the straight-chord branch below --
-                    # linspace(0, 1, d) samples one point short and raises for d == 1.
-                    polyline = []
-                    if (u, v) in edges_to_curves:
-                        curve = Polyline(edges_to_curves[u, v])
-                        polyline = [curve.point_at(t) for t in linspace(0, 1, d + 1)]
-                    else:
-                        curve = Polyline(edges_to_curves[v, u])
-                        polyline = [curve.point_at(t) for t in linspace(0, 1, d + 1)]
-                        polyline[:] = polyline[::-1]
-                else:
-                    polyline = []
-                    curve = Polyline([self.vertex_coordinates(u), self.vertex_coordinates(v)])
-                    for i in range(0, d + 1):
-                        point = curve.point_at(float(i) / float(d))
-                        polyline.append(point)
-
-                polylines.append(polyline)
+                polylines.append(self._create_patch_edge(u, v, d, edges_to_curves))
 
             if self.is_face_pseudo_quad(fkey):
                 pole = self.attributes['face_pole'][fkey]

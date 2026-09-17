@@ -67,6 +67,16 @@ class PseudoQuadMesh(QuadMesh):
     def vertex_pole_faces(self, vkey):
         return [fkey for fkey, pole in self.attributes['face_pole'].items() if pole == vkey]
 
+    def is_strip_face(self, fkey):
+        """A quad, or a triangle registered as a pseudo-quad in ``face_pole``.
+
+        A triangle WITHOUT a pole entry -- one drawn by hand on a dense mesh -- is
+        not a pseudo-quad, and walking it used to raise ``KeyError`` on the
+        ``face_pole`` lookup below.
+        """
+        degree = len(self.face_vertices(fkey))
+        return degree == 4 or (degree == 3 and fkey in self.attributes['face_pole'])
+
     def face_opposite_edge(self, u, v):
         """Returns the opposite edge in the quad face.
 
@@ -80,12 +90,13 @@ class PseudoQuadMesh(QuadMesh):
         Returns
         -------
         (w, x) : tuple
-            The opposite edge.
+            The opposite edge. None on the boundary, and for a face a strip
+            cannot cross -- see :meth:`is_strip_face`.
 
         """
 
         fkey = self.halfedge[u][v]
-        if fkey is None:
+        if fkey is None or not self.is_strip_face(fkey):
             return None
         # if quad
         if len(self.face_vertices(fkey)) == 4:
@@ -119,7 +130,7 @@ class PseudoQuadMesh(QuadMesh):
             The list of the edges in strip.
         """
 
-        if self.halfedge[u0][v0] is None:
+        if not self._crosses(u0, v0):
             u0, v0 = v0, u0
 
         edges = [(u0, v0)]
@@ -139,10 +150,10 @@ class PseudoQuadMesh(QuadMesh):
 
             edges.append((x, w))
 
-            if w == x or w not in self.halfedge[x] or self.halfedge[x][w] is None:
+            if w == x or not self._crosses(x, w):
                 edges = [(v, u) for u, v in reversed(edges)]
                 u, v = edges[-1]
-                if u == v or v not in self.halfedge[u] or self.halfedge[u][v] is None:
+                if u == v or not self._crosses(u, v):
                     break
 
         return edges
@@ -293,7 +304,7 @@ class PseudoQuadMesh(QuadMesh):
             elif i == len(edges) - 1 and u == v:
                 pass
             else:
-                if self.halfedge[u][v] is not None:
+                if self.halfedge[u][v] is not None and self.is_strip_face(self.halfedge[u][v]):
                     faces.append(self.halfedge[u][v])
         return faces
 

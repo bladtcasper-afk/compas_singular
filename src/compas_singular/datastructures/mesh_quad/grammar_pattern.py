@@ -302,7 +302,10 @@ def delete_strip(mesh, skey, preserve_boundaries=False):
         if skey_2 == skey:
             continue
         # print('strip_faces_2: ', mesh.strip_faces(skey_2), [mesh.strip_faces(skey_2) in strip_faces])
-        if all([fkey in strip_faces for fkey in mesh.strip_faces(skey_2)]):
+        faces_2 = mesh.strip_faces(skey_2)
+        # ``faces_2`` non-empty: ``all([])`` is True, so a strip with no faces -- one
+        # edge between two polygons -- would be "deleted" by every deletion.
+        if faces_2 and all([fkey in strip_faces for fkey in faces_2]):
             collateral_deleted_strips.append(skey_2)
     # print('collateral_deleted_strips: ', collateral_deleted_strips)
 
@@ -572,7 +575,9 @@ def collateral_strip_deletions(mesh, skeys):
     """
 
     deleted_fkeys = [fkey for skey in skeys for fkey in mesh.strip_faces(skey)]
-    return [skey for skey in mesh.strips() if skey not in skeys and all([fkey in deleted_fkeys for fkey in mesh.strip_faces(skey)])]
+    # A strip with no faces at all is not collateral -- see ``delete_strip``.
+    return [skey for skey in mesh.strips() if skey not in skeys and mesh.strip_faces(skey)
+            and all([fkey in deleted_fkeys for fkey in mesh.strip_faces(skey)])]
 
 
 def total_boundary_deletions(mesh, skeys):
