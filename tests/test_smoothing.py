@@ -10,6 +10,7 @@ import pytest
 from compas.datastructures import Mesh
 from compas.geometry import Bezier
 from compas.geometry import Circle
+from compas.geometry import Curve
 from compas.geometry import Frame
 from compas.geometry import Line
 from compas.geometry import Point
@@ -80,6 +81,53 @@ def test_closest_point_on_constraint_dispatch():
     bezier = Bezier([[0, 0, 0], [5, 5, 0], [10, 0, 0]])
     on_bezier = closest_point_on_constraint(bezier, [5, 10, 0])
     assert distance_point_point(on_bezier, [5, 2.5, 0]) < 1e-2
+
+
+class _UnprojectableLine(Curve):
+    """The segment (0, 0, 0)-(10, 0, 0), whose closest_point fails the way a Rhino curve's does."""
+
+    def point_at(self, t):
+        return Point(10.0 * t, 0.0, 0.0)
+
+    def closest_point(self, point, return_parameter=False):
+        return None
+
+
+class _UnimplementedLine(Curve):
+    """The same segment, with no closest_point at all -- like compas' Arc, Ellipse and Bezier.
+
+    Its own type, so the once-per-type explanation has not been printed by any other test.
+    """
+
+    def point_at(self, t):
+        return Point(10.0 * t, 0.0, 0.0)
+
+
+def test_closest_point_on_constraint_lands_exactly_on_a_curve():
+    # the curve's own projection, not a 128-segment polyline a sagitta inside it
+    circle = Circle(2.0, Frame.worldXY())
+    for xyz in ([1.5, 1.5, 0], [-3.0, 0.2, 0], [0.1, -0.4, 0]):
+        on_circle = closest_point_on_constraint(circle, xyz)
+        assert abs(distance_point_point(on_circle, [0, 0, 0]) - 2.0) < 1e-12
+
+
+def test_closest_point_on_constraint_falls_back_when_a_curve_gives_no_point():
+    on_line = closest_point_on_constraint(_UnprojectableLine(), [5, 3, 0])
+    assert distance_point_point(on_line, [5, 0, 0]) < 1e-9
+
+
+def test_closest_point_on_constraint_explains_the_fallback_once(capsys):
+    curve = _UnimplementedLine()
+    on_line = closest_point_on_constraint(curve, [5, 3, 0])
+    assert distance_point_point(on_line, [5, 0, 0]) < 1e-9
+    printed = capsys.readouterr().out
+    assert '_UnimplementedLine does not implement closest_point' in printed
+    assert '128-segment polyline' in printed
+
+    # a smoothing run projects every vertex at every iteration: said once, not every time
+    closest_point_on_constraint(curve, [7, -1, 0])
+    closest_point_on_constraint(_UnimplementedLine(), [2, 4, 0])
+    assert capsys.readouterr().out == ''
 
 
 def test_closest_point_on_constraint_rejects_unsupported():

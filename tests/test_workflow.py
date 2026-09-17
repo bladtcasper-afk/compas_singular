@@ -46,12 +46,12 @@ L_SHAPE = [[0.0, 0.0, 0.0], [4.0, 0.0, 0.0], [4.0, 2.0, 0.0],
 
 
 def test_discretise_boundary_keeps_corners_and_is_idempotent():
-    dense, inners = discretise_boundary(PLATE, target_length=0.5)
+    dense, inners = discretise_boundary(PLATE, spacing=0.5)
     assert len(dense) == 80          # perimeter 40, at 0.5
     assert inners == []
     for corner in PLATE:                    # every input point survives
         assert corner in dense
-    assert discretise_boundary(dense, target_length=0.5)[0] == dense
+    assert discretise_boundary(dense, spacing=0.5)[0] == dense
     # a closing point is dropped rather than leaving a zero-length segment
     assert discretise_boundary(PLATE + PLATE[:1])[0] == discretise_boundary(PLATE)[0]
 
@@ -60,7 +60,7 @@ def test_discretise_boundary_keeps_corners_and_is_idempotent():
 def test_discretise_boundary_keeps_a_reflex_corner_at_any_spacing(spacing):
     """Each SEGMENT is subdivided on its own, so no corner is ever rounded off --
     including at a spacing 25x coarser than the shape."""
-    dense, _ = discretise_boundary(L_SHAPE, target_length=spacing)
+    dense, _ = discretise_boundary(L_SHAPE, spacing=spacing)
     for corner in L_SHAPE:
         assert any(math.dist(corner, p) < 1e-12 for p in dense)
 
@@ -70,16 +70,16 @@ def test_discretise_boundary_target_is_a_bound_not_an_average(spacing):
     """``ceil``, not ``round``: rounding to nearest left segments up to 1.5x the
     target -- measured 1.12x on this disc at 0.5."""
     for loop in (PLATE, L_SHAPE, circle([0, 0, 0], 5.0, 28)):
-        dense, _ = discretise_boundary(loop, target_length=spacing)
+        dense, _ = discretise_boundary(loop, spacing=spacing)
         assert max_segment(dense) <= spacing + 1e-12
 
 
 def test_discretise_boundary_d_min_is_a_floor_only():
     tiny = circle([0, 0, 0], 0.1, 4)
-    assert len(discretise_boundary(tiny, target_length=10.0, d_min=5)[0]) >= 5
-    assert len(discretise_boundary(tiny, target_length=10.0, d_min=10)[0]) >= 10
+    assert len(discretise_boundary(tiny, spacing=10.0, d_min=5)[0]) >= 5
+    assert len(discretise_boundary(tiny, spacing=10.0, d_min=10)[0]) >= 10
     # it never coarsens a loop that is already fine enough
-    assert len(discretise_boundary(PLATE, target_length=0.5, d_min=10)[0]) == 80
+    assert len(discretise_boundary(PLATE, spacing=0.5, d_min=10)[0]) == 80
 
 
 def test_discretise_boundary_alpha_is_the_thesis_scale_rule():
@@ -96,12 +96,12 @@ def test_discretise_boundary_alpha_is_the_thesis_scale_rule():
 
 
 def test_discretise_boundary_target_length_overrides_alpha():
-    assert (discretise_boundary(PLATE, target_length=0.5, alpha=0.01)[0]
-            == discretise_boundary(PLATE, target_length=0.5)[0])
+    assert (discretise_boundary(PLATE, spacing=0.5, alpha=0.01)[0]
+            == discretise_boundary(PLATE, spacing=0.5)[0])
 
 
 def test_discretise_boundary_alpha_none_is_the_opt_out():
-    raw, _ = discretise_boundary(PLATE, target_length=None, alpha=None)
+    raw, _ = discretise_boundary(PLATE, spacing=None, alpha=None)
     assert raw == [[float(c) for c in p] for p in PLATE]
 
 
@@ -185,11 +185,14 @@ def test_edges_to_curves_keeps_a_hole_round():
                   for ring in mesh.vertices_on_boundaries() for v in ring]
         return max(e for e in errors if e < 1.0)   # the hole ring only
 
-    with_curves = worst_hole_error(coarse.densification(edges_to_curves=curves))
+    with_curves = worst_hole_error(coarse.densification(overwrite_edges_to_curves=curves))
 
+    # ``coarse_mesh()`` now stores curves on the layout itself, so a bare
+    # ``densification()`` call picks them up by default -- asking for none
+    # explicitly is what reproduces the old "no curves" baseline.
     bare = d.coarse_mesh(force=True)
     bare.set_strips_density_target(t=0.5)
-    without = worst_hole_error(bare.densification())
+    without = worst_hole_error(bare.densification(boundary_curvature=False, skeleton_curvature=False))
 
     assert with_curves < 0.01 * 1.6              # under 1% of the radius
     assert without > 0.4 * 1.6                   # a polygon, not a circle
@@ -248,7 +251,7 @@ def test_skeleton_layout_densified_with_a_field():
 
 
 def test_field_decomposition_answers_the_same_names():
-    from compas_singular.framefield.decomposition import FieldDecomposition
+    from compas_singular.framefield.field_decomposition import FieldDecomposition
     d = FieldDecomposition.from_boundary(PLATE, target_length=0.8)
     coarse = d.coarse_mesh()
     assert coarse is d.decomposition_mesh()

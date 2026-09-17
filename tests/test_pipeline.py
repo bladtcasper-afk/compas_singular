@@ -57,6 +57,37 @@ def test_skeleton_decomposition_planar():
     assert densemesh.number_of_faces() > coarsemesh.number_of_faces()
 
 
+def _ngon(n, radius, phase=0.0):
+    from math import cos, sin
+    return [[radius * cos(phase + 2 * pi * i / n),
+             radius * sin(phase + 2 * pi * i / n), 0.0] for i in range(n)]
+
+
+@pytest.mark.parametrize('radii,spacing', [((4.0, 2.0), 0.5), ((5.0, 2.0), 0.25)])
+def test_polygonal_walls_do_not_divide_by_zero(radii, spacing):
+    """A polygonal domain triangulates without a ZeroDivisionError.
+
+    A straight wall discretised at ``spacing`` becomes a RUN of collinear
+    points, and Qhull answers those with flat simplices. A flat triangle has no
+    circumcircle, and ``trimesh_face_circle`` divides by its doubled squared
+    area -- so ``boundary_triangulation`` must delete every one of them before
+    the next loop asks for a circumcentre.
+
+    The rounding is the whole difficulty, which is why these two shapes are
+    pinned rather than any polygon: a 12-gon around a hexagon puts three flat
+    faces in the Delaunay, and an exact ``== 0`` area test caught two of them.
+    The third's area came out 0.0 from one pair of its edge vectors and 8e-17
+    from another, so it survived the filter and raised in ``trimesh_face_circle``.
+    """
+    outer = _ngon(12, radii[0], phase=pi / 12)
+    inner = _ngon(6, radii[1], phase=pi / 12)
+    decomposition = SkeletonDecomposition.from_boundary(
+        outer, inner_boundaries=[inner], target_length=spacing)
+    coarse = decomposition.coarse_mesh()
+    assert coarse.number_of_faces() > 0
+    assert coarse.is_manifold()
+
+
 def _l_plate_dense(density=3, resolution=6):
     """An L-plate, whose reentrant corner gives the layout one valence-5 joint.
 
@@ -276,7 +307,10 @@ def _face_sizes(mesh):
     ((), (), 4, 9, {4: 4}),
     ((), ([5.0, 5.0, 0.0],), 12, 17, {3: 4, 4: 8}),
     ((), ([3.0, 3.0, 0.0], [7.0, 7.0, 0.0]), 14, 18, {3: 6, 4: 8}),
-    ((_segment([1.4, 1.4, 0.0], [8.6, 8.6, 0.0]),), (), 10, 21, {4: 10}),
+    # re-measured 2026-09-15: was 10 faces / 21 vertices, a layout that dropped
+    # both free tips, covered 95.9% of the square and left two corner vertices
+    # belonging to no face. Each tip is now a two-valent vertex (Fig 4.21c).
+    ((_segment([1.4, 1.4, 0.0], [8.6, 8.6, 0.0]),), (), 12, 19, {4: 12}),
 ])
 def test_curve_feature_repair_leaves_working_inputs_alone(features, points, faces, vertices, sizes):
     """Inputs that already worked must come out untouched, key for key.
@@ -284,7 +318,8 @@ def test_curve_feature_repair_leaves_working_inputs_alone(features, points, face
     quadrangulate_polygonal_faces calls mesh_weld, which REBUILDS the mesh and
     renumbers every key -- and the editing and agent layers address faces by key.
     Its early return is what keeps that off the common path; this is the guard on
-    the early return. The numbers are the pre-restoration output.
+    the early return. The numbers are the pre-restoration output, except where
+    noted.
     """
     coarse = _coarse(features, points)
     assert coarse.number_of_faces() == faces
@@ -461,10 +496,11 @@ def test_boundary_interior_angle_separates_convex_from_concave():
 def test_convex_corner_carrying_a_curve_feature_is_not_corrected():
     """Fig 4.17: a curve extremity landing on a wall must not add a singularity.
 
-    The extremity makes the corner THREE-valent, so it slips past the
-    ``vertex_degree(w) == 2`` guard in the kink correction. Before the concavity
-    gate, both of the square's corners were corrected and each picked up a
-    spurious valence-3 pole a fraction of the discretisation away.
+    The cut runs through the corner the feature lands on, so the corner becomes
+    two copies, one per side, each an ordinary two-valent convex corner of its
+    half. Before the cut reached the wall the corner was one THREE-valent vertex:
+    it slipped past the corner test, the end of the uncut slit next to it read as
+    a concavity, and the correction put a spurious pole beside the corner.
     """
     outer = _plate([[0, 0], [10, 0], [10, 10], [0, 10]])
     diagonal = _segment([0.0, 0.0, 0.0], [10.0, 10.0, 0.0])
@@ -472,32 +508,28 @@ def test_convex_corner_carrying_a_curve_feature_is_not_corrected():
     decomposition = SkeletonDecomposition.from_mesh(
         boundary_triangulation(outer, [], [diagonal], []))
 
-    # the corner is convex, so the gate must exclude it
-    for corner in ([0.0, 0.0], [10.0, 10.0]):
-        vkey = [v for v in decomposition.vertices()
-                if abs(decomposition.vertex_coordinates(v)[0] - corner[0]) < 1e-9
-                and abs(decomposition.vertex_coordinates(v)[1] - corner[1]) < 1e-9][0]
-        assert decomposition.vertex_degree(vkey) == 3, 'the extremity should make it three-valent'
-        assert decomposition.boundary_interior_angle(vkey) <= pi
+    # the diagonal cuts the square into two halves
+    assert len(decomposition.vertices_on_boundaries()) == 2
 
-    # and no correction branch may terminate ON it
-    flagged = [branch[-1] for branch in decomposition.branches_splitting_boundary_kinks()]
     for corner in ([0.0, 0.0], [10.0, 10.0]):
-        assert not any(abs(p[0] - corner[0]) < 1e-6 and abs(p[1] - corner[1]) < 1e-6
-                       for p in flagged), 'convex corner %s was corrected' % corner
+        copies = [v for v in decomposition.vertices() if decomposition.vertex_neighbors(v)
+                  and abs(decomposition.vertex_coordinates(v)[0] - corner[0]) < 1e-9
+                  and abs(decomposition.vertex_coordinates(v)[1] - corner[1]) < 1e-9]
+        assert len(copies) == 2, 'the cut did not reach the corner %s' % corner
+        for vkey in copies:
+            assert vkey in decomposition.corner_vertices()
+            assert decomposition.boundary_interior_angle(vkey) <= pi
 
-    # the concave end of the cut (interior angle 360 deg) still IS corrected --
-    # that is the half of 4.2.3.1 the gate must keep
-    assert any(abs(p[0] - p[1]) < 1e-6 and 0.1 < p[0] < 0.2 for p in flagged)
+    # no slit end is left, so there is no concavity to correct
+    assert decomposition.branches_splitting_boundary_kinks() == []
 
 
 def test_no_skeleton_branch_crosses_a_curve_feature():
     """Thesis 4.20a vs 4.20b: the cut exists so no branch crosses a feature.
 
-    ``mesh_unweld_edges`` leaves the first and last segment of a chain uncut --
-    their end vertices are never split -- so the faces either side stay adjacent
-    and the skeleton runs straight across the feature there.
-    ``Skeleton.real_neighbors`` discounts those adjacencies.
+    The faces either side of a cut edge are no longer adjacent, so the skeleton
+    cannot run across it. ``Skeleton.real_neighbors`` discounts any adjacency
+    across a feature edge that survives anyway.
     """
     outer = _plate([[0, 0], [10, 0], [10, 10], [0, 10]])
     diagonal = _segment([0.0, 0.0, 0.0], [10.0, 10.0, 0.0])
@@ -559,7 +591,8 @@ def test_grafts_at_adjacent_samples_of_a_feature_share_a_node():
     assert all(len(coarse.face_vertices(f)) == 4 for f in coarse.faces())
     interior = [v for v in coarse.vertices()
                 if not coarse.is_vertex_on_boundary(v) and len(coarse.vertex_neighbors(v)) != 4]
-    assert len(interior) == 4
+    # the four singular points, and the two free tips as two-valent vertices
+    assert len(interior) == 6
 
 
 def test_graft_merge_only_joins_ADJACENT_samples():
@@ -580,6 +613,101 @@ def test_graft_merge_only_joins_ADJACENT_samples():
     adjacent = [[centre, list(chain[0])], [centre, list(chain[1])]]
     merged = decomposition.merge_graft_targets(adjacent)
     assert merged[0][1] == merged[1][1] == chain[0]
+
+
+def test_graft_merge_keeps_a_chain_extremity():
+    """Merged grafts land on the chain's END, whichever way the chain runs.
+
+    Chain order would pick the sample nearer the start. Where the chain runs
+    towards a free tip that is one sample inward, and the tip is left with no
+    branch -- both free arms of Fig 4.19 lost theirs.
+    """
+    outer = _plate([[0, 0], [10, 0], [10, 10], [0, 10]])
+    chain = _segment([0.0, 0.0, 0.0], [4.0, 0.0, 0.0], spacing=1.0)
+    decomposition = SkeletonDecomposition.from_mesh(boundary_triangulation(outer, [], [], []))
+    decomposition.feature_points = [chain]
+
+    centre = [0.0, 5.0, 0.0]
+    at_the_end = [[centre, list(chain[-2])], [centre, list(chain[-1])]]
+    merged = decomposition.merge_graft_targets(at_the_end)
+    assert merged[0][1] == merged[1][1] == chain[-1]
+
+
+def test_a_feature_landing_on_walls_gives_an_all_quad_layout():
+    """``examples/000_testing.py``: a rectangle cut corner to corner by a line.
+
+    Each half is a triangle -- one singularity, three quads -- and each half's
+    graft on the line is a discrepancy on the other side. Seam propagation
+    (Fig 4.20d) carries each across its half to the wall. It never ran: the
+    sources were collected per component, so none was found, and a single global
+    list made each pentagon see two sources and three corners.
+    """
+    rectangle = [[0.0, 0.0, 0.0], [5.0, 0.0, 0.0], [5.0, 10.0, 0.0], [0.0, 10.0, 0.0]]
+    decomposition = SkeletonDecomposition.from_boundary(rectangle, polyline_features=[[[0.0, 0.0, 0.0], [5.0, 10.0, 0.0]]])
+    coarse = decomposition.coarse_mesh()
+
+    assert _face_sizes(coarse) == {4: 10}
+    assert decomposition.repair_notes == []
+    for corner in rectangle:
+        assert any(coarse.vertex_coordinates(v) == corner for v in coarse.vertices()), 'corner %s lost' % corner
+
+
+def test_free_feature_extremities_stay_layout_vertices():
+    """Fig 4.21: a free extremity is a singularity of the layout.
+
+    Both sides of the slit join into one segment, so a grafted tip has only two
+    branches and was merged straight through -- the tip disappeared and the
+    coarse edges crossed the feature.
+    """
+    coarse = _coarse([_segment([2.8, 6.6, 0.0], [6.6, 2.8, 0.0])])
+    for tip in ([2.8, 6.6], [6.6, 2.8]):
+        vkeys = [v for v in coarse.vertices()
+                 if abs(coarse.vertex_coordinates(v)[0] - tip[0]) < 1e-6
+                 and abs(coarse.vertex_coordinates(v)[1] - tip[1]) < 1e-6]
+        assert len(vkeys) == 1, 'tip %s is not a layout vertex' % tip
+        assert len(coarse.vertex_neighbors(vkeys[0])) == 2
+
+
+def test_crossing_seam_strips_leave_no_polygon():
+    """A line cutting off a corner: two seam strips cross in the corner patch.
+
+    A vertex made by the first strip is a real corner once its face is split;
+    counted as a source for the second strip, the face showed two sources and
+    three corners and was left a pentagon for the fallback repair.
+    """
+    square = [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 10.0, 0.0], [0.0, 10.0, 0.0]]
+    decomposition = SkeletonDecomposition.from_boundary(square, polyline_features=[[[0.0, 5.41, 0.0], [5.03, 0.0, 0.0]]])
+    coarse = decomposition.coarse_mesh()
+
+    assert _face_sizes(coarse) == {4: 17}
+    assert decomposition.repair_notes == []
+
+
+def test_seam_propagation_that_never_ends_is_abandoned():
+    """Around two crossing features a seam strip can close on itself.
+
+    Unguarded, this layout grew past 1000 faces. It is now restored and left to
+    the fallback repair.
+    """
+    rectangle = [[0.0, 0.0, 0.0], [5.0, 0.0, 0.0], [5.0, 10.0, 0.0], [0.0, 10.0, 0.0]]
+    crossing = [[[4.052, 5.821, 0.0], [1.391, 9.395, 0.0]], [[3.654, 9.331, 0.0], [2.072, 6.471, 0.0]]]
+    decomposition = SkeletonDecomposition.from_boundary(rectangle, polyline_features=crossing, target_length=0.2236)
+    coarse = decomposition.coarse_mesh()
+
+    assert any('did not terminate' in note for note in decomposition.repair_notes)
+    assert coarse.number_of_faces() < 200
+    assert max(_face_sizes(coarse)) <= 4
+
+
+def test_seam_propagation_skips_a_face_through_a_vertex_twice():
+    """A bent line near a corner produced a face passing through one vertex twice,
+    and ``quadrangulate_face`` raised ``ValueError: not enough values to unpack``.
+    """
+    rectangle = [[0.0, 0.0, 0.0], [5.0, 0.0, 0.0], [5.0, 10.0, 0.0], [0.0, 10.0, 0.0]]
+    bent = [[[5.0, 2.589, 0.0], [3.505, 1.12, 0.0], [3.824, 0.0, 0.0]]]
+    decomposition = SkeletonDecomposition.from_boundary(rectangle, polyline_features=bent)
+    coarse = decomposition.coarse_mesh()
+    assert max(_face_sizes(coarse)) <= 4
 
 
 def test_crossing_features_get_a_vertex_at_the_crossing():
@@ -670,26 +798,24 @@ def test_a_collapsed_edge_is_opened_enough_to_be_an_edge():
     The fraction was 0.1, too small to produce an edge: on a real Rhino plate it
     left a 0.019 edge -- aspect ratio 376, a 178.6 degree corner, a singularity
     reading as a tiny edge rather than a point.
+
+    Built by hand: the free guide that used to reach case 1 no longer does, now
+    its tips are layout vertices. Two triangles, each with ONE boundary corner.
+    On this unit layout the old fraction opens the pair to 0.09, the current one
+    to 0.43.
     """
-    square = [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 10.0, 0.0], [0.0, 10.0, 0.0]]
-    guide = [[2.8, 6.6, 0.0], [6.6, 2.8, 0.0]]
+    vertices = [[0, 0, 0], [1, 0, 0], [2, 0, 0], [0, 1, 0], [0.7, 1, 0], [1.3, 1, 0],
+                [2, 1, 0], [0, 2, 0], [1, 2, 0], [2, 2, 0]]
+    faces = [[0, 1, 4, 3], [1, 2, 6, 5], [1, 5, 4], [3, 4, 8, 7], [4, 5, 8], [5, 6, 9, 8]]
+    decomposition = SkeletonDecomposition()
+    decomposition.mesh = CoarsePseudoQuadMesh.from_vertices_and_faces(vertices, faces)
 
-    decomposition = SkeletonDecomposition.from_boundary(
-        square, polyline_features=[guide], target_length=0.2)
-    coarse = decomposition.decomposition_mesh([])
+    decomposition.solve_triangular_faces()
+    coarse = decomposition.mesh
 
+    assert _face_sizes(coarse) == {4: 6}, 'case 1 did not turn the triangles into quads'
     shortest = min(coarse.edge_length(*e) for e in coarse.edges())
-    # a tenth of the target length is the floor worth defending: at 0.1 this
-    # case measured 0.14, which is what made the mesh unusable
-    assert shortest > 0.5, 'collapsed edge left at %.4f' % shortest
-
-    # and the opening must not have changed the layout
-    assert coarse.number_of_faces() == 10
-    assert all(len(coarse.face_vertices(f)) == 4 for f in coarse.faces())
-    coarse.collect_strips()
-    coarse.set_strips_density_target(0.5)
-    coarse.densification()
-    assert coarse.get_quad_mesh().number_of_faces() > 0
+    assert shortest > 0.25, 'collapsed edge left at %.4f' % shortest
 
 
 def test_case_two_survives_a_missing_decomposition_polyline():
