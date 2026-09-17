@@ -5,6 +5,7 @@ from __future__ import division
 from math import pi
 
 from compas.datastructures import mesh_smooth_centerofmass
+from compas.geometry import Curve
 from compas.geometry import Point
 from compas.geometry import Polyline
 from compas.geometry import angle_vectors
@@ -47,18 +48,22 @@ def closest_point_on_constraint(constraint, xyz, discretisation=128):
 
     Parameters
     ----------
-    constraint : None | :class:`compas.geometry.Point` | [float, float, float] | :class:`compas.geometry.Polyline` | sequence[point] | Any
+    constraint : None | :class:`compas.geometry.Point` | [float, float, float] | :class:`compas.geometry.Polyline` | sequence[point] | :class:`compas.geometry.Curve` | Any
         The geometry to project onto:
 
         * ``None`` -- no constraint, None is returned;
         * a :class:`compas.geometry.Point` or a bare ``[x, y, z]`` -- the point itself, i.e. a pin;
         * a :class:`compas.geometry.Polyline` or any sequence of points -- the closest point
           on that polyline, via :func:`compas.geometry.closest_point_on_polyline`;
-        * any object with a working ``closest_point`` method
-          (:class:`compas.geometry.Line`, :class:`compas.geometry.Circle`,
-          :class:`compas.geometry.Arc`, a Rhino or OCC backed curve or surface, ...)
-          -- the result of that method;
-        * any other curve -- the closest point on its ``to_polyline`` discretisation.
+        * any other :class:`compas.geometry.Curve` -- a :class:`~compas.geometry.Line`, a
+          :class:`~compas.geometry.Circle`, a curve from ``compas_rhino``'s
+          ``curve_to_compas`` or from ``compas_occ`` -- the closest point ON THE CURVE, from
+          its own ``closest_point``. See :func:`_closest_point_on_curve` for the curves that
+          have none and fall back on their ``to_polyline`` discretisation;
+        * any other object with a working ``closest_point`` method (a
+          :class:`~compas_singular.editing.GuideCurve`, a Rhino or OCC surface, ...) -- the
+          result of that method;
+        * anything else with a ``to_polyline`` -- the closest point on that discretisation.
     xyz : [float, float, float]
         The coordinates of the point to project.
     discretisation : int, optional
@@ -84,13 +89,18 @@ def closest_point_on_constraint(constraint, xyz, discretisation=128):
     if isinstance(constraint, Point) or _is_xyz(constraint):
         return [float(constraint[0]), float(constraint[1]), float(constraint[2])]
 
-    # a polyline, or any bare sequence of points read as one
+    # a polyline, or any bare sequence of points read as one. BEFORE the curve branch: a
+    # Polyline is a Curve too, and its own closest_point raises NotImplementedError
     if isinstance(constraint, Polyline):
         return closest_point_on_polyline(xyz, constraint)
     if isinstance(constraint, (list, tuple)):
         return closest_point_on_polyline(xyz, [list(point) for point in constraint])
 
-    # anything that knows how to project a point: Line, Circle, Arc, Rhino or OCC geometry, ...
+    # a parametric curve: onto the curve itself, not onto a sampling of it
+    if isinstance(constraint, Curve):
+        return _closest_point_on_curve(constraint, xyz, discretisation)
+
+    # anything else that knows how to project a point: a GuideCurve, Rhino or OCC surfaces, ...
     method = getattr(constraint, 'closest_point', None)
     if callable(method):
         try:
@@ -104,6 +114,39 @@ def closest_point_on_constraint(constraint, xyz, discretisation=128):
         return closest_point_on_polyline(xyz, method(n=discretisation))
 
     raise TypeError('Cannot compute the closest point on a constraint of type {}.'.format(type(constraint)))
+
+
+#: Curve types whose missing ``closest_point`` has already been explained by
+#: :func:`_closest_point_on_curve`. Once per TYPE, not per call: smoothing projects every
+#: constrained vertex at every iteration, and a print per call would put thousands of
+#: identical lines on Rhino's command line.
+_EXPLAINED_FALLBACKS = set()
+
+
+def _closest_point_on_curve(curve, xyz, discretisation):
+    """The closest point on a compas curve, from the curve itself wherever it can say.
+
+    ``closest_point(point=...)`` is exact on a ``Line``, a ``Circle``, a ``compas_rhino``
+    curve (Rhino's ``ClosestPoint``) and a ``compas_occ`` curve
+    (``GeomAPI_ProjectPointOnCurve``). Two ways it gives no answer, and both fall back on
+    the curve's ``to_polyline`` -- a sagitta off the curve rather than no point at all:
+
+    * ``Arc``, ``Ellipse`` and ``Bezier`` raise ``NotImplementedError`` (compas 2.15). The
+      fallback is printed, once per curve type;
+    * a Rhino curve returns ``None`` when ``ClosestPoint`` fails.
+    """
+    try:
+        closest = curve.closest_point(point=Point(*xyz))
+    except NotImplementedError:
+        if type(curve) not in _EXPLAINED_FALLBACKS:
+            _EXPLAINED_FALLBACKS.add(type(curve))
+            print('note: {} does not implement closest_point, so points are projected onto a '
+                  '{}-segment polyline of it instead -- up to a sagitta off the curve itself. '
+                  'Shown once per curve type.'.format(type(curve).__name__, discretisation))
+        closest = None
+    if closest is None:
+        return closest_point_on_polyline(xyz, curve.to_polyline(n=discretisation))
+    return [float(closest[0]), float(closest[1]), float(closest[2])]
 
 
 def _is_polyline_like(constraint):
@@ -289,13 +332,13 @@ def _closest_curve(mesh, vertices, curves):
 # Smoothing
 # ==============================================================================
 
-def constrained_smoothing(mesh, kmax=100, damping=0.5, constraints=None, algorithm='centroid', fixed=None):
+def constrained_smoothing(mesh, kmax=100, damping=0.5, constraints=None, algorithm='centroid', fixed=None,
+                          symmetric=None):
     """Constrained smoothing of a mesh. Constraints can be points, curves or surfaces.
 
-    This is the COMPAS-only counterpart of
-    :func:`compas_singular.rhino.constrained_smoothing`: the projections go through
-    :func:`closest_point_on_constraint`, which builds on :mod:`compas.geometry`,
-    so this runs headless, without Rhino.
+    The projections go through :func:`closest_point_on_constraint`, which builds on
+    :mod:`compas.geometry`, so this runs headless, without Rhino. For a mesh on a
+    surface, :mod:`.projection` builds the constraints.
 
     Parameters
     ----------
@@ -313,6 +356,13 @@ def constrained_smoothing(mesh, kmax=100, damping=0.5, constraints=None, algorit
         Type of smoothing algorithm to apply. Classic centroid by default.
     fixed : sequence[int], optional
         Vertices that the smoothing algorithm must not move at all. Default is None.
+    symmetric : bool, optional
+        Keep a mesh made by ``expand_symmetrically`` exactly symmetric: every
+        iteration averages each vertex over its orbit (read from
+        ``attributes['orbits']``, not searched for) before projecting onto the
+        constraints. ``None`` (default) means: when the mesh has orbits. Without
+        it, each iteration drifts by floating point and by the constraint
+        projections, and the symmetry the expansion built slowly erodes.
 
     Returns
     -------
@@ -321,6 +371,13 @@ def constrained_smoothing(mesh, kmax=100, damping=0.5, constraints=None, algorit
 
     """
     constraints = constraints or {}
+    if symmetric is None:
+        symmetric = bool(mesh.attributes.get('orbits'))
+    orbit_maps = None
+    if symmetric:
+        from compas_singular.symmetry.replicate import orbit_maps as _orbit_maps
+        from compas_singular.symmetry.replicate import symmetrise_positions
+        orbit_maps = _orbit_maps(mesh)
 
     # polylines get a projector that only searches around the previous result
     projectors = {}
@@ -338,6 +395,8 @@ def constrained_smoothing(mesh, kmax=100, damping=0.5, constraints=None, algorit
 
     def callback(k, args):
         mesh, constraints = args
+        if orbit_maps is not None:
+            symmetrise_positions(mesh, orbit_maps)
         for vertex, constraint in constraints.items():
             if constraint is None:
                 continue
