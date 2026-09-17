@@ -46,8 +46,9 @@ def select_boundary():
 
 def select_boundaries():
     curves = rs.GetObjects(message="Pick closed polylines as boundaries", filter=rs.filter.curve, group=True, preselect=False, select=True, minimum_count=0, maximum_count=10, custom_filter=closed_filter)
-    curves = rs.CopyObjects(curves)
-    return curves or []
+    if not curves:
+        return []
+    return rs.CopyObjects(curves) or []
 
 def edit_outer():
     existing = rs.ObjectsByLayer("Outer")
@@ -58,7 +59,9 @@ def edit_outer():
 
 def edit_inner():
     mode = rs.GetString(message="Inner boundary selection mode", defaultString="Add", strings=["Add", "Delete", "New"])
-    mode = (mode or "Add").lower()
+    if mode is None:
+        return
+    mode = mode.lower()
 
     if mode == "new":
         new_inner_boundaries()
@@ -92,7 +95,9 @@ def delete_inner_boundaries():
 
 def edit_guides():
     mode = rs.GetString(message="Inner boundary selection mode", defaultString="Add", strings=["Add", "Delete", "New"])
-    mode = (mode or "Add").lower()
+    if mode is None:
+        return
+    mode = mode.lower()
 
     if mode == "new":
         new_guides()
@@ -131,7 +136,9 @@ def delete_guides():
 
 def edit_point_features():
     mode = rs.GetString(message="Point feature selection mode", defaultString="Add", strings=["Add", "Delete", "New"])
-    mode = (mode or "Add").lower()
+    if mode is None:
+        return
+    mode = mode.lower()
 
     if mode == "new":
         new_pts()
@@ -228,6 +235,7 @@ print("1 outer boundary curve")
 print(f"{len(inner)} inner boundary curves")
 print(f"{len(guides)} guide curves")
 print(f"{len(point_features)} point features")
+print("next: CMD_coarse_mesh to generate a coarse layout, or CMD_read_coarse_mesh to read a hand-drawn one.")
 
 """
 def densify(curve, resolution: int) -> list[Point]:

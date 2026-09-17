@@ -540,6 +540,8 @@ def main():
     # leaves a cache describing a layout the document does not have.
     coarse.save_to_json(cache_path(COARSE_CACHE))
     print("layout cached: {}".format(cache_path(COARSE_CACHE, create=False)))
+    print("note: this replaces any previous layout -- densities (CMD_densities) and "
+          "patterns (CMD_dense_pattern) set on it do not carry over.")
     print("next: CMD_densities, then CMD_quad_mesh.")
 
 

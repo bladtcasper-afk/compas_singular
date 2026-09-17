@@ -13,11 +13,15 @@
             TopologyProblem::Skeleton::EdgeCurves    the layout WITH its curvature
     scratch TopologyProblem::Skeleton::TempEdit      pickable corners and edges
 
-Five operations:
+Six operations:
 
 * **move_vertices** -- drag a corner. A corner on the layout boundary is held
   on the domain wall, so nudging the edge of the layout does not eat the
   outline;
+* **move_pole** -- pick a highlighted pole, then one of the highlighted corners
+  it may move to. Nothing moves: the pole's patches are re-collapsed at that
+  corner, which only works for a corner all of them share. Strip densities do
+  not survive it;
 * **add_polyedge** -- draw a Polyline or an Arc across the layout and cut a new
   line of coarse edges into it: every edge crossed is split, every patch passed
   through is split in two. The drawn SHAPE is kept, so an arc densifies as an
@@ -26,9 +30,14 @@ Five operations:
 * **add_strip** -- pick a run of existing corners and UNZIP it into a strip:
   each corner becomes two and a new band opens between them, redividing the
   space of the two patches either side into three. Robin's grammar rule, and it
-  keeps the strip data valid, so the densities set in step 5 survive it;
-* **remove_strip** -- pick a strip by its RIBBON and the whole band is deleted.
-  The two sides weld together;
+  keeps the strip data valid, so the densities set in step 5 survive it. Esc
+  during the picking cancels the whole run; Enter stops picking and adds it;
+* **remove_strip** -- pick a strip by its RIBBON and the whole band is deleted
+  IMMEDIATELY, no confirmation asked. The two sides weld together. ``undo``
+  is where a wrong pick goes;
+* **undo** -- put back the layout as it was before the last edit -- one step,
+  not the whole session. What makes acting on a pick immediately (rather than
+  asking first) safe;
 * **commit** -- write the edited layout back into the mesh this command read,
   in place. What that costs depends on what was edited: after moves alone the
   boundary corners are re-snapped to the walls and the strip data (and so the
@@ -37,7 +46,8 @@ Five operations:
   layout that will not densify is REFUSED rather than quietly replaced.
 
 **Nothing is written to the document until commit.** ``reset`` goes back to the
-layout this session started with, and leaving without committing leaves
+layout this session started with, ``undo`` back one edit at a time, and leaving
+without committing leaves
 ``Skeleton::Mesh`` exactly as it was found.
 
 **Where the code lives, and why.** Everything in this file is Rhino: picking,
@@ -73,10 +83,11 @@ import scriptcontext as sc
 import Rhino
 from System.Drawing import Color
 
-
+from compas_singular.datastructures import CoarsePseudoQuadMesh
 from compas_singular.editing import CoarseEditor
 from compas_singular.framefield.field import CrossField
 from compas_singular.rhino import mesh_ui
+from compas_singular.rhino.mesh_ui import FINISH
 from compas_singular.rhino.coarse_curves import coarse_edges_to_curves
 from compas_singular.rhino.helpers.helpers import bake_edge_curves
 from compas_singular.rhino.helpers.helpers import bake_mesh
@@ -125,6 +136,13 @@ EDGE_CURVE_LAYER = rs.AddLayer(name="EdgeCurves", parent="Skeleton", color=(0, 1
 # used to do it twice with identical arguments and throw the first result away.
 outer, inners, guides, point_features = read_boundaries(spacing=SPACING)
 coarse, poles = read_coarse()
+guids = rs.ObjectsByLayer("Mesh")
+if not guids:
+    raise RuntimeError(
+        "No coarse layout on '{}' ".format(
+            "Mesh"))
+coarse = CoarsePseudoQuadMesh.load_from_json(
+        cache_path(COARSE_CACHE, create=False), default=None)
 print("layout: {} patch(es), {} corner(s), {} pole(s)".format(
     coarse.number_of_faces(), coarse.number_of_vertices(), len(poles)))
 
@@ -168,6 +186,43 @@ def redraw():
 
 
 # ----------------------------------------------------------------------
+# undo -- act on a pick immediately, and make that safe to take back
+# ----------------------------------------------------------------------
+
+def edit(mutate):
+    """Run one mutating ``editor`` call with automatic undo bookkeeping.
+
+    ``mutate`` is a no-argument callable returning ``(ok, notes)``, exactly
+    what every ``editor.*`` operation returns. The mesh is snapshotted first
+    and the snapshot is dropped again if the operation refused -- a refusal
+    never touches ``editor.mesh``, so there would be nothing to undo back to
+    and keeping it would only cost the user an extra 'undo' for nothing.
+
+    This is what lets a strip disappear the moment it is picked instead of
+    asking "are you sure" first: the snapshot IS the answer to "are you sure",
+    taken before the question needs asking, and 'undo' on the menu above is
+    where the "no" goes.
+    """
+    editor.push_undo()
+    ok, notes = mutate()
+    if not ok:
+        editor.discard_last_undo()
+    return ok, notes
+
+
+def undo():
+    """Put back the layout as it was before the last edit. Prints the result."""
+    ok, notes = editor.undo()
+    if not ok:
+        print("Nothing to undo.")
+        return False
+    redraw()
+    print("Undone -- layout now has {} patch(es). {} more undo(s) available."
+          .format(notes["faces"], notes["remaining"]))
+    return True
+
+
+# ----------------------------------------------------------------------
 # move corners
 # ----------------------------------------------------------------------
 
@@ -191,10 +246,67 @@ def move_vertices():
             project=lambda point: editor.project(point, on_boundary))
         if xyz is None:
             return changed
-        moved, _notes = editor.move_vertex(vkey, xyz)
+        moved, _notes = edit(lambda: editor.move_vertex(vkey, xyz))
         if moved:
             changed = True
             redraw()
+
+
+# ----------------------------------------------------------------------
+# move a pole -- relabel which corner of its patches is collapsed
+# ----------------------------------------------------------------------
+
+def move_pole():
+    """Pick a pole, then the corner it moves to, until Esc. ``True`` if any moved.
+
+    **Only to a corner every patch of the pole shares.** A pole is a corner
+    registered as COLLAPSED in its triangles, and a triangle can only collapse
+    at one of its own corners -- so no corner moves, and the legal targets are
+    few: after the pole is picked they are drawn highlighted instead of the
+    poles, and anything else is refused with the reason.
+    """
+    changed = False
+    while True:
+        poles = editor.mesh.poles() if hasattr(editor.mesh, "poles") else []
+        if not poles:
+            print("No poles on this layout.")
+            return changed
+        redraw()
+        sc.doc.Views.Redraw()
+        pkey = scene.pick_vertex("Select a pole to move (highlighted)")
+        if pkey is None:
+            return changed
+        if pkey not in poles:
+            print("  corner {} is not a pole -- pick one of the highlighted "
+                  "corners.".format(pkey))
+            continue
+
+        targets = editor.pole_targets(pkey)
+        if not targets:
+            mesh_ui.refuse(
+                "Move pole",
+                "Pole {} cannot move.\n\nIts patches share no other corner, and a "
+                "pole can only move to a corner all of its patches share (a pole "
+                "with one or two patches, to a neighbouring corner).".format(pkey))
+            continue
+
+        scene.draw(editor.mesh, edge_shape=editor.edge_shape, special=targets)
+        sc.doc.Views.Redraw()
+        print("  pole {} can move to corner(s) {}".format(pkey, targets))
+        vkey = scene.pick_vertex("New corner for pole {} (highlighted, Esc to "
+                                 "pick another pole)".format(pkey))
+        if vkey is None:
+            continue
+
+        ok, notes = edit(lambda: editor.move_pole(pkey, vkey))
+        if not ok:
+            mesh_ui.refuse("Move pole",
+                           "The pole was NOT moved.\n\n{}.\n\nThe layout is "
+                           "unchanged.".format(editor.last_reason))
+            continue
+        print("Pole moved: corner {} -> {} ({} patch(es) relabelled).".format(
+            notes["pole"], notes["to"], notes["faces"]))
+        changed = True
 
 
 # ----------------------------------------------------------------------
@@ -426,7 +538,7 @@ def add_polyedge():
         points = sample_drawn_curve(obj_id)
         rs.DeleteObject(obj_id)
 
-        cut, _notes = editor.divide(points, extend=note_extend)
+        cut, _notes = edit(lambda: editor.divide(points, extend=note_extend))
         if cut:
             note = editor.last_cut
             print("Line added: {} patch(es) cut, {} corner(s) inserted, layout "
@@ -452,67 +564,50 @@ def remove_strip():
     ribbon down its own middle -- see ``mesh_ui.draw_strips`` for why a filled
     band cannot be picked -- so what the user clicks is the thing that goes.
 
-    **Deleting a strip is not a local edit, and the user is told so before it
-    happens.** ``plan_strip_deletion`` performs the deletion on a copy, so the
-    numbers in the prompt are measured rather than estimated, and a strip that
-    cannot go is refused before the question is even asked.
+    **A pick deletes the strip immediately -- there is no "are you sure".**
+    Asking first meant an extra click on every strip, right or wrong; instead
+    ``edit()`` snapshots the layout before the delete, and 'undo' on the menu
+    above walks straight back if the pick was an accident. A strip that
+    cannot go is still refused, since there ``editor.mesh`` never changes and
+    there is nothing to undo back to.
     """
     changed = False
     while True:
         scene.draw_strips(editor.mesh)
         sc.doc.Views.Redraw()
-        skey = scene.pick_strip("Pick a strip to remove (Esc to finish)")
+        skey = scene.pick_strip("Pick a strip to remove (Esc to return to the menu)")
         if skey is None:
             scene._clear_strips()
             sc.doc.Views.Redraw()
             return changed
 
-        info = editor.plan_strip_deletion(skey=skey)
-        if not info["ok"]:
+        removed, notes = edit(lambda: editor.remove_strip(skey=skey))
+        if not removed:
             mesh_ui.refuse(
                 "Remove line",
                 "Nothing was removed.\n\n{}.\n\nThe layout is unchanged."
-                .format(info["reason"]))
+                .format(notes.get("error", editor.last_reason)))
             continue
 
         # The detail goes to the command history, where it can be scrolled
         # back; the PROMPT has to fit the one line Rhino shows.
-        print("strip {}: {} patch(es){}. The two sides weld together, so "
-              "surrounding corners move.".format(
-                  info["skey"], info["faces"],
-                  ", plus {} collateral strip(s) whose patches all lie inside "
-                  "it".format(info["collateral"]) if info["collateral"] else ""))
-        if info["boundaries_lost"]:
+        print("strip {} removed: {} patch(es){}. The two sides welded "
+              "together, so surrounding corners moved.".format(
+                  notes["skey"], notes["faces"],
+                  ", plus {} collateral strip(s) whose patches all lay inside "
+                  "it".format(notes["collateral"]) if notes["collateral"] else ""))
+        if notes["boundaries_lost"]:
             # On a coarse layout a collapsed boundary means losing a hole the
             # DOMAIN still has, so the layout stops describing the problem.
-            print("  WARNING: this would COLLAPSE {} boundary/boundaries -- a "
-                  "hole of the domain would no longer be a hole of the layout."
-                  .format(info["boundaries_lost"]))
-
-        answer = mesh_ui.ask(
-            "Remove strip: {} patch(es){}{}".format(
-                info["faces"],
-                ", +{} collateral".format(info["collateral"]) if info["collateral"] else "",
-                ", COLLAPSES A BOUNDARY" if info["boundaries_lost"] else ""),
-            ["Yes", "No"], "Yes")
-        if not answer.startswith("y"):
-            print("Nothing removed.")
-            continue
-
-        removed, _notes = editor.remove_strip(skey=skey)
-        if removed:
-            note = editor.last_deletion
-            print("Line removed: strip {}, patches {} -> {}.".format(
-                note.get("skey"), note.get("faces_in"), note.get("faces_out")))
-            changed = True
-            redraw()
-            # The ribbons describe the layout as it WAS; redrawn at the top of
-            # the loop, but cleared here so nothing stale is on screen meanwhile.
-            scene._clear_strips()
-        else:
-            mesh_ui.refuse("Remove line",
-                           "Nothing was removed.\n\n{}.\n\nThe layout is "
-                           "unchanged.".format(editor.last_reason))
+            print("  NOTE: this COLLAPSED {} boundary/boundaries -- a hole of "
+                  "the domain is no longer a hole of the layout. Pick 'undo' "
+                  "from the menu above if that was not intended."
+                  .format(notes["boundaries_lost"]))
+        changed = True
+        redraw()
+        # The ribbons describe the layout as it WAS; redrawn at the top of
+        # the loop, but cleared here so nothing stale is on screen meanwhile.
+        scene._clear_strips()
 
 # ----------------------------------------------------------------------
 # add a strip -- Robin's grammar rule, along existing corners
@@ -530,16 +625,30 @@ def add_strip():
     Validity is the same rule as everywhere else here: more than two corners, and
     either closed on itself or with both ends on the layout boundary. A strip has
     to run the full width of the layout.
+
+    **Esc cancels; Enter saves.** The two used to mean the same thing --
+    whichever ended the picking loop went on to add the strip -- which made Esc
+    a save with no way to back out of a run picked by mistake. They are picked
+    with :meth:`~compas_singular.rhino.mesh_ui.PickableMesh.pick_vertex_or_finish`
+    now, which tells them apart: Esc abandons the whole pick and returns to the
+    menu with nothing added, Enter stops picking and adds the strip from the
+    corners picked so far.
     """
-    print("Pick corners in order along the line to unzip. Enter/Esc when done.")
+    print("Pick corners in order along the line to unzip. Enter when done, Esc to cancel.")
     print("Both ends must be on the layout boundary, or the run must close.")
     polyedge = []
+    cancelled = False
     try:
         while True:
-            vkey = scene.pick_vertex(
-                "Corner {} of the new line (Esc when done)".format(len(polyedge) + 1))
-            if vkey is None:
+            picked = scene.pick_vertex_or_finish(
+                "Corner {} of the new line (Enter when done, Esc to cancel)"
+                .format(len(polyedge) + 1))
+            if picked is None:
+                cancelled = True
                 break
+            if picked is FINISH:
+                break
+            vkey = picked
             if polyedge and vkey == polyedge[-1]:
                 print("  that is the same corner again -- skipped.")
                 continue
@@ -560,6 +669,10 @@ def add_strip():
         scene.clear_path()
         sc.doc.Views.Redraw()
 
+    if cancelled:
+        print("Add strip cancelled -- the layout is unchanged.")
+        return False
+
     if len(polyedge) < 3:
         if polyedge:
             mesh_ui.refuse("Add strip",
@@ -567,7 +680,7 @@ def add_strip():
                            "The layout is unchanged.")
         return False
 
-    ok, notes = editor.add_strip(polyedge)
+    ok, notes = edit(lambda: editor.add_strip(polyedge))
     if not ok:
         mesh_ui.refuse("Add strip",
                        "The strip was NOT added.\n\n{}.\n\nThe layout is "
@@ -592,13 +705,13 @@ def divide_strip():
     while True:
         scene.draw_strips(editor.mesh)
         sc.doc.Views.Redraw()
-        skey = scene.pick_strip("Pick a strip to divide in two (Esc to finish)")
+        skey = scene.pick_strip("Pick a strip to divide in two (Esc to return to the menu)")
         if skey is None:
             scene._clear_strips()
             sc.doc.Views.Redraw()
             return changed
 
-        ok, notes = editor.divide(skey=skey)
+        ok, notes = edit(lambda: editor.divide(skey=skey))
         if not ok:
             mesh_ui.refuse("Divide strip",
                            "Nothing was divided.\n\n{}.\n\nThe layout is "
@@ -673,11 +786,15 @@ rs.LayerVisible("QuadMesh", False)
 try:
     while True:
         operation = mesh_ui.ask(
-            "next", ["move_vertices", "add_polyedge", "add_strip", "divide_strip",
-                     "remove_strip", "reset", "commit", "finish"], "finish")
+            "next", ["move_vertices", "move_pole", "add_polyedge", "add_strip",
+                     "divide_strip", "remove_strip", "undo", "reset", "commit",
+                     "exit"], "exit")
 
         if operation == "move_vertices":
             move_vertices()
+        elif operation == "move_pole":
+            move_pole()
+            redraw()
         elif operation == "add_polyedge":
             add_polyedge()
         elif operation == "add_strip":
@@ -686,6 +803,8 @@ try:
             divide_strip()
         elif operation == "remove_strip":
             remove_strip()
+        elif operation == "undo":
+            undo()
         elif operation == "reset":
             editor.reset()
             redraw()
@@ -788,6 +907,11 @@ else:
     # Densities stored in step 5 are keyed on edge midpoints, and this edit
     # moved some of those. Step 5 reports how many overrides survived.
     print("layout written back to '{}'".format(MESH_LAYER))
+    print("note: any per-strip densities from CMD_densities and patterns from "
+          "CMD_dense_pattern survive a move alone, but are dropped by a "
+          "topology change (move_pole, add_polyedge, add_strip, remove_strip, "
+          "divide_strip) -- "
+          "CMD_densities re-derives them from the target in that case.")
 
     # The side-car, refreshed to match. Steps 5 and 6 prefer it over the baked
     # mesh because it carries what a bake cannot -- strips, ``face_pole``, the
@@ -795,6 +919,11 @@ else:
     # compares the two and falls back to the document otherwise. Leaving a stale
     # one here would therefore not be wrong, just wasteful: every later step
     # would silently do the re-derivation this exists to avoid.
+    #
+    # ``curves`` -- already computed above for the EdgeCurves bake -- goes on
+    # too, for the same reason: without it a reload has to re-derive the
+    # curvature from the document again instead of just reading it back.
+    committed.set_edges_to_curves(curves)
     committed.attributes.setdefault("route", "field")
     committed.attributes["edited"] = True
     committed.save_to_json(cache_path(COARSE_CACHE))
@@ -805,4 +934,4 @@ rs.LayerVisible("Polylines", True)
 rs.LayerVisible("EdgeCurves", True)
 rs.LayerVisible("QuadMesh", True)
 
-print("next: CMD_densities")
+print("next: CMD_densities, then CMD_quad_mesh.")

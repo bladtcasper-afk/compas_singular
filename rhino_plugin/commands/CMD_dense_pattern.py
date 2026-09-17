@@ -8,7 +8,7 @@ import_compas_singular()
 
 import rhinoscriptsyntax as rs
 
-from compas_singular.datastructures import coarse_edges_to_curves, snap_corners_to_walls
+from compas_singular.datastructures import coarse_edges_to_curves, snap_corners_to_walls, CoarsePseudoQuadMesh
 from compas_singular.framefield.field import CrossField
 from compas_singular.rhino.helpers.helpers import bake_mesh, clear_layer
 from compas_singular.rhino.helpers.helpers import read_boundaries, read_boundary_loops, read_polylines
@@ -22,6 +22,14 @@ from compas_singular.datastructures.mesh_quad_coarse.patterns import PATTERNS
 
 
 coarse, _poles, _source = read_layout()
+guids = rs.ObjectsByLayer("Mesh")
+if not guids:
+    raise RuntimeError(
+        "No coarse layout on '{}' ".format(
+            "Mesh"))
+coarse = CoarsePseudoQuadMesh.load_from_json(
+        cache_path(COARSE_CACHE, create=False), default=None)
+
 
 scene = mesh_ui.PickableMesh("TopologyProblem::Attributes::TempPattern")
 
@@ -29,6 +37,8 @@ rs.LayerVisible(layer="Skeleton", visible=False)
 rs.LayerVisible(layer="QuadMesh", visible=False)
 
 while True:
+    scene._clear_faces()
+    scene._clear_text()
     scene.draw_faces(coarse, highlight_pattern=True)
 
     pattern = rs.GetString("Apply a dense mesh patterns to the coarse mesh.", defaultString="Finish", strings=PATTERNS+["Finish"])
@@ -38,7 +48,7 @@ while True:
         break
 
     mode = rs.GetString("Pick the faces or assign the pattern to all faces.", defaultString="Pick", strings=["Pick", "Pick_multiple", "All"])
-    mode = (mode or "Pick").lower()
+    mode = (mode or "Exit").lower()
     if mode=="all":
         coarse.set_global_face_pattern(pattern)
         scene._clear_faces()
@@ -66,6 +76,8 @@ while True:
                 scene.update_face(coarse, fkey)
             else:
                 break
+    else:
+        continue
     scene._clear_faces()
     scene._clear_text()
 
@@ -74,6 +86,11 @@ rs.LayerVisible(layer="QuadMesh", visible=True)
 scene.clear()
 
 coarse.save_to_json(cache_path(COARSE_CACHE))
+custom = sum(1 for p in coarse.dense_patterns().values() if p != "ortho")
+print("patterns: {} patch(es) set away from the default 'ortho'".format(custom))
+print("note: re-running CMD_coarse_mesh, or a topology-changing edit in "
+      "CMD_edit_coarse_mesh, replaces the layout and drops these patterns.")
+print("next: CMD_quad_mesh to densify.")
 
 
 

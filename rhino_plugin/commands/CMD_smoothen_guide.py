@@ -41,7 +41,7 @@ import_compas_singular()
 
 import rhinoscriptsyntax as rs
 import compas_rhino as cr
-from compas_rhino.conversions import mesh_to_compas
+from compas_singular.rhino.helpers.helpers import mesh_from_rhino
 
 from compas_singular.datastructures import QuadMesh
 from compas_singular.datastructures import automated_boundary_constraints
@@ -82,7 +82,7 @@ if not mesh_id:
     raise RuntimeError("No mesh picked.")
 
 # QuadMesh, not a plain Mesh: the polyedges are what the selection chooses from.
-_tmp = mesh_to_compas(cr.objects.find_object(mesh_id).Geometry)
+_tmp = mesh_from_rhino(cr.objects.find_object(mesh_id).Geometry)
 mesh = QuadMesh.from_vertices_and_faces(*_tmp.to_vertices_and_faces())
 rhino_vertices = rs.MeshVertices(mesh_id)
 
@@ -385,3 +385,5 @@ bake_mesh(mesh, "Guided")
 
 print("smoothed: {} vertices moved onto guides, {} constrained in total, boundary {}.".format(
     len(moved), len(constraints), boundary_mode))
+print("baked to 'QuadMesh::Smoothened::Guided' -- the original 'QuadMesh' is untouched.")
+print("next: CMD_dual for the dual mesh, or run this again to attach more guides.")

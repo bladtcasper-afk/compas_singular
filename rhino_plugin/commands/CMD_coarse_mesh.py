@@ -43,12 +43,11 @@ WALL_SAMPLING_FACTOR = 0.25
 def coarse_from_field(settings, outer, inners, guides):
     """Frame-field decomposition. The mirror of ``coarse_from_skeleton`` above.
 
-    Solved fresh every time this step runs -- unlike steps 4 and 6, which share
-    one solve through ``CMD_start.get_decomposition``, re-solving here is cheap
-    relative to the rest of the step and the user is choosing to (re)build the
-    coarse mesh, so the extra computation when nothing changed is an accepted
-    cost for a call site that reads the same, directly, as
-    ``SkeletonDecomposition.from_boundary`` below.
+    Solved fresh every time this step runs, and the only step that solves: steps
+    4 and 6 read the field back from the ``field.json`` side-car written below.
+    The user is choosing to (re)build the coarse mesh, so the extra computation
+    when nothing changed is an accepted cost for a call site that reads the same,
+    directly, as ``SkeletonDecomposition.from_boundary`` below.
     """
     decomposition = FieldDecomposition.from_boundary(
         outer, inner_boundaries=inners, guides=guides,
@@ -235,13 +234,23 @@ def main():
         #carries the whole ``attributes`` dict, and the field cannot be baked at
         #all. Written LAST, so a failure in the bake above never leaves a
         #side-car describing a layout the document does not have.
+        #
+        #``curves`` -- already computed above for the EdgeCurves bake -- is
+        #stored on the layout too, so a later step (CMD_quad_mesh, or a reload
+        #of this side-car) can just ask ``coarse.edges_to_curves()`` instead of
+        #re-deriving it from the document every time.
+        coarse_mesh.set_edges_to_curves(curves)
         coarse_mesh.set_global_face_pattern("ortho")
         coarse_mesh.save_to_json(cache_path(COARSE_CACHE))
         print("layout cached: {}".format(cache_path(COARSE_CACHE, create=False)))
         if field is not None:
             field.save_to_json(cache_path(FIELD_CACHE))
             print("field cached:  {}".format(cache_path(FIELD_CACHE, create=False)))
-        
+        print("note: this replaces any previous layout -- densities (CMD_densities) and "
+              "patterns (CMD_dense_pattern) set on it do not carry over.")
+        print("next: CMD_edit_coarse_mesh to hand-edit the layout, then CMD_densities and "
+              "CMD_quad_mesh.")
+
         rs.EnableRedraw(True)
 
 

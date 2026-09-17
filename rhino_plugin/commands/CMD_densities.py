@@ -71,6 +71,10 @@ def main():
     settings = get_settings()
     # The side-car when it still matches the baked layout, the document
     # otherwise. Either way the strips below are this layout's own.
+    # ``read_layout`` already raises if the 'Mesh' layer is empty -- no need
+    # to check ``guids`` again, and unconditionally reloading the side-car
+    # here (as this used to do) is exactly what throws that check away: a
+    # stale coarse.json would get re-saved as if it were current.
     coarse, poles, _source = read_layout()
 
     # The densities saved on the layout by a previous run, when it has a full
@@ -160,6 +164,11 @@ def main():
     coarse.save_to_json(cache_path(COARSE_CACHE))
     print("densities: saved on the layout ({} strip(s))".format(
         len(coarse.get_strip_densities())))
+    print("note: a topology-changing edit in CMD_edit_coarse_mesh (add_polyedge, "
+          "add_strip, remove_strip, divide_strip) drops these -- run this step "
+          "again afterward.")
+    print("next: CMD_dense_pattern to set per-patch mesh patterns, or CMD_quad_mesh "
+          "to densify.")
 
 
 def target_setting(settings):

@@ -17,9 +17,15 @@ defaults = (False, True, True, True, True)
 to_clear = rs.GetBoolean("Clear?", items, defaults)
 
 objects_deleted_count = 0
+cleared = []
 for i in range(len(items)):
     if to_clear[i]:
         objects_deleted_count += clear_layer(items[i][0], True)
+        cleared.append(items[i][0])
 
 
-print(f"Deleted {objects_deleted_count} object(s).")
+print(f"Deleted {objects_deleted_count} object(s) from: {', '.join(cleared) or 'nothing'}.")
+print("note: clearing an earlier layer (e.g. InputBoundaries or Skeleton) leaves any "
+      "later layer (Skeleton, QuadMesh) describing a domain or layout that no longer exists.")
+print("next: CMD_boundary_selection to start a new domain, or CMD_coarse_mesh / "
+      "CMD_read_coarse_mesh if the domain is untouched.")

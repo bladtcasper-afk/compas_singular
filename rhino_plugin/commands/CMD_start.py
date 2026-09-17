@@ -32,32 +32,8 @@ DEFAULT_SETTINGS = {
     "density_key": "density_key",
     "symmetry": "auto",
     "relax": "auto",
-    #: Whether a solved field is reused instead of re-solved. ``true`` keeps it
-    #: in memory AND on disk, so steps 3, 4 and 6 solve once between them and a
-    #: Rhino restart does not start over; ``"memory"`` keeps it for this session
-    #: only and writes nothing to disk; ``false`` solves every time.
-    #:
-    #: Leave it on. The cache invalidates itself -- a moved curve, a changed
-    #: setting, an edit to any framefield source file or a different compas /
-    #: numpy / scipy all miss and re-solve, and it says which one moved. Turn it
-    #: off to time a cold solve, or when you suspect the cache rather than the
-    #: code; ``get_decomposition(force=True)`` is the one-off version of the
-    #: same thing.
-    "cache": False,
 }
 
-
-#: This session's memory-only cache, built on demand by :func:`resolve_cache`.
-#: Module-level because ``"memory"`` has to hold ACROSS commands within one run
-#: -- a new ``SolveCache`` per call would be a cache of one lookup, which is no
-#: cache at all.
-#:
-#: :func:`import_compas_singular` resets it, because it is built from classes
-#: that call has just invalidated. So under Rhino, where every command purges,
-#: ``"memory"`` gives you a cache for the length of ONE command and no longer.
-#: That is a thin promise and it is deliberate: the alternative, keeping
-#: ``framefield`` across the purge, is what broke ``CMD_coarse_mesh``.
-_MEMORY_CACHE = None
 
 def resolve_relax(settings, guides):
     """Whether to solve with diffusion + normalisation, for THIS input."""
@@ -95,58 +71,6 @@ def resolve_symmetry(settings):
             return None
         return "auto"
     return None if not value else "auto"
-
-
-def resolve_cache(settings):
-    """What to hand ``framefield.cache.solve`` as its ``cache``, for THIS document.
-
-    Three states, and the middle one is the interesting one:
-
-    ``True`` / ``"on"``
-        The default. Memory in front of disk, so the field survives a restart.
-    ``"memory"`` / ``"session"``
-        Nothing written to disk. For a machine where the cache directory is not
-        somewhere you want files. **Under Rhino this is close to useless** and
-        the reason is worth knowing: every command calls
-        :func:`import_compas_singular`, which resets :data:`_MEMORY_CACHE`
-        along with the modules it was built from, so the cache lives for one
-        command. It earns its keep only where nothing purges -- a plain script
-        solving the same input several times.
-    ``False`` / ``"off"``
-        Solve every time.
-
-    Turning it off should be rare: the cache decides for itself when an entry is
-    stale, down to the contents of every ``framefield`` source file, so a
-    changed input or a changed library re-solves without being told. The honest
-    reasons to switch it off are timing a cold solve, and suspecting the cache
-    rather than the code -- and for the latter,
-    ``get_decomposition(force=True)`` re-solves once without changing the
-    document.
-
-    Note this only stops entries being READ and WRITTEN. Entries already on
-    disk stay; ``SolveCache().clear()`` is what empties them.
-
-    Returns
-    -------
-    SolveCache or None or False
-        ``None`` means the module-level default cache, which is what
-        ``solve`` uses when it is passed nothing.
-    """
-    global _MEMORY_CACHE
-
-    value = settings.get("cache", True)
-    if isinstance(value, str):
-        value = value.strip().lower()
-        if value in ("", "none", "off", "no", "false", "0"):
-            return False
-        if value in ("memory", "session", "ram"):
-            ensure_paths()
-            from compas_singular.framefield import cache
-            if _MEMORY_CACHE is None:
-                _MEMORY_CACHE = cache.SolveCache(directory=False)
-            return _MEMORY_CACHE
-        return None
-    return None if value else False
 
 
 def get_settings():
@@ -210,6 +134,7 @@ def cache_path(name, create=True):
 #: The two side-cars steps 3 and 6 pass between them.
 COARSE_CACHE = "coarse"
 FIELD_CACHE = "field"
+DENSE_CACHE = "dense"
 
 
 def read_layout(verbose=True):
@@ -364,74 +289,16 @@ def import_compas_singular():
         PicklingError: Can't pickle <class '...mesh.Mesh'>:
         it's not the same object as compas_singular.datastructures.mesh.mesh.Mesh
 
-    which is the cache detecting the mismatch rather than causing it. The
-    exemption was made to preserve ``framefield.cache``'s in-session memory
-    tier; that was the wrong trade. The memory tier saves a few milliseconds
-    against the disk tier, and buying that with a broken class identity is not
-    a bargain. Re-importing ``framefield`` costs about a fifth of a second, and
-    every Rhino command runs once.
+    which was a pickle detecting the mismatch rather than causing it.
+    Re-importing ``framefield`` costs about a fifth of a second, and every Rhino
+    command runs once.
     """
-    global _MEMORY_CACHE
-
     import sys
     ensure_paths()
     for _mod in list(sys.modules):
         if _mod == "compas_singular" or _mod.startswith("compas_singular."):
             del sys.modules[_mod]
-    # Built from the class this purge just invalidated, and holding pickles of
-    # objects made against it. Drop it with the modules it belongs to.
-    _MEMORY_CACHE = None
 import_compas_singular()
-
-
-def get_decomposition(force=False, verbose=True):
-    """The frame-field decomposition for THIS document, cached across sessions.
-
-    The one place the three commands that build a decomposition -- steps 3, 4
-    and 6 -- get their field. They used to each call ``from_boundary`` at module
-    scope, so one pass over an unchanged document paid for three identical
-    solves, and every Rhino restart paid for them all over again.
-
-    Having a single call site is not only about the cache. ``resolve_symmetry``
-    says above that the three MUST agree, and before this they did not:
-    ``CMD_edit_coarse_mesh`` passed ``relax`` but not ``symmetry``, so step 4
-    could solve under a different group -- and therefore a different layout --
-    than the one the user had just edited in step 3.
-
-    ``framefield.cache`` decides for itself when an entry is stale: the
-    boundaries, every solver parameter, the contents of every ``framefield``
-    source file and the environment all enter the key, so a moved curve, a
-    changed setting or an edit to the library all re-solve on their own.
-    ``force=True`` is for when you suspect the cache rather than the code;
-    ordinarily leave it alone. The document's ``"cache"`` setting switches the
-    whole thing off, or down to memory only -- see :func:`resolve_cache`.
-
-    Returns
-    -------
-    FieldDecomposition
-        Freshly reconstructed on every call, so it is yours to mutate. Two
-        commands never share one, so an edit committed in step 4 cannot leak
-        into step 6.
-    """
-    ensure_paths()          # this module's body ran once; sys.path may not have
-    from compas_singular.rhino.helpers.helpers import read_boundaries
-    from compas_singular.framefield import cache
-
-    settings = get_settings()
-    outer, inners, guides, _ = read_boundaries(
-        spacing=settings["triangulation_spacing"])
-
-    return cache.solve(
-        outer, inners or None, guides=guides or None,
-        mode=settings["guide_allignment"],
-        target_length=settings["triangulation_spacing"],
-        relax=resolve_relax(settings, guides),
-        symmetry=resolve_symmetry(settings),
-        # Steps 3, 4 and 6 all ask for a layout straight away, so the
-        # arrangement stage belongs in the entry rather than being redone on
-        # every hit.
-        build=True, force=force, verbose=verbose,
-        cache=resolve_cache(settings))
 
 
 # ----------------------------------------------------------------------
@@ -479,6 +346,9 @@ def reset_project():
     # this file under a name other than "__main__" -- would look like a command
     # that did nothing, and the absence of this line is how you would spot it.
     print("CMD_start: project '{}' reset.".format(project_folder))
+    print("note: this deletes every input, layout and mesh under '{}' -- nothing "
+          "from an earlier session survives.".format(project_folder))
+    print("next: CMD_boundary_selection to define a new domain.")
     return project_folder
 
 

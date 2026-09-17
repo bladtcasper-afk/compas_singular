@@ -45,7 +45,7 @@ from compas_singular.rhino.helpers.helpers import read_boundaries, read_boundary
 from compas_singular.framefield.quality import mesh_quality
 
 from CMD_start import get_settings, set_settings
-from CMD_start import cache_path, read_layout, FIELD_CACHE
+from CMD_start import cache_path, read_layout, FIELD_CACHE, DENSE_CACHE
 from CMD_start import resolve_relax, resolve_symmetry
 # One implementation, shared with CMD_densities.
 from CMD_start import resolve_densities
@@ -63,6 +63,11 @@ def main():
     # ------------------------------------------------------------------
     # what the previous steps left behind
     # ------------------------------------------------------------------
+    # The side-car when it still matches the baked layout, the document
+    # otherwise -- see ``read_layout``. Trusting the side-car unconditionally
+    # used to mean a stale coarse.json (one CMD_edit_coarse_mesh never
+    # finished writing, say) silently densified whatever it had, with the
+    # baked ``Mesh`` layer showing the real, edited layout and nobody told.
     coarse, _poles, _source = read_layout()
 
     # The field is a side-car because it cannot be baked: it is 443 background
@@ -96,10 +101,22 @@ def main():
             print("field ignored: {} since it was solved. Re-run step 3.".format(why))
             field = None
 
-    answer = (rs.GetString(message="Integrate patch interiors from the field?",
-                           defaultString="Yes" if settings["field_aware"] else "No",
-                           strings=["Yes", "No"]) or "yes").lower()
-    settings["field_aware"] = answer == "yes"
+
+    options = (
+        ("Field", "Off", "On"),
+        ("Boundary_curvature", "False", "True"),
+        ("Skeleton_curvature", "False", "True")
+    )
+
+    option_defaults = [False, True, True]
+
+    options = rs.GetBoolean("Densify the coarse layout.", options, option_defaults)
+    if options is None:
+        print("Command cancelled. Nothing changed.")
+        return
+    field_aware, boundary_curvature, skeleton_curvature = options
+
+    settings["field_aware"] = field_aware
     set_settings(settings)
 
     if field is None and settings["field_aware"]:
@@ -141,13 +158,15 @@ def main():
     resolve_densities(coarse, settings)
 
     if settings["field_aware"] and field is not None:
-        dense = coarse.densification(edges_to_curves=edges_to_curves, field=field)
+        dense = coarse.densification(boundary_curvature=boundary_curvature, skeleton_curvature=skeleton_curvature, field=field)
     else:
-        dense = coarse.quad_mesh(edges_to_curves=edges_to_curves)
+        print(coarse.edges_to_curves())
+        dense = coarse.quad_mesh(boundary_curvature=boundary_curvature, skeleton_curvature=skeleton_curvature)
 
     layer = rs.AddLayer("QuadMesh", parent="TopologyProblem")
     clear_layer(layer, clean_sublayers=True)
     bake_mesh(dense, layer)
+    dense.save_to_json(cache_path(DENSE_CACHE))
 
     # ------------------------------------------------------------------
     # what to read in the output
@@ -174,6 +193,10 @@ def main():
               "polygon".format(tally["wall_missed"]))
 
     print("baked to '{}'".format(layer))
+    print("note: re-running this step regenerates from the coarse layout and "
+          "overwrites any hand edits made in CMD_edit_quad_mesh.")
+    print("next: CMD_smoothen / CMD_smoothen_guide to relax the mesh, CMD_dual for "
+          "the dual mesh, or CMD_edit_quad_mesh to hand-edit it.")
 
 
 if __name__ == "__main__":

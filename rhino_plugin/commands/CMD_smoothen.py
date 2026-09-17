@@ -8,7 +8,7 @@ import_compas_singular()
 
 import rhinoscriptsyntax as rs
 import compas_rhino as cr
-from compas_rhino.conversions import mesh_to_compas
+from compas_singular.rhino.helpers.helpers import mesh_from_rhino
 
 from compas_singular.datastructures.mesh.smoothing import automated_boundary_constraints
 from compas_singular.datastructures.mesh.smoothing import constrained_smoothing
@@ -42,7 +42,7 @@ mesh_id = rs.GetObject(
 if not mesh_id:
     raise RuntimeError("No mesh picked.")
 
-mesh = mesh_to_compas(cr.objects.find_object(mesh_id).Geometry)
+mesh = mesh_from_rhino(cr.objects.find_object(mesh_id).Geometry)
 rhino_vertices = rs.MeshVertices(mesh_id)
 
 
@@ -210,6 +210,8 @@ if mode == "whole":
     bake_mesh(mesh, layer)
     print("smoothed: {}, boundary {}, {} iterations at damping {}.".format(
         layer, boundary_mode, kmax, damping))
+    print("baked to 'QuadMesh::Smoothened::{}' -- the original 'QuadMesh' is untouched.".format(layer))
+    print("next: CMD_dual for the dual mesh, or run this again on the result if it still needs work.")
 
 
 # ---------------------------------------------------------------------------
@@ -286,3 +288,5 @@ else:
     bake_mesh(mesh, "Relaxed")
     print("relaxed {} vertices ({} core, blend {} rings).".format(
         len(weight), len(core), blend))
+    print("baked to 'QuadMesh::Smoothened::Relaxed' -- the original 'QuadMesh' is untouched.")
+    print("next: CMD_dual for the dual mesh, or run this again on another zone.")
