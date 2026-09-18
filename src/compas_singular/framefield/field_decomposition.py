@@ -17,6 +17,8 @@ Everything after that -- ``collect_strips``, ``set_strips_density_target``,
 from compas.geometry import distance_point_point
 from compas.itertools import pairwise
 from compas_singular.datastructures import CoarsePseudoQuadMesh
+from compas_singular.geometry.polyline import distance_to_polyline
+from compas_singular.geometry.polyline import project_on_polyline
 
 from .arrangement import faces_from_arrangement
 from .arrangement import faces_with_repeated_vertices
@@ -114,41 +116,8 @@ def _loop_chord_tolerance(loop):
         cosv = max(-1.0, min(1.0, (ux * wx + uy * wy) / (lu * lw)))
         if acos(cosv) > SHARP_TURN:
             continue
-        worst = max(worst, _distance_to_polyline(b, [a, c]))
+        worst = max(worst, distance_to_polyline(b, [a, c]))
     return max(1e-6, 0.5 * worst)
-
-
-def _project_on_polyline(point, points):
-    """``(distance, arclength, total length)`` for a point near an OPEN polyline.
-
-    ``edit.closest_on_loop`` is the closed-loop version and is the wrong tool
-    here: it joins last to first, which on an arc invents a segment the arc does
-    not have.
-
-    The arclength is what tells "this corner sits at the END of the arc" apart
-    from "this arc runs THROUGH that corner" -- a distinction the distance alone
-    cannot make, and one :meth:`FieldDecomposition._arc_is_one_edge` depends on.
-    """
-    best = (float('inf'), 0.0)
-    travelled = 0.0
-    for a, b in pairwise(points):
-        abx, aby = b[0] - a[0], b[1] - a[1]
-        length = (abx * abx + aby * aby) ** 0.5
-        if length == 0.0:
-            continue
-        t = ((point[0] - a[0]) * abx + (point[1] - a[1]) * aby) / (length * length)
-        t = max(0.0, min(1.0, t))
-        q = [a[0] + abx * t, a[1] + aby * t, 0.0]
-        d = distance_point_point(point, q)
-        if d < best[0]:
-            best = (d, travelled + t * length)
-        travelled += length
-    return best[0], best[1], travelled
-
-
-def _distance_to_polyline(point, points):
-    """Shortest distance from a point to an OPEN polyline."""
-    return _project_on_polyline(point, points)[0]
 
 
 def _arcs_between(loop, pa, pb):
@@ -1500,7 +1469,7 @@ class FieldDecomposition(object):
                 continue
             if not (lo_x <= point[0] <= hi_x and lo_y <= point[1] <= hi_y):
                 continue
-            d, s, total = _project_on_polyline(point, arc)
+            d, s, total = project_on_polyline(point, arc)
             if d >= tol:
                 continue
             # capped so the margin can never swallow the arc it is protecting

@@ -66,6 +66,8 @@ phantom fourth corner.
 from math import acos
 from math import degrees
 
+from compas_singular.geometry.polyline import closest_on_polyline
+
 
 __all__ = ['guide_metrics', 'format_guide_metrics']
 
@@ -92,21 +94,19 @@ def _acute(u, v):
 
 
 def _nearest_on_polyline(point, polyline):
-    """``(distance, unit tangent)`` of the closest point of a polyline, or ``(inf, None)``."""
-    best_d, best_t = float('inf'), None
-    for a, b in zip(polyline, polyline[1:]):
-        abx, aby = b[0] - a[0], b[1] - a[1]
-        length2 = abx * abx + aby * aby
-        if length2 <= 0.0:
-            continue
-        t = ((point[0] - a[0]) * abx + (point[1] - a[1]) * aby) / length2
-        t = max(0.0, min(1.0, t))
-        qx, qy = a[0] + abx * t, a[1] + aby * t
-        d = ((point[0] - qx) ** 2 + (point[1] - qy) ** 2) ** 0.5
-        if d < best_d:
-            length = length2 ** 0.5
-            best_d, best_t = d, (abx / length, aby / length)
-    return best_d, best_t
+    """``(distance, unit tangent)`` of the closest point of a polyline, or ``(inf, None)``.
+
+    The tangent is the direction of the segment the point landed on, which is
+    why this needs the index :func:`closest_on_polyline` returns and not just
+    the closest point.
+    """
+    index, _t, _q, distance = closest_on_polyline(point, polyline)
+    if distance == float('inf'):
+        return distance, None
+    a, b = polyline[index], polyline[index + 1]
+    abx, aby = b[0] - a[0], b[1] - a[1]
+    length = (abx * abx + aby * aby) ** 0.5
+    return distance, (abx / length, aby / length)
 
 
 def _families(points):

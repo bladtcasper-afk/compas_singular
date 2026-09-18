@@ -23,6 +23,7 @@ from math import cos
 from math import pi
 from math import sin
 
+from compas_singular.geometry.polyline import closest_on_polyline
 from compas.geometry import distance_point_point
 from compas.geometry import intersection_segment_segment_xy
 from compas.itertools import pairwise
@@ -326,7 +327,7 @@ class Tracer(object):
         round hole the field is polar, so every site scores alike and the arc
         spacing decides; on an irregular hole the score does the work.
         """
-        from .repair import _arc_lengths
+        from .separatrix_network import _arc_lengths
 
         _seg, cum = _arc_lengths(loop)
         total = cum[-1]
@@ -430,7 +431,7 @@ class Tracer(object):
         -------
         list[(point, direction)]
         """
-        from .repair import boundary_corners
+        from .separatrix_network import boundary_corners
 
         launches = []
         for loop in self.background.inners:
@@ -441,7 +442,7 @@ class Tracer(object):
 
     def corner_points(self, corner_limit=pi / 12.0):
         """Every boundary corner, as a flat list of points."""
-        from .repair import boundary_corners
+        from .separatrix_network import boundary_corners
         out = []
         for loop in [self.background.outer] + list(self.background.inners):
             for i in boundary_corners(loop, corner_limit):
@@ -544,17 +545,9 @@ class Tracer(object):
         """Closest point on any boundary loop."""
         best, best_d = None, float('inf')
         for loop in [self.background.outer] + list(self.background.inners):
-            for a, b in pairwise(loop + loop[:1]):
-                abx, aby = b[0] - a[0], b[1] - a[1]
-                length2 = abx * abx + aby * aby
-                if length2 == 0.0:
-                    continue
-                t = ((point[0] - a[0]) * abx + (point[1] - a[1]) * aby) / length2
-                t = max(0.0, min(1.0, t))
-                q = [a[0] + abx * t, a[1] + aby * t, 0.0]
-                d = distance_point_point(point, q)
-                if d < best_d:
-                    best, best_d = q, d
+            _i, _t, q, d = closest_on_polyline(point, loop, closed=True)
+            if d < best_d:
+                best, best_d = q, d
         return best
 
     def _clip_to_boundary(self, inside, outside):
@@ -603,7 +596,7 @@ class Tracer(object):
         -------
         list[(point, direction)]
         """
-        from .repair import boundary_corners
+        from .separatrix_network import boundary_corners
 
         launches = []
         for loop_index, loop in enumerate([self.background.outer] + list(self.background.inners)):

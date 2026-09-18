@@ -17,9 +17,9 @@ the Rhino command already makes, that nothing is written until commit. It also
 makes :meth:`MeshEditor.reset` mean what it says for a move.
 
 **Refusals return** ``(False, {'error': reason})`` **and successes**
-``(True, notes)``. A subclass that publishes a different shape adapts at its own
-boundary rather than changing this one -- ``DenseMeshEditor`` still returns bare
-booleans to its callers, and unwraps here.
+``(True, notes)``, and both subclasses publish the same shape. ``DenseMeshEditor``
+used to return bare booleans; it moved to this convention when its Rhino command
+was rebuilt on it.
 
 **Deleting a strip is a template, because the two subclasses gate it
 differently.** The walk is identical -- resolve the edge to a strip, optionally
@@ -42,22 +42,28 @@ from __future__ import print_function
 
 from copy import deepcopy
 
+from ..datastructures.mesh_quad.grammar.add_strip import split_strips
+from ..datastructures.mesh_quad.grammar.delete_strip import collateral_strip_deletions
+from ..datastructures.mesh_quad.grammar.delete_strip import delete_strip as _grammar_delete_strip
 from ..datastructures.mesh_quad.grammar.delete_strip import (
     strips_to_split_to_prevent_boundary_collapse)
-# From grammar_pattern, NOT grammar.delete_strip: the two modules both define
-# ``delete_strip`` and ``datastructures/__init__`` star-imports ``grammar`` last,
-# so the package-level name resolves to the MODULE and calling it raises
-# ``TypeError: 'module' object is not callable``. This is also the version that
-# merges the two sides, handles collateral deletions and repairs 'face_pole'.
-from ..datastructures.mesh_quad.grammar_pattern import collateral_strip_deletions
-from ..datastructures.mesh_quad.grammar_pattern import delete_strip as _grammar_delete_strip
-from ..datastructures.mesh_quad.grammar_pattern import split_strips
-from ..datastructures.mesh_quad.grammar_pattern import total_boundary_deletions
+from ..datastructures.mesh_quad.grammar.delete_strip import total_boundary_deletions
 from ..datastructures.mesh_quad_coarse.coarse_curves import BoundaryLoop
 from ..datastructures.mesh_quad_coarse.coarse_curves import mean_edge_length
 
 
-__all__ = ['MeshEditor']
+__all__ = ['MeshEditor', 'boundary_vertex_set']
+
+
+def boundary_vertex_set(mesh):
+    """Every vertex with a faceless halfedge. See :meth:`MeshEditor.boundary_vertices`."""
+    out = set()
+    for u, nbrs in mesh.halfedge.items():
+        for v, fkey in nbrs.items():
+            if fkey is None:
+                out.add(u)
+                out.add(v)
+    return out
 
 
 class MeshEditor(object):
@@ -133,6 +139,8 @@ class MeshEditor(object):
         #: still matches the separatrix it was traced from exactly, so there is
         #: nothing to warp and trying would only risk a wrong match.
         self.edited = False
+        #: One entry per completed edit, oldest first -- see :meth:`push_undo`.
+        self._undo_stack = []
 
     # ------------------------------------------------------------------
     # walls
@@ -177,18 +185,22 @@ class MeshEditor(object):
         return mean_edge_length(self.mesh if mesh is None else mesh)
 
     def boundary_vertices(self, mesh=None):
-        """Every boundary ring, not just the longest.
+        """Every vertex on every boundary -- holes included -- as a set.
 
-        ``vertices_on_boundarIES`` -- plural. The singular form returns only the
-        LONGEST boundary, so on a mesh with a hole every vertex of that hole would
-        be reported as interior. Measured on an annulus: the singular form sees 12
-        of the 16 boundary vertices and misses all four of the hole's.
+        Read straight off the halfedges: a vertex is on a boundary exactly when
+        one of its halfedges, either way round, has no face. Two ways of getting
+        this wrong came first:
+
+        * ``vertices_on_boundary`` -- singular -- returns only the LONGEST
+          boundary, so on a mesh with a hole every vertex of that hole was
+          reported as interior. Measured on an annulus: 12 of 16 seen;
+        * ``vertices_on_boundaries`` -- plural -- walks each boundary as a loop,
+          and on a mesh where two faces only touch at a corner that walk can
+          NEVER END. Measured on a dense mesh after random removals: it spun
+          until killed, from inside ``move_vertex``. A set needs no walk.
         """
         mesh = self.mesh if mesh is None else mesh
-        out = set()
-        for ring in mesh.vertices_on_boundaries():
-            out.update(ring)
-        return out
+        return boundary_vertex_set(mesh)
 
     def is_vertex_on_boundary(self, vkey, mesh=None):
         """Whether a vertex is on ANY boundary of the mesh -- holes included."""
@@ -299,6 +311,58 @@ class MeshEditor(object):
         return self._accept(faces=self.mesh.number_of_faces())
 
     # ------------------------------------------------------------------
+    # undo -- one step back, not all the way to the start
+    # ------------------------------------------------------------------
+    #
+    # :meth:`reset` answers "throw away this whole round of edits"; this
+    # answers "that last one, not the others". A front end that acts on a pick
+    # immediately -- deleting the strip the moment it is clicked, say, rather
+    # than asking first -- needs this to make an accidental pick cheap to walk
+    # back, without losing everything edited before it.
+
+    def _state(self):
+        """Everything :meth:`undo` needs to put back. A subclass with more
+        state than the mesh (a curve map, a dirty flag) extends this and
+        :meth:`_restore` together, never one without the other."""
+        return {'mesh': self.mesh.copy(), 'edited': self.edited,
+                'last_deletion': dict(self.last_deletion)}
+
+    def _restore(self, state):
+        """The inverse of :meth:`_state`."""
+        self.mesh = state['mesh']
+        self.edited = state['edited']
+        self.last_deletion = state['last_deletion']
+
+    def push_undo(self):
+        """Remember the mesh as it is now, before the change about to happen.
+
+        Call this immediately before an operation that may mutate ``self.mesh``
+        -- one entry per attempt, whether or not it succeeds. A refused
+        operation never touches the mesh, so its snapshot is a harmless no-op
+        to undo back through; :meth:`discard_last_undo` is there for a caller
+        that would rather not leave one.
+        """
+        self._undo_stack.append(self._state())
+
+    def discard_last_undo(self):
+        """Drop the most recent :meth:`push_undo` snapshot -- nothing changed."""
+        if self._undo_stack:
+            self._undo_stack.pop()
+
+    def undo(self):
+        """Put back the mesh as it was before the last :meth:`push_undo`. ``(ok, notes)``.
+
+        Refuses with nothing to restore rather than silently doing nothing, so
+        a front end can tell "undid something" from "there was nothing left".
+        """
+        if not self._undo_stack:
+            return self._refuse('nothing to undo')
+        self._restore(self._undo_stack.pop())
+        self.last_reason = ''
+        return self._accept(faces=self.mesh.number_of_faces(),
+                            remaining=len(self._undo_stack))
+
+    # ------------------------------------------------------------------
     # deleting a strip -- the template
     # ------------------------------------------------------------------
 
@@ -311,11 +375,13 @@ class MeshEditor(object):
         "to avoid any bias". ``strips_to_split_to_prevent_boundary_collapse``
         works that out; this performs it.
 
-        A hook because the two editors must not do it the same way. The pattern
-        grammar's ``split_strips`` goes through its own ``add_strip``, which ends
-        with ``func_1`` -- a 20-iteration constrained smooth. On a DENSE mesh that
-        is unremarkable; on a coarse layout it slides corners along the chorded
-        boundary and clusters them, so the coarse editor overrides it.
+        **The strips this adds have ZERO WIDTH**, because the grammar's
+        ``add_strip`` only ever does topology. A subclass MUST open them, and the
+        two editors do it differently -- exact thirds on a coarse layout, centroid
+        relaxation on a dense mesh -- which is why this is a hook and why the base
+        deliberately does not pick one. Leaving them closed welds coincident
+        vertices into the result, which survives ``is_manifold`` but bakes as a
+        broken mesh.
         """
         return split_strips(work, to_split)
 
@@ -525,6 +591,11 @@ class MeshEditor(object):
         """
         target = self.target
         route = target.attributes.get('route')
+        # A symmetric unit's seams, group and tolerances (``compas_singular.symmetry``)
+        # describe the DOMAIN the layout lives in, like the route -- a rebuild that
+        # renumbers the layout does not change them, and dropping them would leave
+        # a unit that can no longer be expanded.
+        symmetry = target.attributes.get('symmetry')
 
         target.clear()
         # ``clear()`` deliberately does not do this, and the omission is the trap:
@@ -554,4 +625,6 @@ class MeshEditor(object):
         # it, so it comes from the object being written into rather than the copy.
         if route is not None:
             target.attributes['route'] = route
+        if symmetry:
+            target.attributes['symmetry'] = deepcopy(symmetry)
         return target

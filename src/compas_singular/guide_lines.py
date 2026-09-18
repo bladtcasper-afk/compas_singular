@@ -1075,7 +1075,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
         return curves
 
     work.set_strips_density_target(t=target_length)
-    work.densification(edges_to_curves=curves_for_densification(work, work_curves))
+    work.densification(overwrite_edges_to_curves=curves_for_densification(work, work_curves))
     dense = work.get_quad_mesh()
 
     info = {
@@ -2054,7 +2054,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
             curves[u, v] = curve
         return curves
 
-    work.densification(edges_to_curves=curves_for_densification(work, work_curves))
+    work.densification(overwrite_edges_to_curves=curves_for_densification(work, work_curves))
     dense = work.get_quad_mesh()
 
     info = {
@@ -2212,7 +2212,7 @@ def guide_feature_mesh(outer_boundary, guides, inner_boundaries=(), point_featur
     coarse.collect_strips()
     coarse.set_strips_density_target(target_length)
     if edges_to_curves:
-        coarse.densification(edges_to_curves=edges_to_curves)
+        coarse.densification(overwrite_edges_to_curves=edges_to_curves)
     else:
         coarse.densification()
     dense = coarse.get_quad_mesh()

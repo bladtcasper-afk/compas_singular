@@ -173,7 +173,7 @@ class PseudoQuadMesh(QuadMesh):
         # deleted and is now re-assigned lands at the END of the dict's insertion
         # order. Measured on a 4x4 grid: delete strip 3, re-collect, and the order is
         # [0, 1, 2, 4, 5, 6, 7, 3] -- so ``list(strips())[-1]`` is 3 while the maximum
-        # is 7, and ``grammar_pattern.add_strip``'s ``last + 1`` then names strip 4,
+        # is 7, and naming a new strip ``last + 1`` would then pick 4,
         # which already exists and is silently overwritten. Stale entries are also
         # read as real by ``is_strip_closed``, which only ever looks at
         # ``strips[skey][0]``.

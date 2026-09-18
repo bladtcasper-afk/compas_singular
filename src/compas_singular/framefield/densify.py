@@ -124,9 +124,7 @@ import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import spsolve
 
-from compas.geometry import Polyline
 from compas.geometry import discrete_coons_patch
-from compas.itertools import linspace
 from compas.itertools import pairwise
 from compas.tolerance import TOL
 from compas_singular.datastructures import meshes_join_and_weld
@@ -702,19 +700,12 @@ def field_densification(coarse, field, tracer, edges_to_curves=None,
         polylines = []
         for u, v in coarse.face_halfedges(fkey):
             d = coarse.get_strip_density(edge_strip[u, v])
-            if edges_to_curves:
-                if (u, v) in edges_to_curves:
-                    curve = Polyline(edges_to_curves[u, v])
-                    polyline = [curve.point_at(t) for t in linspace(0, 1, d + 1)]
-                else:
-                    curve = Polyline(edges_to_curves[v, u])
-                    polyline = [curve.point_at(t) for t in linspace(0, 1, d + 1)]
-                    polyline = polyline[::-1]
-            else:
-                curve = Polyline([coarse.vertex_coordinates(u),
-                                  coarse.vertex_coordinates(v)])
-                polyline = [curve.point_at(float(i) / float(d))
-                            for i in range(0, d + 1)]
+            # Falls back to a straight chord for any edge missing from
+            # ``edges_to_curves`` instead of raising -- the mapping no longer
+            # has to be complete for the whole layout, only for the edges the
+            # caller (``CoarseQuadMesh.densification``'s ``boundary_curvature``
+            # / ``skeleton_curvature`` split) actually wants curved.
+            polyline = coarse._create_patch_edge(u, v, d, edges_to_curves)
             for index, point in enumerate(polyline):
                 stats['seam_edge'].setdefault(TOL.geometric_key(point), (u, v, index))
             polylines.append(polyline)

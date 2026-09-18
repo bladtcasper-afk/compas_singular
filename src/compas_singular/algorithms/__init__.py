@@ -59,7 +59,7 @@ from .propagation import *  # noqa: F401 F403
 from .triangulation import *  # noqa: F401 F403
 from .twocoloring import *  # noqa: F401 F403
 
-from .decomposition import *  # noqa: F401 F403
+from .skeleton_decomposition import *  # noqa: F401 F403
 
 
 import types  # noqa: E402

@@ -9,7 +9,9 @@ from compas.geometry import centroid_points
 from compas.geometry import Polyline, Brep, Point, Polygon
 from compas.itertools import pairwise
 
+from compas_singular.datastructures.mesh_quad.grammar.add_strip import add_strip
 from compas_singular.datastructures.mesh_quad.grammar.add_strip import add_strips
+from compas_singular.datastructures.mesh_quad.grammar.delete_strip import delete_strip
 from compas_singular.datastructures.mesh_quad.grammar.delete_strip import delete_strips
 from compas_singular.utilities import list_split
 
@@ -748,7 +750,7 @@ class QuadMesh(Mesh):
         # deleted and is now re-assigned lands at the END of the dict's insertion
         # order. Measured on a 4x4 grid: delete strip 3, re-collect, and the order is
         # [0, 1, 2, 4, 5, 6, 7, 3] -- so ``list(strips())[-1]`` is 3 while the maximum
-        # is 7, and ``grammar_pattern.add_strip``'s ``last + 1`` then names strip 4,
+        # is 7, and naming a new strip ``last + 1`` would then pick 4,
         # which already exists and is silently overwritten. Stale entries are also
         # read as real by ``is_strip_closed``, which only ever looks at
         # ``strips[skey][0]``.
@@ -774,13 +776,35 @@ class QuadMesh(Mesh):
 
         return self.strips(data=True)
 
+    def add_strip(self, polyedge):
+        """**Add a strip along** ``polyedge``. ``(new strip key, {old vertex: pair})``.
+
+        Topology only: the two copies of each vertex are created on top of the
+        vertex they replace, so the strip has zero width until something
+        separates them. See
+        :mod:`~compas_singular.datastructures.mesh_quad.grammar.add_strip`.
+        """
+        return add_strip(self, polyedge)
+
     def add_strips(self, polyedges):
-        mesh = self
-        add_strips(mesh=mesh, polyedges=polyedges)
+        """Add a strip along each polyedge. The new strip keys.
+
+        Topology only -- see :meth:`add_strip`.
+        """
+        return add_strips(self, polyedges)
+
+    def delete_strip(self, skey):
+        """**Delete the strip** ``skey``. ``{old vertex: the vertex it merged into}``.
+
+        Welds the two sides together, takes any strip it fully consumes with it,
+        and repoints ``attributes['face_pole']``. Vertices MOVE -- see
+        :mod:`~compas_singular.datastructures.mesh_quad.grammar.delete_strip`.
+        """
+        return delete_strip(self, skey)
 
     def delete_strips(self, skeys):
-        mesh = self
-        delete_strips(mesh, skeys=skeys)
+        """Delete several strips. See :meth:`delete_strip`."""
+        return delete_strips(self, skeys)
 
     def is_strip_closed(self, skey):
         """Output whether a strip is closed.

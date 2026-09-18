@@ -20,6 +20,7 @@ from math import ceil
 from compas_singular.datastructures import Mesh   # has .boundaries(); compas core does not
 from compas_singular.geometry.polyline import bounding_box_diagonal
 from compas_singular.geometry.polyline import discretise_boundary
+from compas_singular.geometry.polyline import distance_to_loop
 from compas.geometry import delaunay_triangulation
 from compas.geometry import is_point_in_polygon_xy
 from compas.geometry import distance_point_point
@@ -27,7 +28,6 @@ from compas.geometry import normalize_vector
 from compas.geometry import subtract_vectors
 from compas.geometry import cross_vectors
 from compas.geometry import length_vector
-from compas.itertools import pairwise
 
 
 # ``discretise_boundary`` is re-exported, not reimplemented: the skeleton front
@@ -91,8 +91,8 @@ def interior_grid(outer, inners=(), target_length=None, margin=0.45, symmetry=No
 
     if symmetry is not None and symmetry.enabled('background'):
         # Imported here rather than at module scope: symmetry.py imports
-        # _jitter and _distance_to_loop from this module, so a top-level
-        # import either way round is a cycle.
+        # _jitter from this module, so a top-level import either way round is
+        # a cycle.
         from .symmetry import interior_points
 
         return list(interior_points(symmetry, target_length, outer, inners,
@@ -110,29 +110,14 @@ def interior_grid(outer, inners=(), target_length=None, margin=0.45, symmetry=No
                  0.0]
             if not is_point_in_polygon_xy(p, outer):
                 continue
-            if _distance_to_loop(p, outer) < limit:
+            if distance_to_loop(p, outer) < limit:
                 continue
             if any(is_point_in_polygon_xy(p, loop) for loop in inners):
                 continue
-            if any(_distance_to_loop(p, loop) < limit for loop in inners):
+            if any(distance_to_loop(p, loop) < limit for loop in inners):
                 continue
             points.append(p)
     return points
-
-
-def _distance_to_loop(p, loop):
-    """Shortest distance from a point to a closed polyline, in XY."""
-    best = float('inf')
-    for a, b in pairwise(loop + loop[:1]):
-        ab = subtract_vectors(b, a)
-        length2 = ab[0] * ab[0] + ab[1] * ab[1]
-        if length2 == 0.0:
-            continue
-        t = ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / length2
-        t = max(0.0, min(1.0, t))
-        q = [a[0] + ab[0] * t, a[1] + ab[1] * t, 0.0]
-        best = min(best, distance_point_point(p, q))
-    return best
 
 
 def _jitter(i, j, amount):

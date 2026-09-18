@@ -120,7 +120,7 @@ from math import ceil
 
 from compas.geometry import is_point_in_polygon_xy
 
-from .background import _distance_to_loop
+from compas_singular.geometry.polyline import distance_to_loop
 from .background import _jitter
 from .field import CrossField
 
@@ -344,12 +344,12 @@ def interior_points(symmetry, target_length, outer, inners=(),
 def _inside(p, outer, inners, limit):
     if not is_point_in_polygon_xy(p, outer):
         return False
-    if _distance_to_loop(p, outer) < limit:
+    if distance_to_loop(p, outer) < limit:
         return False
     for loop in inners:
         if is_point_in_polygon_xy(p, loop):
             return False
-        if _distance_to_loop(p, loop) < limit:
+        if distance_to_loop(p, loop) < limit:
             return False
     return True
 

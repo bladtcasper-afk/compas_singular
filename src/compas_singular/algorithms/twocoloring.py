@@ -9,9 +9,29 @@ from compas.topology import vertex_adjacency_from_edges
 from compas_singular.datastructures import QuadMesh
 from compas_singular.datastructures import delete_strips
 from compas_singular.datastructures import collateral_strip_deletions
+from compas_singular.datastructures import split_strips
+from compas_singular.datastructures import strips_to_split_to_prevent_boundary_collapse
 from compas_singular.datastructures import total_boundary_deletions
 from compas_singular.topology import is_adjacency_two_colorable
 from compas_singular.utilities import are_items_in_list
+
+
+def delete_strips_preserving_boundaries(mesh, skeys):
+    """Delete strips, refining first whatever would let a boundary collapse.
+
+    Pre-splitting used to be a ``preserve_boundaries`` flag on ``delete_strips``
+    itself. It is done here instead so that one layer decides the policy, and
+    because the splitting it did also smoothed the whole mesh -- which the
+    searches in this module neither want nor notice, since they only read
+    ``is_manifold`` and ``euler``. The strips the split adds are left with zero
+    width for exactly that reason.
+    """
+    to_split = strips_to_split_to_prevent_boundary_collapse(mesh, skeys)
+    # Falsy covers both states that mean "do not split": ``None`` -- no strip
+    # survives on that boundary to refine -- and ``{}`` -- nothing is at risk.
+    if to_split:
+        split_strips(mesh, to_split)
+    delete_strips(mesh, skeys)
 
 
 __all__ = [
@@ -76,7 +96,7 @@ class TwoColourableProjection(object):
 
                 # delete strips in mesh and check validity
                 copy_mesh = mesh.copy()
-                delete_strips(copy_mesh, combination, preserve_boundaries=True)
+                delete_strips_preserving_boundaries(copy_mesh, combination)
                 topological_validity = copy_mesh.is_manifold() and copy_mesh.euler() == mesh.euler()
                 if not topological_validity:
                     pass
@@ -157,7 +177,7 @@ class TwoColourableProjection(object):
 
                 # delete strips in mesh and check validity
                 copy_mesh = mesh.copy()
-                delete_strips(copy_mesh, combination, preserve_boundaries=True)
+                delete_strips_preserving_boundaries(copy_mesh, combination)
                 topological_validity = copy_mesh.is_manifold() and copy_mesh.euler() == mesh.euler()
                 if not topological_validity:
                     pass
@@ -237,7 +257,7 @@ class TwoColourableProjection(object):
 
                 # delete strips in mesh and check validity
                 copy_mesh = mesh.copy()
-                delete_strips(copy_mesh, combination, preserve_boundaries=True)
+                delete_strips_preserving_boundaries(copy_mesh, combination)
                 topological_validity = copy_mesh.is_manifold() and copy_mesh.euler() == mesh.euler()
                 if not topological_validity:
                     discarding_combination.append(set(combination))
@@ -325,7 +345,7 @@ class TwoColourableProjection(object):
                 # delete strips in mesh and check validity
                 copy_mesh = mesh.copy()
                 copy_mesh.collect_strips()
-                delete_strips(copy_mesh, combination, preserve_boundaries=True)
+                delete_strips_preserving_boundaries(copy_mesh, combination)
                 topological_validity = copy_mesh.is_manifold() and copy_mesh.euler() == mesh.euler()
                 if not topological_validity:
                     results[combination] = 'invalid shape topology'
@@ -419,7 +439,7 @@ class TwoColourableProjection(object):
                 # delete strips in mesh and check validity
                 copy_mesh = mesh.copy()
                 # copy_mesh.collect_strips()
-                delete_strips(copy_mesh, combination, preserve_boundaries=True)
+                delete_strips_preserving_boundaries(copy_mesh, combination)
                 topological_validity = copy_mesh.is_manifold() and copy_mesh.euler() == mesh.euler()
                 if not topological_validity:
                     results[combination] = 'invalid shape topology'

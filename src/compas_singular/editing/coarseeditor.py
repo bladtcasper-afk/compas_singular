@@ -1,8 +1,9 @@
 """**Hand-editing a coarse quad layout: the mesh, with no Rhino in it.**
 
 :class:`CoarseEditor` holds a coarse layout being edited and offers the things
-that can be done to one -- move a corner, cut it with a drawn curve, delete the
-strip through an edge, and commit the result back into the layout it was given.
+that can be done to one -- move a corner, move a pole to a corner its patches
+share, cut it with a drawn curve, delete the strip through an edge, and commit
+the result back into the layout it was given.
 Nothing here picks, prompts, draws or prints. A refusal is recorded in
 :attr:`~CoarseEditor.last_reason` and returned as ``(False, notes)``; whoever is
 driving decides how to say so.
@@ -187,6 +188,7 @@ class CoarseEditor(MeshEditor):
     --------
     >>> editor = CoarseEditor(coarse, loops=[outer] + holes)
     >>> ok, notes = editor.divide([[0.0, 0.0, 0.0], [10.0, 0.0, 0.0]], extend=True)
+    >>> ok, notes = editor.move_pole(pkey, editor.pole_targets(pkey)[0])
     >>> layout, notes = editor.commit()
     """
 
@@ -228,6 +230,11 @@ class CoarseEditor(MeshEditor):
         #: deletion, which a moves-only commit leaves empty.
         self.committed = False
         self.last_cut = {}
+        #: Set by :meth:`move_pole`. Connectivity is unchanged, but the strips
+        #: through the relabelled pseudo-quads are not, so a commit must not
+        #: carry the old strip data across.
+        self._strips_stale = False
+        self.last_pole = {}
 
     @staticmethod
     def _resolve_loops(coarse, field, loops):
@@ -1232,21 +1239,18 @@ class CoarseEditor(MeshEditor):
         return out
 
     def _split_strips(self, work, to_split):
-        """**Refine strips without smoothing the layout.**
+        """**Refine strips, opening each one by the exact rule.**
 
-        The base routes this to the pattern grammar's ``split_strips``, which
-        splits a strip by adding one along its own side polyedge -- correct, but
-        through an ``add_strip`` that finishes with ``func_1``, a 20-iteration
-        constrained smooth. That is the exact mechanism that made
-        ``preserve_boundaries`` unusable on a coarse layout: it slides corners
-        along the CHORDED boundary and clusters them, measured as gaps of
+        The base's ``split_strips`` is topology only, so the strips it adds have
+        zero width and something has to give them one. On a coarse layout that
+        must not be smoothing: relaxation slides corners along the CHORDED
+        boundary and clusters them, measured as gaps of
         0.096 / 0.071 / 0.130 ... 2.782 on a 4.389 loop and a minimum face angle
-        of 0.28 degrees.
+        of 0.28 degrees. That is what made ``preserve_boundaries`` unusable here.
 
-        So the same rule is applied with the same grammar this editor already uses
-        for :meth:`add_strip` -- ``grammar/add_strip.py``, which does not smooth --
-        and the new corners are placed by :meth:`_open_strip`'s exact division
-        instead. Nothing here moves a corner that was not just created.
+        So each new strip is opened by :meth:`_open_strip`'s exact division, the
+        same way :meth:`add_strip` opens its own. Nothing here moves a corner that
+        was not just created.
         """
         out = {}
         for skey, n in (to_split or {}).items():
@@ -1344,6 +1348,91 @@ class CoarseEditor(MeshEditor):
         return [sum(p[0] for p in points) / n, sum(p[1] for p in points) / n, 0.0]
 
     # ------------------------------------------------------------------
+    # moving a pole -- a relabel of the collapsed corner, nothing else
+    # ------------------------------------------------------------------
+
+    def pole_targets(self, pkey):
+        """The corners the pole at ``pkey`` may move to. Empty if none.
+
+        A pseudo-quad is a triangle with one corner registered as collapsed, and
+        it can only collapse at one of its OWN corners. So a pole can move to a
+        corner that every one of its triangles shares -- in practice an edge
+        neighbour of a pole with one or two triangles.
+        """
+        face_pole = self.mesh.attributes.get('face_pole') or {}
+        faces = [fkey for fkey, pole in face_pole.items() if pole == pkey]
+        if not faces:
+            return []
+        shared = set(self.mesh.face_vertices(faces[0]))
+        for fkey in faces[1:]:
+            shared &= set(self.mesh.face_vertices(fkey))
+        shared.discard(pkey)
+        return sorted(shared)
+
+    def move_pole(self, pkey, vkey):
+        """**Move the pole at** ``pkey`` **to corner** ``vkey``. ``(ok, notes)``.
+
+        A RELABEL: every pseudo-quad collapsed at ``pkey`` is registered as
+        collapsed at ``vkey`` instead. No corner moves and no patch changes, so
+        the singularity index is conserved exactly. What does change is the
+        strips -- a strip crosses a pseudo-quad through ``face_opposite_edge``,
+        which depends on where the pole is -- so the strip data (and the
+        densities set on it) is not carried through a commit after this.
+
+        Refused unless ``vkey`` is a corner of every triangle of the pole; see
+        :meth:`pole_targets`.
+        """
+        face_pole = self.mesh.attributes.get('face_pole')
+        if not face_pole:
+            return self._refuse('this layout has no poles')
+        faces = [fkey for fkey, pole in face_pole.items() if pole == pkey]
+        if not faces:
+            return self._refuse('corner {} is not a pole'.format(pkey))
+        if vkey not in self.mesh.vertex:
+            return self._refuse('corner {} is not part of the layout'.format(vkey))
+        if vkey == pkey:
+            return self._refuse('the pole is already at corner {}'.format(pkey))
+        for fkey in faces:
+            if vkey not in self.mesh.face_vertices(fkey):
+                x, y, _z = self.mesh.face_centroid(fkey)
+                return self._refuse(
+                    'corner {} is not a corner of the pole patch near ({:.2f}, '
+                    '{:.2f}). A pseudo-quad can only collapse at one of its own '
+                    'corners, so a pole moves only to a corner all its patches '
+                    'share{}'.format(
+                        vkey, x, y,
+                        ' -- here: {}'.format(self.pole_targets(pkey))
+                        if self.pole_targets(pkey) else
+                        ' -- and this pole has none'))
+
+        work = self.mesh.copy()
+        for fkey in faces:
+            work.attributes['face_pole'][fkey] = vkey
+
+        # All-quad only: a relabel changes no connectivity, so it cannot change
+        # whether the layout is manifold -- and :meth:`_gate`'s refusal for that
+        # talks about deleting a strip.
+        ok, reason = self._check_quads(work)
+        if not ok:
+            return self._refuse(reason)
+        try:
+            work.collect_strips()
+        except Exception as exc:
+            return self._refuse('the strips cannot be traced with the pole there '
+                                '({}: {})'.format(type(exc).__name__, exc))
+
+        self.mesh = work
+        self.edited = True
+        self._strips_stale = True
+        if self.poles is not None:
+            old = self.target.vertex_coordinates(pkey) if pkey in self.target.vertex else None
+            new = list(work.vertex_coordinates(vkey))
+            self.poles = [new if old is not None and distance_point_point(p, old) < 1e-6
+                          else p for p in self.poles]
+        self.last_pole = {'pole': pkey, 'to': vkey, 'faces': len(faces)}
+        return self._accept(**self.last_pole)
+
+    # ------------------------------------------------------------------
     # undo
     # ------------------------------------------------------------------
 
@@ -1352,8 +1441,34 @@ class CoarseEditor(MeshEditor):
         ok, notes = super(CoarseEditor, self).reset()
         self.curves = dict(self._snapshot_curves)
         self._topology_dirty = False
+        self._strips_stale = False
         self.last_cut = {}
+        self.last_pole = {}
         return ok, notes
+
+    def _state(self):
+        """The base's mesh snapshot, plus the curve map and the dirty flag --
+        both change under :meth:`divide` as surely as the mesh does, and
+        restoring one without the other would leave an undone cut's curve
+        still registered, or a commit taking the rebuild path for an edit that
+        undo just removed."""
+        state = super(CoarseEditor, self)._state()
+        state['curves'] = dict(self.curves)
+        state['topology_dirty'] = self._topology_dirty
+        state['last_cut'] = dict(self.last_cut)
+        state['strips_stale'] = self._strips_stale
+        state['last_pole'] = dict(self.last_pole)
+        state['poles'] = None if self.poles is None else [list(p) for p in self.poles]
+        return state
+
+    def _restore(self, state):
+        super(CoarseEditor, self)._restore(state)
+        self.curves = state['curves']
+        self._topology_dirty = state['topology_dirty']
+        self.last_cut = state['last_cut']
+        self._strips_stale = state['strips_stale']
+        self.last_pole = state['last_pole']
+        self.poles = state['poles']
 
 
     def _rekey_curves(self, mesh):
@@ -1523,14 +1638,17 @@ class CoarseEditor(MeshEditor):
                      'lost_curves': 0, 'path': 'moves'}
             # The grammar keeps its own strip table valid and preserves strip
             # labels, and a move changes no connectivity at all, so the densities
-            # set per strip in step 5 survive a corner drag.
-            self._transplant(self.mesh, carry_strip_data=True)
+            # set per strip in step 5 survive a corner drag. A moved POLE is the
+            # exception: the strips through its pseudo-quads are different ones.
+            notes['path'] = 'moves+pole' if self._strips_stale else 'moves'
+            self._transplant(self.mesh, carry_strip_data=not self._strips_stale)
 
         self.target.attributes['user_curves'] = [
             [list(p) for p in curve] for curve in self.curves.values()]
         self._snapshot = self.mesh.copy()
         self._snapshot_curves = dict(self.curves)
         self._topology_dirty = False
+        self._strips_stale = False
         self.committed = True
         self.last_reason = ''
         return self.target, notes

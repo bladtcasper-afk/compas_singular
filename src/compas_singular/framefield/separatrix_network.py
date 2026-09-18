@@ -23,6 +23,7 @@ thing for the same reason.
 """
 from math import pi
 
+from compas_singular.geometry.polyline import distance_to_loop
 from compas.geometry import distance_point_point
 from compas.geometry import angle_vectors
 from compas.geometry import subtract_vectors
@@ -322,7 +323,7 @@ def _cluster(points, tol, loops=None, wall_tol=None, groups=None, symmetry=None)
     wall_tol = tol * 0.25 if wall_tol is None else wall_tol
 
     def on_wall(p):
-        return any(_distance_to_loop(p, loop) < tol * 0.25 for loop in (loops or []))
+        return any(distance_to_loop(p, loop) < tol * 0.25 for loop in (loops or []))
 
     flags = [on_wall(p) for p in points]
 
@@ -689,7 +690,7 @@ def build_network(field, separatrices, tol=None, corner_limit=pi / 12.0, spacing
     # -- boundary arcs ------------------------------------------------------
     boundary = []
     for loop in [background.outer] + list(background.inners):
-        cuts = [p for p in landings if _distance_to_loop(p, loop) < tol]
+        cuts = [p for p in landings if distance_to_loop(p, loop) < tol]
         arcs, _ = _split_loop(loop, cuts, corner_limit)
         boundary.extend(arcs)
 
@@ -701,18 +702,4 @@ def build_network(field, separatrices, tol=None, corner_limit=pi / 12.0, spacing
         'snapped': len(ends) - len({id(v) for v in snapped.values()}),
     }
     return boundary, others, report
-
-
-def _distance_to_loop(p, loop):
-    best = float('inf')
-    for a, b in pairwise(loop + loop[:1]):
-        ab = subtract_vectors(b, a)
-        length2 = ab[0] * ab[0] + ab[1] * ab[1]
-        if length2 == 0.0:
-            continue
-        t = ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / length2
-        t = max(0.0, min(1.0, t))
-        q = [a[0] + ab[0] * t, a[1] + ab[1] * t, 0.0]
-        best = min(best, distance_point_point(p, q))
-    return best
 

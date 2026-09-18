@@ -38,11 +38,9 @@ Operations
     :toctree: generated/
     :nosignatures:
 
-    mesh_move_vertex_by
     mesh_move_by
     mesh_move_vertices_by
     mesh_move_vertex_to
-    mesh_move_vertices_to
     is_face_degenerate
     trimesh_face_circle
     mesh_weld
@@ -79,6 +77,16 @@ Constrained smoothing, without Rhino: the projections are computed with
     automated_boundary_constraints
     boundary_constrained_smoothing
     smoothing_region
+
+On a surface: interior vertices on the surface, boundary vertices on its borders.
+
+.. autosummary::
+    :toctree: generated/
+    :nosignatures:
+
+    automated_smoothing_surface_constraints
+    automated_smoothing_constraints
+    surface_constrained_smoothing
 
 
 
@@ -135,7 +143,6 @@ Pattern grammar
     :toctree: generated/
     :nosignatures:
 
-    add_and_delete_strips
     add_strip
     add_strips
     delete_strip

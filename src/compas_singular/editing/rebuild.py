@@ -10,7 +10,7 @@ there was nowhere to reach in.
 **Moved here from ``framefield/edit.py``.** Nothing in it ever touched the field,
 the tracer or the background -- it welds, snaps and repairs a layout from plain
 geometry -- so it belongs beside the editor that calls it rather than beside the
-solver. ``framefield.edit`` re-exports these names for existing callers.
+solver.
 
 This module opens exactly one seam, and no more. The generated layout goes out
 to Rhino, comes back edited, and densification proceeds from THAT layout. See

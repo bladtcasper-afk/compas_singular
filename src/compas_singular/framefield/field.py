@@ -42,6 +42,7 @@ domain, so it is opt-in until ``baseline.json`` says which way those rows went.
 from cmath import phase
 from math import cos
 from math import sin
+from numbers import Number
 
 import numpy as np
 from scipy.sparse import coo_matrix
@@ -65,6 +66,61 @@ JSON_VERSION = 1
 #: mesh's JSON fails with a sentence instead of a KeyError.
 JSON_TYPE = 'compas_singular.framefield.CrossField'
 
+#: Coordinate rounding for :func:`field_provenance`. Well below anything
+#: geometric in the pipeline (``TOL.geometric_key`` works at 3) but coarse enough
+#: to absorb the last-bit noise a CAD curve round-trip leaves on a point that has
+#: not moved. **Changing it makes every stored field report its outline changed.**
+COORDINATE_DIGITS = 9
+
+
+def _canonical_curve(curve):
+    """One curve as a plain, rounded list of ``[x, y, z]``.
+
+    Accepts what ``from_boundary`` accepts -- lists, tuples, compas ``Point``s,
+    a compas ``Polyline`` -- and drops a repeated closing point, because a loop
+    given closed and the same loop given open are the same input to the solver
+    (``background._as_open_loop`` drops it too).
+    """
+    points = []
+    for point in curve:
+        points.append([round(float(point[i]), COORDINATE_DIGITS) for i in range(3)])
+    if len(points) > 1 and points[0] == points[-1]:
+        points = points[:-1]
+    return points
+
+
+def _plain(value):
+    """A solve parameter as something JSON can hold and a human can read."""
+    if value is None or isinstance(value, bool) or isinstance(value, str):
+        return value
+    if isinstance(value, Number):
+        return float(value)
+    # A Symmetry. Its group IS the identity -- centre, elements and the steps it
+    # is enabled for -- and none of that is reconstructible from ``repr``.
+    if hasattr(value, 'centre') and hasattr(value, 'steps'):
+        return {
+            'symmetry': [round(float(c), COORDINATE_DIGITS) for c in value.centre],
+            'names': sorted(value.names()),
+            'steps': sorted(value.steps),
+        }
+    if isinstance(value, (list, tuple)):
+        return [_plain(item) for item in value]
+    if isinstance(value, dict):
+        return dict((str(k), _plain(v)) for k, v in value.items())
+    return repr(value)
+
+
+def _describe_difference(before, after):
+    """The first differing entry of two readable dicts, as ``'name a -> b'``."""
+    before = before or {}
+    after = after or {}
+    for name in sorted(set(before) | set(after)):
+        old = before.get(name, '<unset>')
+        new = after.get(name, '<unset>')
+        if old != new:
+            return '{} {} -> {}'.format(name, old, new)
+    return 'no visible difference'
+
 
 def field_provenance(outer_boundary, inner_boundaries=None, guides=None,
                      mode='perpendicular', target_length=None, guide_weight=1.0,
@@ -81,11 +137,10 @@ def field_provenance(outer_boundary, inner_boundaries=None, guides=None,
     the solve actually used -- storing the string would make a field solved with
     ``symmetry=None`` compare equal to one solved under the full group.
 
-    The canonicalisation is ``framefield.cache``'s, deliberately. Rounding
-    coordinates and tagging each loop with its ROLE is fiddly enough to get
-    wrong once -- an early version of the cache key hashed holes and guides into
-    one flat list, so the same polyline in either role compared equal -- and a
-    second copy of that logic is how the bug comes back.
+    Each loop keeps its ROLE in the record. An earlier solve cache hashed holes
+    and guides into one flat list, so the same polyline in either role compared
+    equal. Holes and guides keep their given ORDER, because ``Symmetry.detect``
+    and ``from_curves`` both consume them as sequences.
 
     Returns
     -------
@@ -93,7 +148,6 @@ def field_provenance(outer_boundary, inner_boundaries=None, guides=None,
         ``{'geometry': {'outer', 'inners', 'guides'}, 'params': {...}}``, all
         plain JSON types.
     """
-    from . import cache
     from .constraints import as_curve_list
     from .symmetry import Symmetry
 
@@ -102,12 +156,16 @@ def field_provenance(outer_boundary, inner_boundaries=None, guides=None,
         symmetry = Symmetry.detect(
             [outer_boundary] + list(inner_boundaries or []) + list(guides or []))
 
+    params = (('mode', mode), ('target_length', target_length),
+              ('guide_weight', guide_weight), ('guide_band', guide_band),
+              ('relax', relax), ('tau', tau), ('symmetry', symmetry))
     return {
-        'geometry': cache.canonical_inputs(outer_boundary, inner_boundaries, guides),
-        'params': cache.canonical_parameters({
-            'mode': mode, 'target_length': target_length,
-            'guide_weight': guide_weight, 'guide_band': guide_band,
-            'relax': relax, 'tau': tau, 'symmetry': symmetry}),
+        'geometry': {
+            'outer': _canonical_curve(outer_boundary),
+            'inners': [_canonical_curve(loop) for loop in (inner_boundaries or [])],
+            'guides': [_canonical_curve(curve) for curve in guides],
+        },
+        'params': dict((name, _plain(value)) for name, value in params),
     }
 
 
@@ -176,9 +234,9 @@ class CrossField(object):
     def __getstate__(self):
         """Everything but the locator.
 
-        ``framefield.cache`` stores PICKLED objects, and the locator holds a
+        Applies to ``pickle`` and ``copy.deepcopy`` alike. The locator holds a
         bucket grid with an entry per background face -- pure derived state that
-        rebuilds in milliseconds, inflates the blob, and would be silently stale
+        rebuilds in milliseconds, inflates the copy, and would be silently stale
         if the background ever moved under it.
         """
         state = dict(self.__dict__)
@@ -634,8 +692,6 @@ class CrossField(object):
             A one-line description of the FIRST difference found, or ``None``
             when everything that determines the field agrees.
         """
-        from . import cache
-
         if self.inputs is None:
             return ('this field carries no record of its inputs -- it was built '
                     'through CrossField.solve rather than from_boundary, so '
@@ -656,8 +712,7 @@ class CrossField(object):
 
         if (self.inputs.get('params') or {}) != other['params']:
             return 'solver settings changed -- {}'.format(
-                cache.describe_difference(self.inputs.get('params'),
-                                          other['params']))
+                _describe_difference(self.inputs.get('params'), other['params']))
         return None
 
     def matches(self, *args, **kwargs):

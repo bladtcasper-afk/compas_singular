@@ -50,6 +50,8 @@ changes shape.
 """
 from math import atan2
 
+from compas_singular.geometry.polyline import closest_on_polyline
+from compas_singular.geometry.polyline import distance_to_loop
 from compas.geometry import distance_point_point
 from compas.itertools import pairwise
 
@@ -86,40 +88,8 @@ def _seg_seg(p1, p2, p3, p4):
     return None
 
 
-def _closest_on(points, p):
-    """``(segment index, t, point, distance)`` of the closest point on a polyline."""
-    best = (0, 0.0, list(points[0]), float('inf'))
-    for i, (a, b) in enumerate(pairwise(points)):
-        abx, aby = b[0] - a[0], b[1] - a[1]
-        length2 = abx * abx + aby * aby
-        if length2 == 0.0:
-            continue
-        t = ((p[0] - a[0]) * abx + (p[1] - a[1]) * aby) / length2
-        t = max(0.0, min(1.0, t))
-        q = [a[0] + abx * t, a[1] + aby * t, 0.0]
-        d = distance_point_point(p, q)
-        if d < best[3]:
-            best = (i, t, q, d)
-    return best
-
-
 def _length_of(points):
     return sum(distance_point_point(a, b) for a, b in pairwise(points))
-
-
-def _distance_to_loop(p, loop):
-    """Shortest distance from a point to a closed loop, in XY."""
-    best = float('inf')
-    for a, b in pairwise(list(loop) + list(loop[:1])):
-        abx, aby = b[0] - a[0], b[1] - a[1]
-        length2 = abx * abx + aby * aby
-        if length2 == 0.0:
-            continue
-        t = ((p[0] - a[0]) * abx + (p[1] - a[1]) * aby) / length2
-        t = max(0.0, min(1.0, t))
-        q = [a[0] + abx * t, a[1] + aby * t, 0.0]
-        best = min(best, distance_point_point(p, q))
-    return best
 
 
 def _cumulative(loop):
@@ -248,7 +218,7 @@ class _Nodes(object):
         self.points = []
 
     def _on_wall(self, p):
-        return any(_distance_to_loop(p, loop) < self.tol * 0.25 for loop in self.loops)
+        return any(distance_to_loop(p, loop) < self.tol * 0.25 for loop in self.loops)
 
     def add(self, p, tol=None, exclude=None):
         """Return the canonical position for ``p``, creating a node if new.
@@ -415,7 +385,7 @@ def planar_arrangement(boundary, others, tol, report=None, loops=None):
             for j, (kind_j, pts_j) in enumerate(chains):
                 if j in own:
                     continue
-                _, _, q, d = _closest_on(pts_j, node_p)
+                _, _, q, d = closest_on_polyline(node_p, pts_j)
                 if d >= reach or d < 1e-9:
                     continue
                 # already a shared node -- an arm meeting another arm end on

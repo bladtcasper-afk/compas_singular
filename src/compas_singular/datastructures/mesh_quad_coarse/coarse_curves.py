@@ -68,11 +68,16 @@ Nothing in this module touches ``rhinoscriptsyntax`` or ``Rhino``. That is
 deliberate and is the same rule the lower half of ``edit_coarse`` keeps: this is
 the half that can be wrong in ways a user cannot see, so it has to be runnable,
 and testable, without Rhino open.
+
+``compas_singular.rhino.coarse_curves`` re-exports this module's public names
+so the ``CMD_`` commands keep importing from where they always have -- if a
+search for ``coarse_curves.py`` lands you there instead, that file is the shim.
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from compas_singular.geometry.polyline import project_on_polyline
 from compas.geometry import distance_point_point
 from compas.itertools import pairwise
 
@@ -106,38 +111,6 @@ def _clean(points, tol=1e-9):
         if distance_point_point(out[-1], point) > tol:
             out.append(list(point))
     return out
-
-
-def _project_on_polyline(point, points):
-    """``(distance, arclength, total length)`` for a point near an OPEN polyline.
-
-    Open, not closed: joining last to first would invent a segment an arc does
-    not have, and :meth:`BoundaryLoop.arc` returns arcs.
-
-    The arclength is what tells "this corner sits at the END of the arc" apart
-    from "this arc runs THROUGH that corner" -- a distinction the distance alone
-    cannot make, and one :func:`_arc_is_one_edge` depends on.
-    """
-    best = (float('inf'), 0.0)
-    travelled = 0.0
-    for a, b in pairwise(points):
-        abx, aby = b[0] - a[0], b[1] - a[1]
-        length = (abx * abx + aby * aby) ** 0.5
-        if length == 0.0:
-            continue
-        t = ((point[0] - a[0]) * abx + (point[1] - a[1]) * aby) / (length * length)
-        t = max(0.0, min(1.0, t))
-        q = [a[0] + abx * t, a[1] + aby * t, 0.0]
-        d = distance_point_point(point, q)
-        if d < best[0]:
-            best = (d, travelled + t * length)
-        travelled += length
-    return best[0], best[1], travelled
-
-
-def _distance_to_polyline(point, points):
-    """Shortest distance from a point to an OPEN polyline."""
-    return _project_on_polyline(point, points)[0]
 
 
 class BoundaryLoop(object):
@@ -333,7 +306,7 @@ def _arc_is_one_edge(arc, pa, pb, corners, tol):
             continue
         if not (lo_x <= point[0] <= hi_x and lo_y <= point[1] <= hi_y):
             continue
-        d, s, total = _project_on_polyline(point, arc)
+        d, s, total = project_on_polyline(point, arc)
         if d >= tol:
             continue
         # capped so the margin can never swallow the arc it is protecting

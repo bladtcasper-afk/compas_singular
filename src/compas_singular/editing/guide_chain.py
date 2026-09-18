@@ -132,24 +132,37 @@ _TOL = 1e-9
 # ==============================================================================
 
 class GuideCurve(object):
-    """A guide curve as a polyline with an arc-length table.
+    """A guide curve as a polyline with an arc-length table -- and, optionally, the curve.
 
     Built once per guide: choosing a chain projects a good part of the mesh onto it, and
     rebuilding the table inside the projection would rebuild it a few thousand times.
+
+    **The chain is chosen on the samples; a vertex lands on the curve.** :meth:`project`
+    needs the arc length and the tangent at the closest point, and the compas ``Curve``
+    interface does not offer the arc length on every backend, so choosing a chain always
+    reads ``points``. :meth:`closest_point` -- where an attached vertex is moved to, and what
+    a sliding hold re-projects onto -- uses ``curve`` when there is one, so the vertex lands
+    ON the curve that was drawn instead of on a chord of its samples, up to a sagitta off it.
 
     Parameters
     ----------
     points : sequence[point] | :class:`compas.geometry.Polyline`
         The guide, already discretised. Consecutive duplicates are dropped.
+    curve : :class:`compas.geometry.Curve`, optional
+        The curve ``points`` were sampled from -- from ``compas_rhino``'s
+        ``curve_to_compas``, from ``compas_occ``, a :class:`~compas.geometry.Circle`, ...
+        It must lie where the samples do. Default is None: vertices land on the samples.
 
     Attributes
     ----------
     points : list[list[float]]
         The guide points.
     length : float
-        The total arc length.
+        The total arc length of the samples.
     closed : bool
         Whether the first and last point coincide.
+    curve : :class:`compas.geometry.Curve` | None
+        The curve a vertex lands on, if one was given.
 
     Raises
     ------
@@ -158,7 +171,8 @@ class GuideCurve(object):
 
     """
 
-    def __init__(self, points):
+    def __init__(self, points, curve=None):
+        self.curve = curve
         cleaned = []
         for point in points:
             xyz = [float(point[0]), float(point[1]), float(point[2])]
@@ -222,7 +236,11 @@ class GuideCurve(object):
         therefore used as a sliding constraint in
         :func:`~compas_singular.datastructures.constrained_smoothing` -- without the
         caller having to keep the original curve alongside it.
+
+        On :attr:`curve` when there is one, on the samples otherwise.
         """
+        if self.curve is not None:
+            return closest_point_on_constraint(self.curve, point)
         return self._closest(point)[0]
 
     def delta(self, t, t0):

@@ -6,6 +6,7 @@ from .mesh import *  # noqa: F401 F403
 from .operations import *  # noqa: F401 F403
 from .coloring import *  # noqa: F401 F403
 from .smoothing import *  # noqa: F401 F403
+from .projection import *  # noqa: F401 F403
 
 
 import types  # noqa: E402

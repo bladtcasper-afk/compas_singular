@@ -63,6 +63,8 @@ from math import radians
 
 from compas.tolerance import TOL
 
+from compas_singular.geometry.polyline import closest_on_polyline
+
 
 __all__ = ['relax_mesh', 'relaxation_constraints']
 
@@ -92,20 +94,22 @@ class _Curve(object):
         self.length = self.cumulative[-1]
 
     def project(self, xyz):
-        """``(point, parameter)`` of the closest point, parameter as arc length."""
-        best = (float('inf'), None, 0.0)
-        for i, (a, b) in enumerate(zip(self.points, self.points[1:])):
-            abx, aby, abz = b[0] - a[0], b[1] - a[1], b[2] - a[2]
-            length2 = abx * abx + aby * aby + abz * abz
-            if length2 <= 0.0:
-                continue
-            t = ((xyz[0] - a[0]) * abx + (xyz[1] - a[1]) * aby + (xyz[2] - a[2]) * abz) / length2
-            t = max(0.0, min(1.0, t))
-            q = [a[0] + abx * t, a[1] + aby * t, a[2] + abz * t]
-            d = _distance(xyz, q)
-            if d < best[0]:
-                best = (d, q, self.cumulative[i] + t * (length2 ** 0.5))
-        return best[1], best[2]
+        """``(point, parameter)`` of the closest point, parameter as arc length.
+
+        The arc length is an O(1) lookup rather than a second pass: the search
+        reports WHICH segment won, and :attr:`cumulative` already holds the
+        length up to it.
+        """
+        index, t, q, d = closest_on_polyline(xyz, self.points)
+        if d == float('inf'):
+            return None, 0.0
+        a, b = self.points[index], self.points[index + 1]
+        # not _distance: it squares with ``** 2``, which is not always exactly
+        # ``x * x`` here, and the cumulative table this adds to was built the
+        # other way round
+        abx, aby, abz = b[0] - a[0], b[1] - a[1], b[2] - a[2]
+        span = (abx * abx + aby * aby + abz * abz) ** 0.5
+        return q, self.cumulative[index] + t * span
 
     def point_at(self, parameter):
         """The point at an arc-length parameter, clamped to the curve."""
