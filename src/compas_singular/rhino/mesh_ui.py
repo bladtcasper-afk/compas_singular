@@ -15,10 +15,12 @@ say -- stays in that command.
 
 Four things in here are not obvious and were each a bug first:
 
-* **redraw everything, never update in place.** Every topological edit
-  renumbers keys, and a stale guid map is a real way to move the wrong vertex.
-  A coarse layout is tens of patches, so there is nothing to gain by being
-  clever;
+* **redraw everything, never update in place** -- unless the update is keyed
+  on what is actually drawn. Every topological edit can renumber keys, and a
+  stale guid map is a real way to move the wrong vertex. A coarse layout is
+  tens of patches, so :meth:`PickableMesh.draw` redraws it all; a dense mesh is
+  thousands of edges, redrawn after every click, so :meth:`PickableMesh.sync`
+  replaces exactly the objects whose key or position no longer matches;
 * **the drag preview must show the PROJECTED point, not the cursor.** A
   boundary vertex is pulled back onto its wall, so previewing the cursor draws
   a position the commit will not produce;
@@ -58,6 +60,7 @@ except ImportError:  # importable outside Rhino, so the package still imports
 
 __all__ = [
     'DEFAULT_COLORS',
+    'FINISH',
     'PickableMesh',
     'ask',
     'ask_integer',
@@ -68,6 +71,13 @@ __all__ = [
     'relock',
     'unlock',
 ]
+
+
+#: What :meth:`PickableMesh.pick_vertex_or_finish` returns on Enter, as
+#: distinct from the ``None`` it returns on Esc. A dedicated sentinel rather
+#: than a plain string: a vertex key is an int, never this object, so an
+#: equality check can never mistake one for the other.
+FINISH = object()
 
 
 #: Colours every hand-edit command draws with. One scheme, so a boundary corner
@@ -242,6 +252,23 @@ class _Ribbon(object):
             self.faces.append(kept + [kept[2]])
         elif len(kept) == 4:
             self.faces.append(kept)
+
+
+def _boundary_vertices(mesh):
+    """Every vertex with a faceless halfedge -- the set, without walking a loop.
+
+    NOT ``mesh.vertices_on_boundaries()``: that walks each boundary as a loop,
+    and on a mesh where two faces only touch at a corner the walk never ends.
+    Measured on a dense mesh after hand edits -- and here it would have frozen
+    Rhino on the redraw after the edit that made the corner.
+    """
+    out = set()
+    for u, nbrs in mesh.halfedge.items():
+        for v, fkey in nbrs.items():
+            if fkey is None:
+                out.add(u)
+                out.add(v)
+    return out
 
 
 def _require_rhino():
@@ -436,6 +463,10 @@ class PickableMesh(object):
         self._path_colors = {}          # guid -> colour before show_path
         self.guid_ftext = {}
         self.guid_stext = {}            # strip label dot -> skey
+        # what is on screen, for ``sync``: vkey -> (guid, xyz, colour key) and
+        # frozenset edge -> (guid, (xyz, xyz)), ends None for a shaped edge
+        self._drawn_vertices = {}
+        self._drawn_edges = {}
 
     # -- drawing ---------------------------------------------------------
 
@@ -457,9 +488,7 @@ class PickableMesh(object):
         self.clear()
         ensure_layer(self.layer)
 
-        boundary = set()
-        for ring in mesh.vertices_on_boundaries():
-            boundary.update(ring)
+        boundary = _boundary_vertices(mesh)
         special = set(special)
 
         chorded, lost = [], []
@@ -467,18 +496,7 @@ class PickableMesh(object):
         rs.EnableRedraw(False)
         try:
             for vkey in mesh.vertices():
-                guid = rs.AddPoint(Point3d(*mesh.vertex_coordinates(vkey)))
-                if not guid:
-                    continue
-                rs.ObjectLayer(guid, self.layer)
-                if vkey in special:
-                    key = 'vertex.special'
-                elif vkey in boundary:
-                    key = 'vertex.boundary'
-                else:
-                    key = 'vertex'
-                rs.ObjectColor(guid, self.colors[key])
-                self.guid_vertices[guid] = vkey
+                self._add_vertex(mesh, vkey, self._vertex_color_key(vkey, boundary, special))
 
             for u, v in mesh.edges():
                 shape = edge_shape(u, v) if edge_shape is not None else None
@@ -496,20 +514,14 @@ class PickableMesh(object):
                         guid = rs.AddPolyline([Point3d(*point) for point in shape])
                     except Exception:                             # noqa: BLE001
                         chorded.append((u, v))
-                if not guid:
-                    try:
-                        guid = rs.AddLine(Point3d(*mesh.vertex_coordinates(u)),
-                                          Point3d(*mesh.vertex_coordinates(v)))
-                    except Exception:                             # noqa: BLE001
-                        # A zero-length chord. Nothing can be drawn for it, and
-                        # ``ObjectLayer(None)`` would raise out of the redraw.
-                        guid = None
-                if not guid:
+                if guid:
+                    rs.ObjectLayer(guid, self.layer)
+                    rs.ObjectColor(guid, self.colors['edge'])
+                    self.guid_edges[guid] = (u, v)
+                    # a SHAPE, not the chord: ``sync`` must redraw it, never keep it
+                    self._drawn_edges[frozenset((u, v))] = (guid, None)
+                elif not self._add_edge(mesh, u, v):
                     lost.append((u, v))
-                    continue
-                rs.ObjectLayer(guid, self.layer)
-                rs.ObjectColor(guid, self.colors['edge'])
-                self.guid_edges[guid] = (u, v)
         finally:
             rs.EnableRedraw(True)
         sc.doc.Views.Redraw()
@@ -519,6 +531,107 @@ class PickableMesh(object):
         if lost:
             print("{} edge(s) could not be drawn, and cannot be picked: {}."
                   .format(len(lost), ", ".join("{}-{}".format(*e) for e in lost)))
+
+    def _vertex_color_key(self, vkey, boundary, special):
+        if vkey in special:
+            return 'vertex.special'
+        if vkey in boundary:
+            return 'vertex.boundary'
+        return 'vertex'
+
+    def _add_vertex(self, mesh, vkey, color_key):
+        xyz = tuple(mesh.vertex_coordinates(vkey))
+        guid = rs.AddPoint(Point3d(*xyz))
+        if not guid:
+            return None
+        rs.ObjectLayer(guid, self.layer)
+        rs.ObjectColor(guid, self.colors[color_key])
+        self.guid_vertices[guid] = vkey
+        self._drawn_vertices[vkey] = (guid, xyz, color_key)
+        return guid
+
+    def _add_edge(self, mesh, u, v):
+        ends = (tuple(mesh.vertex_coordinates(u)), tuple(mesh.vertex_coordinates(v)))
+        try:
+            guid = rs.AddLine(Point3d(*ends[0]), Point3d(*ends[1]))
+        except Exception:                                         # noqa: BLE001
+            # A zero-length chord. Nothing can be drawn for it, and
+            # ``ObjectLayer(None)`` would raise out of the redraw.
+            guid = None
+        if not guid:
+            return None
+        rs.ObjectLayer(guid, self.layer)
+        rs.ObjectColor(guid, self.colors['edge'])
+        self.guid_edges[guid] = (u, v)
+        self._drawn_edges[frozenset((u, v))] = (guid, ends)
+        return guid
+
+    def sync(self, mesh, special=()):
+        """**Bring the drawing up to date with ``mesh``, replacing only what changed.**
+
+        What :meth:`draw` does, for a mesh that changes a little at a time and
+        is too big to redraw after every click. An object is kept only if its
+        KEY and its GEOMETRY both still match: a vertex at the same key and
+        position with the same colour, an edge between the same two keys at the
+        same two positions. Everything else is deleted and drawn again. So a
+        renumbering edit cannot leave a pick pointing at the wrong vertex -- at
+        worst it redraws more than it had to.
+
+        Draws everything if nothing is drawn yet. An edge :meth:`draw` drew
+        with a SHAPE is always replaced, by its chord. Returns
+        ``(removed, added)``.
+        """
+        _require_rhino()
+        if not self._drawn_vertices and not self._drawn_edges:
+            self.draw(mesh, special=special)
+            return 0, len(self.guid_vertices) + len(self.guid_edges)
+        ensure_layer(self.layer)
+
+        boundary = _boundary_vertices(mesh)
+        special = set(special)
+
+        stale = []
+        wanted_vertices = {}
+        for vkey in mesh.vertices():
+            wanted_vertices[vkey] = (tuple(mesh.vertex_coordinates(vkey)),
+                                     self._vertex_color_key(vkey, boundary, special))
+        for vkey, (guid, xyz, color_key) in list(self._drawn_vertices.items()):
+            if wanted_vertices.get(vkey) != (xyz, color_key):
+                stale.append(guid)
+                self.guid_vertices.pop(guid, None)
+                del self._drawn_vertices[vkey]
+
+        wanted_edges = {}
+        for u, v in mesh.edges():
+            wanted_edges[frozenset((u, v))] = (u, v)
+        for edge, (guid, ends) in list(self._drawn_edges.items()):
+            keep = False
+            if ends is not None and edge in wanted_edges:
+                u, v = self.guid_edges.get(guid, (None, None))
+                keep = (u in mesh.vertex and v in mesh.vertex
+                        and ends == (tuple(mesh.vertex_coordinates(u)),
+                                     tuple(mesh.vertex_coordinates(v))))
+            if not keep:
+                stale.append(guid)
+                self.guid_edges.pop(guid, None)
+                del self._drawn_edges[edge]
+
+        added = 0
+        rs.EnableRedraw(False)
+        try:
+            live = [guid for guid in stale if rs.IsObject(guid)]
+            if live:
+                rs.DeleteObjects(live)
+            for vkey, (_xyz, color_key) in wanted_vertices.items():
+                if vkey not in self._drawn_vertices:
+                    added += bool(self._add_vertex(mesh, vkey, color_key))
+            for edge, (u, v) in wanted_edges.items():
+                if edge not in self._drawn_edges:
+                    added += bool(self._add_edge(mesh, u, v))
+        finally:
+            rs.EnableRedraw(True)
+        sc.doc.Views.Redraw()
+        return len(stale), added
 
     def update_face(self, mesh, fkey):
         _require_rhino()
@@ -883,6 +996,8 @@ class PickableMesh(object):
         self.guid_stext = {}
         self.guid_path = {}
         self._path_colors = {}
+        self._drawn_vertices = {}
+        self._drawn_edges = {}
 
     # -- locking ---------------------------------------------------------
 
@@ -909,6 +1024,37 @@ class PickableMesh(object):
             if not guid:
                 return None
             vkey = self.guid_vertices.get(guid)
+            if vkey is not None:
+                return vkey
+            print("Not a vertex of this mesh -- pick one of the points on "
+                  "{!r}.".format(self.layer))
+
+    def pick_vertex_or_finish(self, message='Select a vertex', preselect=True):
+        """A vertex key, :data:`FINISH` on Enter, or ``None`` on Esc.
+
+        For a picking LOOP where the two have to mean different things -- Enter
+        "stop, and use what I already have", Esc "abandon the whole pick" --
+        which :meth:`pick_vertex` cannot offer: ``rs.GetObject`` collapses both
+        to the same ``None``, because the plain wrapper never turns on
+        ``AcceptNothing``. Built on the ``Rhino.Input.Custom.GetObject`` it
+        wraps, which reports the two as different ``GetResult`` values once it
+        is.
+        """
+        _require_rhino()
+        while True:
+            go = Rhino.Input.Custom.GetObject()
+            go.SetCommandPrompt(message)
+            go.GeometryFilter = Rhino.DocObjects.ObjectType.Point
+            go.EnablePreSelect(preselect, True)
+            go.AcceptNothing(True)
+            result = go.Get()
+            if result == Rhino.Input.GetResult.Cancel:
+                return None
+            if result == Rhino.Input.GetResult.Nothing:
+                return FINISH
+            if result != Rhino.Input.GetResult.Object:
+                continue
+            vkey = self.guid_vertices.get(go.Object(0).ObjectId)
             if vkey is not None:
                 return vkey
             print("Not a vertex of this mesh -- pick one of the points on "
