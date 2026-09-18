@@ -12,14 +12,11 @@ order:
 2. **``coarse_set_density``** and **``coarse_densify``** are the other two
    steps of the sequence ``CoarseQuadMesh.densification`` documents at its own
    call site (``algorithms/decomposition.py``, ``coarse_mesh``'s docstring).
-3. **``coarse_add_strip``** and **``coarse_remove_strip``** are a deliberately
-   narrow slice of what ``editing.CoarseEditor`` can do -- strip edits only, no
-   curve cuts and no corner-dragging. That narrowing is not arbitrary: neither
-   op sets ``_topology_dirty``, so ``CoarseEditor.commit`` always takes its
-   cheap "moves only" path (snap the boundary, keep every strip label and
-   density, transplant in place) and never the rebuild/renumber path a cut
-   would need. Strip edits are the slice of the editor that commits for free.
-   **``coarse_divide``** is the one that does not: it takes the rebuild path,
+3. **``coarse_add_strip``**, **``coarse_remove_strip``** and
+   **``coarse_move_corner``** set no ``_topology_dirty``, so
+   ``CoarseEditor.commit`` takes its cheap "moves only" path (snap the boundary,
+   keep every strip label and density, transplant in place) and never the
+   rebuild/renumber path. **``coarse_divide``** does not: it takes the rebuild path,
    so it carries densities (by geometric overlap), patterns (by containment)
    and edge shapes (``attributes['user_curves']``, keyed by geometry) across
    the renumbering itself. ``_editor`` seeds every editor with those shapes,
@@ -49,7 +46,7 @@ from __future__ import print_function
 
 import os
 
-from ..algorithms.decomposition import SkeletonDecomposition
+from ..algorithms.skeleton_decomposition import SkeletonDecomposition
 from ..datastructures.mesh_quad_coarse.patterns import PATTERNS
 from ..datastructures.mesh_quad_coarse.patterns import reconcile_strip_densities
 from ..editing.coarseeditor import CoarseEditor
@@ -712,6 +709,33 @@ def _t_coarse_set_density(session, density):
         return {'ok': False, 'reason': "kind 'strips' needs a non-empty 'skeys'"}
 
     coarse = session.coarse
+    # ``set_strip_density`` stores ANY key without complaint, so a mistyped
+    # skey would add a density for a strip that does not exist and report ok.
+    known = set(coarse.strips())
+    asked = ([density['skey']] if kind == 'strip' else
+             list(density.get('skeys') or []))
+    unknown = [s for s in asked if s not in known]
+    if unknown:
+        return {'ok': False,
+                'reason': 'no strip(s) {} -- skeys come from coarse_inspect'.format(
+                    ', '.join(repr(s) for s in unknown)),
+                'skeys': sorted(known)}
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return {'ok': False, 'reason': "'value' must be a number, got {!r}".format(value)}
+    if kind == 'target_length':
+        if number <= 0:
+            return {'ok': False, 'reason': 'a target_length must be above 0'}
+    elif kind == 'face_count':
+        faces = coarse.number_of_faces()
+        if number < faces:
+            return {'ok': False,
+                    'reason': 'face_count {} is below the {} patches the layout '
+                              'already has -- every strip needs a density of at '
+                              'least 1'.format(int(number), faces)}
+    elif int(number) < 1:
+        return {'ok': False, 'reason': 'a density must be at least 1'}
     session.snapshot_coarse('before coarse_set_density')
     try:
         if kind == 'all':
@@ -863,9 +887,9 @@ def _t_coarse_densify(session):
             # ``quad_mesh`` is bit-identical to ``densification`` on an
             # all-ortho layout (test_tools_coarse checks it), and the only one
             # of the two that reads the patterns.
-            dense = coarse.quad_mesh(edges_to_curves=edges_to_curves)
+            dense = coarse.quad_mesh(overwrite_edges_to_curves=edges_to_curves)
         else:
-            dense = coarse.densification(edges_to_curves=edges_to_curves)
+            dense = coarse.densification(overwrite_edges_to_curves=edges_to_curves)
     except Exception as exc:
         return {'ok': False,
                 'reason': 'densification failed: {}: {}'.format(
@@ -1319,7 +1343,8 @@ def _t_coarse_move_corner(session, corner, to, project=True):
     'coarse_undo',
     'Put the coarse layout back to its last snapshot -- taken automatically '
     'before coarse_set_density, coarse_set_pattern, coarse_add_strip, '
-    'coarse_remove_strip, and a coarse_densify that had to raise densities -- '
+    'coarse_remove_strip, coarse_divide, coarse_move_corner, and a '
+    'coarse_densify that had to raise densities -- '
     'and mark the coarse steps taken since as undone in history. Independent '
     'of undo, which only ever touches the dense mesh.',
     destructive=True, title='Undo the last coarse edit')

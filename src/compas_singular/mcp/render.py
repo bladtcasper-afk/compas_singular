@@ -6,13 +6,6 @@ everything nobody wrote a metric for: a strip that wanders, a boundary the mesh
 has quietly left, a guide it ignored, a point feature that never became a pole.
 Those are visible in a second and invisible in a table.
 
-**Written independently of** ``agent/core/render.py``, **on purpose.** That module
-solves the same problem for the other approach, and its entry points take a
-``MeshEditSession``. Sharing it would put the first dependency between two
-packages whose whole value is that they can be compared. So this is a second
-implementation, and where the two disagree that is a finding rather than a bug
-in one of them.
-
 **Standard library only** -- ``zlib`` and ``struct``. No matplotlib, no viewer,
 nothing that has to be installed into Rhino's interpreter. A PNG is a few chunks
 around a zlib stream, and a line drawing of a quad mesh compresses to almost

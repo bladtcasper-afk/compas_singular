@@ -22,10 +22,8 @@ monotone -- a hole 2T from the wall read 3.9 degrees, worse than at 1T -- which
 is why a hole near a wall is flagged below 1T only, and the report says the
 reading is a warning, not a prediction.
 
-The cross-field rule that a sampled turn above 45 degrees reads as a corner
-(``agent/core/inputs.py``) is deliberately NOT checked: this package does not
-solve a field, and that module belongs to ``agent``, which this one never
-imports.
+The cross-field rule that a sampled turn above 45 degrees reads as a corner is
+deliberately NOT checked: this package does not solve a field.
 
 ``compare`` reads the history. It cannot draw an old state -- only the current
 mesh is kept -- so it compares NUMBERS, which every dense step records.

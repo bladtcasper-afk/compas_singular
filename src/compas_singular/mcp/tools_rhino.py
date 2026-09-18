@@ -240,9 +240,10 @@ def _t_rhino_pull(session, layer=DEFAULT_LAYER, selection=False, spacing=0.125,
     'layer. WRITES TO A DOCUMENT SOMEBODY HAS OPEN: the mesh that was there is '
     'moved to a "::MCP::Before" sub-layer first so the two can be compared, and '
     'the write is one named undo step so it can be taken back in Rhino. It will '
-    'not fire while Rhino is inside a command -- it waits. Push only when the '
-    'mesh is actually better than it was pulled; if it is not, say so and push '
-    'nothing. Do not pull again afterwards to check: Rhino stores mesh vertices '
+    'not fire while Rhino is inside a command -- it waits. Push a pulled mesh '
+    'only when it is actually better than it was pulled, and a mesh from '
+    'coarse_densify only once it has been inspected and judged; otherwise say '
+    'so and push nothing. Do not pull again afterwards to check: Rhino stores mesh vertices '
     'in single precision, so a round trip loses about 2e-6 per coordinate and '
     'the copy here is the accurate one. REFUSES until the mesh being pushed '
     'has been drawn and looked at -- call inspect with image=true first.',
@@ -375,6 +376,11 @@ def _t_rhino_push_coarse(session, timeout=30.0):
     layout = coarse.copy()
     layout.attributes['quad_mesh'] = None
     layout.attributes['polygonal_mesh'] = None
+    # ``mapping`` -- already computed above for ``edge_curves``/``shaped`` -- goes
+    # on the layout too, so CMD_quad_mesh (or a later coarse_load) can read it
+    # straight off the side-car instead of losing it the moment this JSON is
+    # written.
+    layout.set_edges_to_curves(mapping)
     tools_coarse._patterns(layout)
     side_car = compas.json_dumps(layout)
 

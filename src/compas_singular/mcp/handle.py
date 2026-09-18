@@ -22,9 +22,8 @@ rather than requiring an exact match, and says which it did.
 **Regions are selected, not enumerated.** Asking a model to pass a list of
 vertex keys means asking it to invent forty numbers it cannot verify. Instead it
 describes what it wants -- the worst faces, near a point, around the
-singularities -- and :func:`select` resolves that against the mesh in hand. This
-is the part of the addressing problem that ``agent/core/address.py`` leaves to
-its digest, and doing it here is why this package can keep keys entirely private.
+singularities -- and :func:`select` resolves that against the mesh in hand. Doing
+it here is why this package can keep vertex and face keys entirely private.
 """
 from __future__ import absolute_import
 from __future__ import division

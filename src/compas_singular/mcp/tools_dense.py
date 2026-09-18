@@ -9,9 +9,10 @@ docstring carries the rules. The ones that shape the tools:
   own, so the pick is an EDGE and the change runs the full width of the mesh:
   ``dense_add_line`` grows a strip beside the whole polyedge through the edge,
   ``dense_remove_line`` deletes the whole strip through it.
-* **A mesh with a pole is not a strip mesh.** A pole's triangle fan has no
-  opposite edge to walk, so both line tools refuse on a mesh with any non-quad
-  face -- which a ``coarse_densify`` of a layout with poles always has.
+* **A strip only runs through quads.** A face that is not a quad -- a pole's
+  triangles, or a polygon left by an edit -- has no opposite edge, so a strip
+  stops at it. Both line tools refuse a line whose strip crosses or reaches
+  one, and allow every other line on the same mesh.
 * **Nothing flows back to the layout.** A hand-edited dense mesh has no layout
   that produces it; ``coarse_densify`` regenerates from the layout and discards
   the edit. If the change can be made on the coarse layout, make it there.
@@ -111,8 +112,9 @@ def _note_layout(session):
     'hole or boundary left with too few splits collapses (boundaries_lost). '
     'Performs the deletion on a copy and reports what came out, because no '
     'cheap test predicts every failure. ok=false means dense_remove_line '
-    'refuses for the same reason. Refuses on a mesh with a pole or any '
-    'non-quad face.',
+    'refuses for the same reason. Refuses a strip that crosses or reaches a '
+    'face that is not a quad (a pole, or a polygon); other strips on the same '
+    'mesh are fine.',
     properties={
         'edge': _EDGE,
         'preserve_boundaries': {
@@ -144,10 +146,10 @@ def _t_dense_plan_line_removal(session, edge, preserve_boundaries=False):
     'Delete the whole strip through an edge of the DENSE mesh and weld its two '
     'sides together. Not one edge: the band of faces running the full width of '
     'the mesh goes, and the vertices either side move to meet. Call '
-    'dense_plan_line_removal first. Refuses on a mesh with a pole or any '
-    'non-quad face, and when the result would not be all quads. Snapshots the '
-    'whole mesh first -- undo takes it back. The edit is lost if coarse_densify '
-    'runs again.',
+    'dense_plan_line_removal first. Refuses a strip that crosses or reaches a '
+    'face that is not a quad, and a result with more non-quad faces than '
+    'before. Snapshots the whole mesh first -- undo takes it back. The edit is '
+    'lost if coarse_densify runs again.',
     properties={
         'edge': _EDGE,
         'preserve_boundaries': {
@@ -165,7 +167,8 @@ def _t_dense_remove_line(session, edge, preserve_boundaries=False):
         return _refuse(reason)
     before = session.quality()
     session.snapshot('before dense_remove_line', whole=True)
-    if not editor.remove_line(uv, preserve_boundaries=bool(preserve_boundaries)):
+    ok, _notes = editor.remove_line(uv, preserve_boundaries=bool(preserve_boundaries))
+    if not ok:
         session._undo.pop()
         return _refuse(editor.last_reason)
     session.mesh = editor.mesh
@@ -193,9 +196,10 @@ def _t_dense_remove_line(session, edge, preserve_boundaries=False):
     'Add a line to the DENSE mesh: grow one new strip beside the whole polyedge '
     'through an edge, wall to wall (or all the way round a closed one), then '
     'relax so the new row opens up -- it is created with zero width. The '
-    'polyedge must be closed or end on the boundary at both ends. Refuses on a '
-    'mesh with a pole or any non-quad face. Snapshots the whole mesh first -- '
-    'undo takes it back. The edit is lost if coarse_densify runs again.',
+    'polyedge must be closed or end on the boundary at both ends, and may not '
+    'touch a face that is not a quad (a pole, or a polygon). Snapshots the '
+    'whole mesh first -- undo takes it back. The edit is lost if coarse_densify '
+    'runs again.',
     properties={
         'edge': _EDGE,
         'relax': {'type': 'boolean',
@@ -213,7 +217,8 @@ def _t_dense_add_line(session, edge, relax=True):
         return _refuse(reason)
     before = session.quality()
     session.snapshot('before dense_add_line', whole=True)
-    if not editor.add_line(uv, relax=bool(relax)):
+    ok, _notes = editor.add_line(uv, relax=bool(relax))
+    if not ok:
         session._undo.pop()
         return _refuse(editor.last_reason)
     session.mesh = editor.mesh

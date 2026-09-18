@@ -65,8 +65,9 @@ topological-skeleton decomposition, and a densified patch interior is blended
 from its own four sides. Both meshes' topology can be edited: the coarse
 layout's by adding, removing or dividing a strip (the last also along a drawn
 curve), the dense mesh's by adding or removing a line -- which re-densifying
-discards, and which refuses on a mesh with a pole. Reading a hand-drawn
-skeleton back in is not exposed yet."""
+discards, and which refuses only a line whose strip crosses or reaches a face
+that is not a quad (a pole's fan, say); every other line on the same mesh is
+allowed. Reading a hand-drawn skeleton back in is not exposed yet."""
 
 
 class Handler(object):

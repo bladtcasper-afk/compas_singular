@@ -39,10 +39,10 @@ good on three and unusable on one is unusable.
 
 ## What is not a defect
 
-**A high aspect ratio is not automatically wrong.** A frame-field mesh is
-supposed to be graded -- elements stretch where the field says they should. An
-aspect of 3 spread evenly across a mesh that was asked to grade is the mesh
-doing its job. An aspect of 3 in one strip next to a strip at 1.1 is a defect.
+**A high aspect ratio is not automatically wrong.** A layout densified at
+different strip densities is graded on purpose -- elements stretch where one
+strip is denser than the one crossing it. An aspect of 3 spread evenly across a
+mesh that was asked to grade is the mesh doing its job. An aspect of 3 in one strip next to a strip at 1.1 is a defect.
 Read `aspect_max` together with where it is, not on its own.
 
 **An irregular vertex is not a defect at all.** `irregular_interior` counts

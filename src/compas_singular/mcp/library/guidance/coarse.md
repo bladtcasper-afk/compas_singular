@@ -150,7 +150,8 @@ count after, how many OTHER strips would go with it (`collateral`), and
 whether a hole in the domain would collapse (`boundaries_lost`). `ok: false`
 there means `coarse_remove_strip` will refuse for the same reason.
 
-Both edits snapshot the coarse layout first. `coarse_undo` restores it --
+Every coarse edit -- density, pattern, add, remove, divide, move corner --
+snapshots the coarse layout first. `coarse_undo` restores it --
 independent of `undo`, which only ever touches the dense mesh.
 
 ## Order

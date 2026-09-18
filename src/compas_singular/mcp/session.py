@@ -1,10 +1,9 @@
 """**One mesh being improved, and the record of how it got that way.**
 
-Much smaller than ``agent/core/session.py``, and for a reason worth stating:
-that class holds a three-state machine because it can generate a layout from a
-field and a dense mesh from a layout, and every backward move destroys work. This
-one improves a mesh that already exists. There is no stage to be in, so there is
-no stage to gate, no ``StageError``, and no transition that costs anything.
+Deliberately small. A session that can generate a layout from a field and a dense
+mesh from a layout needs a state machine, because every backward move destroys
+work. This one improves a mesh that already exists. There is no stage to be in, so
+there is no stage to gate and no transition that costs anything.
 
 **Undo is a map of positions, not a pickle of the world.** Smoothing moves
 vertices and changes nothing else, so a snapshot is ``{vertex: [x, y, z]}`` --
@@ -14,18 +13,15 @@ because it has to; this one does not have to, and the difference is one of the
 things the two approaches are meant to be compared on.
 
 **That cheapness is bought with an assumption, so it is checked.** A position map
-only restores a mesh whose topology has not changed underneath it. :attr:`mesh`
--- the dense mesh -- still has no tool that changes its topology, so the
-assumption holds for it exactly as before: :meth:`undo` verifies the vertex and
-face counts anyway and refuses rather than silently writing coordinates into
-the wrong mesh.
+only restores a mesh whose topology has not changed underneath it, so
+:meth:`undo` verifies the vertex and face counts and refuses rather than
+silently writing coordinates into the wrong mesh. The dense line tools DO change
+topology, and snapshot with ``whole=True`` -- a copy of the mesh, on the same
+stack -- so ``undo`` still takes back the latest step whichever kind it was.
 
-A topology tool HAS since been added, but scoped to :attr:`coarse` -- the
-coarse layout a strip can be added to or removed from -- and it does not reuse
-this position-map undo at all. A coarse layout is small enough that a whole-mesh
-copy is still cheap, so :meth:`snapshot_coarse` and :meth:`undo_coarse` keep
-their own stack of copies rather than positions. The dense mesh and its undo
-are untouched by any of this.
+The coarse layout has its own stack. It is small enough that a whole-mesh copy
+is always cheap, so :meth:`snapshot_coarse` and :meth:`undo_coarse` keep copies
+rather than positions.
 
 **The history is the deliverable, not a side effect.** Every step records what
 was asked, what changed, and the quality before and after. The model reads it

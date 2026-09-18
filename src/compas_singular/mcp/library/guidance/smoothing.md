@@ -54,7 +54,8 @@ global pass would move the whole mesh to fix it.
 the kind of defect this is meant to remove.
 
 Area-weighted rather than centroid on purpose: centroid smoothing equalises edge
-lengths, which fights the grading a frame-field mesh is supposed to have.
+lengths, which fights the grading of a mesh densified at different strip
+densities.
 
 ## `smooth_guides` -- when the mesh has guide curves
 
@@ -79,9 +80,10 @@ Wraps `datastructures.mesh.smoothing.relaxation`. Fixed vertices held,
 everything else finds a minimal-tension shape, boundary edges weighted
 `q_factor` times heavier than interior ones.
 
-**Two real gaps, not polish left for later.** The underlying function's own
-`constraints` argument is computed and then silently discarded before the
-solve runs, and its `algorithm` argument is accepted but never read. Neither
+**Two real gaps, not polish left for later.** The underlying function
+overwrites its own `constraints` argument with an empty list (and uses zero
+loads) before the solve runs, and its `algorithm` argument is accepted but
+never read. Neither
 is exposed as a tool parameter for exactly that reason -- there would be
 nothing behind it. Do not reach for this tool expecting to steer it beyond the
 `fixed` set; it is closer to a specialised alternative to `relax` than a
@@ -98,7 +100,9 @@ When the layout itself is the limit -- a band of elements too wide or too many
 is added beside, or removed through, the polyedge of an edge you name.
 `dense_plan_line_removal` first. Three limits:
 
-- **refused on any mesh with a pole** -- a pole's triangle fan has no strips;
+- **refused per strip, not per mesh** -- a strip stops at any face that is not a
+  quad, so a line whose strip crosses or reaches a pole's fan (or a polygon) is
+  refused; every other line on the same mesh is allowed;
 - **lost on re-densifying** -- if the change can be made on the coarse layout,
   make it there;
 - `dense_add_line` opens the new strip with plain centroid smoothing, and on the

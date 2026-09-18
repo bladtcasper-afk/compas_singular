@@ -7,19 +7,15 @@ mcp
 
 **The meshing tools as an MCP server: the model lives outside, not inside.**
 
-:mod:`compas_singular.agent` calls a model from inside Python -- it owns the tool
-vocabulary, the state machine, the system prompt AND the transport, so changing
-any one of the four means editing the package. This is the other arrangement.
-The tools are exposed over the Model Context Protocol, an MCP client supplies the
-model and the conversation, and this package supplies only the mesh operations
-and the knowledge about them.
+The tools are exposed over the Model Context Protocol: an MCP client supplies the
+model and the conversation, and this package supplies only the mesh operations and
+the knowledge about them. The model is never called from inside Python here, so the
+tool vocabulary, the transport and the conversation can each change without
+touching the other two.
 
-**It imports nothing from** :mod:`compas_singular.agent`, **and never should.**
-The whole point of having two is that they can be compared, and two things that
-share a session model, an addressing scheme or a rebuild path are not two things.
-Where this package solves a problem ``agent`` has already solved -- geometric
-addressing is the obvious one -- it solves it again, independently, so that a bug
-in one cannot hide in the other. Delete either package and the other still works.
+This replaced ``compas_singular.agent``, an in-process tool loop that owned all
+three at once; it was removed on 2026-09-16. The two were built independently so
+they could be compared, which is why nothing here was ever imported from it.
 
 **Standalone from Rhino, but connected to it.** The server runs as its own
 process, with Rhino closed, on meshes loaded from disk. When Rhino IS open and
@@ -41,8 +37,9 @@ Scope
 back. **Builds and edits a coarse layout, too**: from a domain's boundary, line
 and point features, via a topological-skeleton decomposition -- not a frame
 field, and not a read of hand-drawn patch curves -- through to a densified
-dense mesh, with strip add/remove as the only topology edit either mesh ever
-gets. The DENSE mesh's own topology is never changed by any tool here.
+dense mesh. The coarse layout is edited by adding, removing and dividing
+strips and by moving corners; the dense mesh by adding or removing a line
+(``tools_dense``), which re-densifying discards.
 
 No field is solved anywhere in this package, which is why it does not need
 :mod:`~compas_singular.framefield`'s solver. It does now reach for numpy/scipy

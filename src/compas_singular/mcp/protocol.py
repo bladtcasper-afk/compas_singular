@@ -2,9 +2,8 @@
 
 The official ``mcp`` SDK needs Python 3.10 and this server runs on Rhino's
 interpreter, which is 3.9.10. That is the reason this file exists, but it is not
-the only argument for it: the protocol is a few hundred lines, the server then
-has no third-party dependency at all, and ``agent/runner/backend.py`` already
-made the same call when it declined the SDK's ``tool_runner``.
+the only argument for it: the protocol is a few hundred lines, and the server then
+has no third-party dependency at all.
 
 **Messages are newline-delimited JSON, one per line.** Not ``Content-Length``
 framed -- that is the Language Server Protocol, which MCP resembles but does not

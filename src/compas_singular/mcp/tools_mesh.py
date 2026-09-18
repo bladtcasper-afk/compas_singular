@@ -78,6 +78,19 @@ def _needs_mesh(session):
     return None
 
 
+def _failed(session, what, exc):
+    """Refuse a pass that RAISED after its snapshot, putting the mesh back first.
+
+    The library may have moved vertices before it gave up, so returning a bare
+    refusal would leave a half-smoothed mesh in hand with an orphan snapshot on
+    the stack. Restoring that snapshot here makes a failure cost nothing.
+    """
+    restored, _detail = session.undo()
+    return {'ok': False,
+            'reason': '{} failed: {}: {}'.format(what, type(exc).__name__, exc),
+            'mesh_restored': bool(restored)}
+
+
 def _reading(session):
     """The quality dict and its prose, together."""
     metrics = session.quality()
@@ -309,12 +322,13 @@ def _t_snapshot(session, label=''):
 
 @tool(
     'undo',
-    'Put every vertex back where the last snapshot had it, and mark the '
-    'dense-mesh steps taken since as undone (coarse-layout steps are '
-    "coarse_undo's business and are left alone). Use it when a pass reports "
-    'all_improved false. Refuses if the topology has changed since the '
-    'snapshot, because a map of positions cannot restore that -- no tool in '
-    'this version changes dense topology, so that refusal should not occur.',
+    'Take back the latest dense-mesh step: a smoothing pass (its position '
+    'snapshot) or a dense_add_line / dense_remove_line (a copy of the whole '
+    'mesh). Marks the dense-mesh steps taken since as undone (coarse-layout '
+    "steps are coarse_undo's business and are left alone). Use it when a pass "
+    'reports all_improved false. Refuses when the latest snapshot is a '
+    'POSITION map but the topology has changed since -- a line edit on top of '
+    'it that was not itself undone first.',
     destructive=True, title='Undo to last snapshot')
 def _t_undo(session):
     ok, detail = session.undo()
@@ -374,8 +388,7 @@ def _t_relax(session, seams='free', corner_angle=30.0, pin_singularities=False):
                             seams=seams,
                             pin_singularities=bool(pin_singularities))
     except Exception as exc:
-        return {'ok': False,
-                'reason': 'relax failed: {}: {}'.format(type(exc).__name__, exc)}
+        return _failed(session, 'relax', exc)
 
     accepted = report.get('accepted')
     payload = _outcome(session, 'relax', before,
@@ -447,9 +460,7 @@ def _t_smooth_boundary(session, kmax=100, damping=0.5, algorithm='centroid',
             corner_angle=math.radians(float(corner_angle)),
             fix_corners=bool(fix_corners))
     except Exception as exc:
-        return {'ok': False,
-                'reason': 'smoothing failed: {}: {}'.format(
-                    type(exc).__name__, exc)}
+        return _failed(session, 'smoothing', exc)
     return _outcome(session, 'smooth_boundary_constrained', before,
                     kmax=int(kmax), damping=float(damping),
                     algorithm=algorithm, corner_angle=float(corner_angle),
@@ -463,8 +474,8 @@ def _t_smooth_boundary(session, kmax=100, damping=0.5, algorithm='centroid',
     'share_below is zero or near it and min_angle is still bad: that '
     'combination means a single bad face, and a global pass would move the '
     'whole mesh to fix it. Area-weighted rather than centroid, because centroid '
-    'equalises edge lengths and fights the grading a frame-field mesh is '
-    'supposed to have. The damping tapers to zero over blend rings around the '
+    'equalises edge lengths and fights the grading of a mesh densified at '
+    'different strip densities. The damping tapers to zero over blend rings around the '
     'region, so it blends instead of leaving a crease -- do NOT set blend to 0, '
     'because a fully relaxed region against a fixed ring is itself a kink. Has '
     'no gate, so it snapshots first and reports all_improved.',
@@ -512,9 +523,7 @@ def _t_smooth_region(session, region, kmax=50, damping=0.5, blend=3):
             # walls instead of being dragged inward.
             constraints=None)
     except Exception as exc:
-        return {'ok': False,
-                'reason': 'region smoothing failed: {}: {}'.format(
-                    type(exc).__name__, exc)}
+        return _failed(session, 'region smoothing', exc)
     return _outcome(session, 'smooth_region', before,
                     region=describe_selector(region), selected=note,
                     core_vertices=len(keys), moved_vertices=len(weights or {}),
@@ -619,31 +628,31 @@ def _t_smooth_guides(session, tolerance_factor=2.0, max_angle=30.0,
     session.snapshot('before smooth_guides')
 
     attached, moved = {}, set()
-    for index, guide_curve, selected in proposals:
-        moves, constraints = attach_chain(mesh, selected, guide_curve, hold=hold)
-        for vertex, xyz in moves.items():
-            mesh.vertex_attributes(vertex, 'xyz', xyz)
-        attached.update(constraints)
-        moved.update(moves)
-
-    if boundary == 'sliding':
-        constraints = automated_boundary_constraints(
-            mesh, curves=session.walls or None)
-        fixed = None
-    else:
-        constraints = {}
-        fixed = [v for loop in mesh.vertices_on_boundaries() for v in loop
-                if v not in attached]
-    constraints.update(attached)
-
     try:
+        # Everything after the snapshot is inside the try: the chains are
+        # moved onto their guides BEFORE the smoothing call that may raise.
+        for index, guide_curve, selected in proposals:
+            moves, constraints = attach_chain(mesh, selected, guide_curve, hold=hold)
+            for vertex, xyz in moves.items():
+                mesh.vertex_attributes(vertex, 'xyz', xyz)
+            attached.update(constraints)
+            moved.update(moves)
+
+        if boundary == 'sliding':
+            constraints = automated_boundary_constraints(
+                mesh, curves=session.walls or None)
+            fixed = None
+        else:
+            constraints = {}
+            fixed = [v for loop in mesh.vertices_on_boundaries() for v in loop
+                     if v not in attached]
+        constraints.update(attached)
+
         constrained_smoothing(mesh, kmax=int(kmax), damping=float(damping),
                               constraints=constraints, algorithm='area',
                               fixed=fixed)
     except Exception as exc:
-        return {'ok': False,
-                'reason': 'smoothing failed: {}: {}'.format(
-                    type(exc).__name__, exc)}
+        return _failed(session, 'guide smoothing', exc)
 
     return _outcome(session, 'smooth_guides', before,
                     guides_attached=len(proposals), guides_refused=refused,
@@ -661,9 +670,9 @@ def _t_smooth_guides(session, tolerance_factor=2.0, max_angle=30.0,
     'its shape. Needs the compas_fd package; a clean refusal comes back if it '
     "is not installed. THIS PASS HAS NO GATE, and there is currently no way "
     "to steer it with custom constraints or loads -- the underlying "
-    "function's own 'constraints' argument is not wired up and is not "
-    'exposed here, so do not expect anything except the fixed set to hold '
-    'its place. Snapshots first and reports all_improved; undo if that is '
+    "function overwrites its own 'constraints' argument with an empty list "
+    'and uses zero loads, so do not expect anything except the fixed set to '
+    'hold its place. Snapshots first and reports all_improved; undo if that is '
     'false.',
     properties={
         'fixed': {
@@ -715,12 +724,11 @@ def _t_relax_fdm(session, fixed='corners', fixed_vertices=None, q_factor=100.0):
         relaxation(session.mesh, fixed=fixed, fixed_vertices=resolved_fixed,
                   q_factor=float(q_factor))
     except ImportError as exc:
+        session.undo()
         return {'ok': False,
                 'reason': 'relax_fdm needs the compas_fd package, which is '
                           'not installed: {}'.format(exc)}
     except Exception as exc:
-        return {'ok': False,
-                'reason': 'relax_fdm failed: {}: {}'.format(
-                    type(exc).__name__, exc)}
+        return _failed(session, 'relax_fdm', exc)
     return _outcome(session, 'relax_fdm', before, fixed=fixed,
                     q_factor=float(q_factor))

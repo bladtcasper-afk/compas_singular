@@ -99,10 +99,8 @@ def default_directory():
     Windows, ``$XDG_RUNTIME_DIR`` or ``$XDG_CACHE_HOME`` or ``~/.cache``
     elsewhere, and the system temp directory if none of those resolve.
 
-    Deliberately parallel to ``framefield.cache.default_directory`` so there is
-    one convention for this library's on-disk state, and deliberately NOT
-    ``compas_singular.TEMP``, which is computed relative to the source tree and
-    lands inside ``site-packages`` under a non-editable install.
+    Deliberately NOT ``compas_singular.TEMP``, which is computed relative to the
+    source tree and lands inside ``site-packages`` under a non-editable install.
 
     Returns
     -------
