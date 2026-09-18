@@ -45,7 +45,7 @@ leak, and a request posted while Rhino is closed simply waits instead of failing
 3. It never changes your selection, your current layer, or your view.
 4. It writes only under ``TopologyProblem``. Never to a layer you made.
 
-**A purge is expected, not an error.** ``CMD_start.import_compas_singular``
+**A purge is expected, not an error.** Every command's bootstrap block
 empties every ``compas_singular`` module out of ``sys.modules``, so running any
 other command in the family leaves this one holding an orphaned copy. The handler
 notices and rebinds. That is safe here only because the wire format is plain
@@ -54,36 +54,55 @@ JSON with no compas types in it -- nothing is pickled and nothing is
 once cannot produce the ``not the same object as ...Mesh`` failure.
 """
 
-# Temporary import of the compas_singular development library. MUST come before
-# any compas_singular import: it fixes sys.path and purges a stale copy.
-from CMD_start import import_compas_singular
-import_compas_singular()
-
+# Development bootstrap -- delete once compas_singular is installed into Rhino's
+# Python. MUST run before any compas_singular import: Rhino resets sys.path between
+# runs but keeps sys.modules, so put the source on the path and drop a stale copy
+# (see CMD_start for why every module, framefield included, has to go).
 import sys
+SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
+if SINGULAR_SRC not in sys.path:
+    sys.path.insert(0, SINGULAR_SRC)
+if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
+    for _mod in list(sys.modules):
+        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
+            del sys.modules[_mod]
+
+
+def ensure_paths():
+    """The path half of the bootstrap, and NOT the purge -- safe to call at any time.
+
+    The handler runs on later script runs, after Rhino has re-initialised
+    ``sys.path``, so a late import there fails with a bare ``ModuleNotFoundError``
+    unless the source goes back on the path first. Delete with the bootstrap.
+    """
+    if SINGULAR_SRC not in sys.path:
+        sys.path.insert(0, SINGULAR_SRC)
+
+
 import traceback
 
 import Rhino
 import rhinoscriptsyntax as rs
 import scriptcontext as sc
 
-from CMD_start import COARSE_CACHE
-from CMD_start import cache_path
-from CMD_start import ensure_paths
+from compas_singular.rhino.project import COARSE_CACHE
+from compas_singular.rhino.project import ROOT
+from compas_singular.rhino.project import cache_path
+from compas_singular.rhino.project import layer_path
 
 
-ROOT = "TopologyProblem"
-QUADMESH_LAYER = ROOT + "::QuadMesh"
+QUADMESH_LAYER = layer_path("QuadMesh")
 BEFORE_LAYER = QUADMESH_LAYER + "::MCP::Before"
 
 #: Where the CMD_ commands keep a coarse layout -- ``CMD_coarse_mesh`` writes
 #: these four and ``read_coarse`` / ``CMD_quad_mesh`` / ``CMD_edit_coarse_mesh``
 #: read them. A pushed layout has to land exactly here to be picked up.
-SKELETON = ROOT + "::Skeleton"
+SKELETON = layer_path("Skeleton")
 SKELETON_LAYERS = (
-    ("mesh", SKELETON + "::Mesh"),
-    ("poles", SKELETON + "::Poles"),
-    ("polylines", SKELETON + "::Polylines"),
-    ("edge_curves", SKELETON + "::EdgeCurves"),
+    ("mesh", layer_path("Mesh")),
+    ("poles", layer_path("Poles")),
+    ("polylines", layer_path("Polylines")),
+    ("edge_curves", layer_path("EdgeCurves")),
 )
 #: One flat backup layer, and its leaf is NOT "Mesh" or "Poles": ``read_coarse``
 #: finds the layout by those short names, and a second layer called "Mesh"
@@ -107,29 +126,30 @@ def _bind():
     """Import everything the handler needs and hold the references.
 
     Called once at attach and again whenever a purge is detected. Uses
-    ``ensure_paths`` -- safe to call anywhere -- rather than
-    ``import_compas_singular``, which purges and is only safe in a module body.
+    ``ensure_paths`` -- safe to call anywhere -- rather than the bootstrap's
+    purge, which is only safe in a module body.
     """
     ensure_paths()
     import compas_singular
     from compas_singular.mcp.bridge import spool
     from compas_singular.mcp.bridge import wire
-    from compas_singular.rhino.helpers.helpers import bake_mesh
-    from compas_singular.rhino.helpers.helpers import bake_polylines
-    from compas_singular.rhino.helpers.helpers import clear_layer
-    from compas_singular.rhino.helpers.helpers import curve_points
-    from compas_singular.rhino.helpers.helpers import read_coarse
-    from compas_rhino.conversions import mesh_to_compas
-    from compas_singular.rhino.helpers.helpers import read_boundary_loops
-    from compas_singular.rhino.helpers.helpers import read_mesh
-    from compas_singular.rhino.helpers.helpers import read_polylines
+    from compas_singular.rhino.helpers import bake_mesh
+    from compas_singular.rhino.helpers import bake_polylines
+    from compas_singular.rhino.helpers import clear_layer
+    from compas_singular.rhino.helpers import curve_points
+    from compas_singular.rhino.helpers import read_coarse
+    from compas_singular.rhino.helpers import mesh_from_rhino
+    from compas_singular.rhino.helpers import read_boundary_loops
+    from compas_singular.rhino.helpers import read_mesh
+    from compas_singular.rhino.helpers import read_polylines
+    from compas_singular.rhino import mesh_ui
     _BOUND.update({
         "package": compas_singular, "spool": spool, "wire": wire,
         "bake_mesh": bake_mesh, "bake_polylines": bake_polylines,
         "clear_layer": clear_layer, "curve_points": curve_points,
-        "read_coarse": read_coarse, "mesh_to_compas": mesh_to_compas,
+        "read_coarse": read_coarse, "mesh_from_rhino": mesh_from_rhino,
         "read_boundary_loops": read_boundary_loops, "read_mesh": read_mesh,
-        "read_polylines": read_polylines,
+        "read_polylines": read_polylines, "ensure_layer": mesh_ui.ensure_layer,
     })
     return _BOUND
 
@@ -139,28 +159,6 @@ def _fresh():
     if _BOUND.get("package") is not sys.modules.get("compas_singular"):
         _bind()
     return _BOUND
-
-
-def ensure_layer(path, color=None):
-    """Create a ``::`` layer path, parents first, and return the full path.
-
-    ``rs.AddLayer`` does not create intermediate parents, and ``bake_mesh``'s own
-    layer creation hard-codes ``parent="TopologyProblem"``, which is wrong for a
-    layer three levels down. ``name`` is the LEAF, never the full path: passing
-    the path as the name AND a parent makes Rhino create a layer literally
-    called "TopologyProblem::QuadMesh" nested inside "TopologyProblem".
-
-    Same implementation as ``CMD_ai_edit.ensure_layer`` and
-    ``CMD_edit_quad_mesh.ensure_layer``.
-    """
-    parts = path.split("::")
-    for i in range(len(parts)):
-        name = "::".join(parts[:i + 1])
-        if not rs.IsLayer(name):
-            rs.AddLayer(name=parts[i],
-                        parent="::".join(parts[:i]) if i else None,
-                        color=color if i == len(parts) - 1 else None)
-    return path
 
 
 def document_name():
@@ -246,7 +244,7 @@ def _read_selection(bound, spacing):
         try:
             if rs.IsMesh(guid):
                 if mesh is None:
-                    mesh = bound["mesh_to_compas"](rs.coercemesh(guid))
+                    mesh = bound["mesh_from_rhino"](rs.coercemesh(guid))
             elif rs.IsCurve(guid):
                 curve_points = bound["curve_points"](guid, spacing)
                 if len(curve_points) < 2:
@@ -307,7 +305,7 @@ def _verb_pull(args):
 
 
 def _verb_pull_coarse(args):
-    """Read a coarse layout the way ``CMD_start.read_layout`` does. Changes nothing.
+    """Read a coarse layout the way ``compas_singular.rhino.project.read_layout`` does. Changes nothing.
 
     Everything a layout needs to come back as it went out: the baked mesh on
     ``Skeleton::Mesh`` with its poles, the edge shapes on ``Skeleton::Polylines``,
@@ -372,8 +370,8 @@ def _verb_push(args):
     # action instead of unpicking it vertex by vertex among your own edits.
     serial = sc.doc.BeginUndoRecord("MCP push")
     try:
-        ensure_layer(target)
-        ensure_layer(BEFORE_LAYER)
+        bound["ensure_layer"](target)
+        bound["ensure_layer"](BEFORE_LAYER)
         # Move what is there aside rather than deleting it, so the two can be
         # compared. The previous backup goes, not the previous mesh.
         bound["clear_layer"](BEFORE_LAYER)
@@ -413,7 +411,7 @@ def _write_side_car(text):
     """Write the layout's side-car, keeping the one it replaces. ``(path, backup)``.
 
     Outside the undo record, necessarily -- Rhino's undo does not reach files.
-    That is safe by design: ``CMD_start.read_layout`` only trusts a side-car
+    That is safe by design: ``project.read_layout`` only trusts a side-car
     whose corners match the mesh on ``Skeleton::Mesh``, so a Ctrl+Z of the push
     leaves this one unmatched and ignored, and ``coarse_before.json`` still holds
     what was there.
@@ -455,8 +453,8 @@ def _verb_push_coarse(args):
     serial = sc.doc.BeginUndoRecord("MCP push coarse")
     try:
         for _key, layer in SKELETON_LAYERS:
-            ensure_layer(layer)
-        ensure_layer(COARSE_BEFORE_LAYER)
+            bound["ensure_layer"](layer)
+        bound["ensure_layer"](COARSE_BEFORE_LAYER)
         bound["clear_layer"](COARSE_BEFORE_LAYER)
         moved = 0
         for _key, layer in SKELETON_LAYERS:
@@ -538,7 +536,7 @@ def _verb_push_markers(args):
     serial = sc.doc.BeginUndoRecord("MCP markers")
     try:
         for kind in kinds:
-            layer = ensure_layer(MARKERS_LAYER + "::" + kind)
+            layer = bound["ensure_layer"](MARKERS_LAYER + "::" + kind)
             bound["clear_layer"](layer)
             counts[kind] = 0
         for marker in markers:

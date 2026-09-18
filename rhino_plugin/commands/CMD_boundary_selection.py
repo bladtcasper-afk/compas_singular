@@ -2,9 +2,18 @@
 
 # r: compas
 
-#Temporary import of compas_singular development library
-from CMD_start import import_compas_singular
-import_compas_singular()
+# Development bootstrap -- delete once compas_singular is installed into Rhino's
+# Python. MUST run before any compas_singular import: Rhino resets sys.path between
+# runs but keeps sys.modules, so put the source on the path and drop a stale copy
+# (see CMD_start for why every module, framefield included, has to go).
+import sys
+SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
+if SINGULAR_SRC not in sys.path:
+    sys.path.insert(0, SINGULAR_SRC)
+if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
+    for _mod in list(sys.modules):
+        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
+            del sys.modules[_mod]
 
 import rhinoscriptsyntax as rs
 import Rhino
@@ -22,8 +31,9 @@ from compas.scene import Scene
 from compas_singular.datastructures import CoarseQuadMesh, QuadMesh
 from compas_singular.algorithms import boundary_triangulation, SkeletonDecomposition
 from compas_singular.datastructures import CoarsePseudoQuadMesh
-from compas_singular.rhino.helpers.helpers import clear_layer, read_boundaries
-from CMD_start import get_settings, set_settings
+from compas_singular.rhino.helpers import clear_layer, read_boundaries
+from compas_singular.rhino.project import get_settings, set_settings
+from compas_singular.rhino.project import ROOT, layer_path
 
 settings = get_settings()
 
@@ -85,7 +95,7 @@ def add_inner_boundaries():
 
 def delete_inner_boundaries():
     def inner_filter(rhobj, geometry, component_index):
-        return rs.ObjectLayer(rhobj) == "TopologyProblem::InputBoundaries::Inner"
+        return rs.ObjectLayer(rhobj) == layer_path("Inner")
 
     to_delete = rs.GetObjects(message="Select inner boundaries to delete", filter=rs.filter.curve, group=True, preselect=False, select=True, minimum_count=0, custom_filter=inner_filter)
     if to_delete:
@@ -126,7 +136,7 @@ def add_guides():
 
 def delete_guides():
     def guide_filter(rhobj, geometry, component_index):
-        return rs.ObjectLayer(rhobj) == "TopologyProblem::InputBoundaries::Guides"
+        return rs.ObjectLayer(rhobj) == layer_path("Guides")
 
     to_delete = rs.GetObjects(message="Select guides to delete", filter=rs.filter.curve, group=True, preselect=False, select=True, minimum_count=0, custom_filter=guide_filter)
     if to_delete:
@@ -167,7 +177,7 @@ def add_pts():
 
 def delete_pts():
     def guide_filter(rhobj, geometry, component_index):
-        return rs.ObjectLayer(rhobj) == "TopologyProblem::InputBoundaries::PointFeatures"
+        return rs.ObjectLayer(rhobj) == layer_path("PointFeatures")
 
     to_delete = rs.GetObjects(message="Select point features to delete", filter=rs.filter.point, group=True, preselect=False, select=True, minimum_count=0, custom_filter=guide_filter)
     if to_delete:
@@ -182,7 +192,7 @@ rs.AddLayer(name="Outer", parent="InputBoundaries", color=(255, 0, 0))
 rs.AddLayer(name="Inner", parent="InputBoundaries", color=(0, 255, 0))
 rs.AddLayer(name="Guides", parent="InputBoundaries", color=(255, 127, 0))
 rs.AddLayer(name="PointFeatures", parent="InputBoundaries", color=(0, 255, 0))
-rs.AddLayer(name="TrashBin", parent="TopologyProblem", color=(90, 90, 90), visible=False)
+rs.AddLayer(name="TrashBin", parent=ROOT, color=(90, 90, 90), visible=False)
 
 while True:
     section = rs.GetString(message="Edit boundary", defaultString="Continue",

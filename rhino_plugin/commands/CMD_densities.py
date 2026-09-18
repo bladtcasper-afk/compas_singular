@@ -30,24 +30,34 @@ re-set from the global target by ``resolve_densities``; per-strip picks are gone
 at that point, because the strips they belonged to may be too.
 """
 
-#Temporary import of compas_singular development library
-from CMD_start import import_compas_singular
-import_compas_singular()
+# Development bootstrap -- delete once compas_singular is installed into Rhino's
+# Python. MUST run before any compas_singular import: Rhino resets sys.path between
+# runs but keeps sys.modules, so put the source on the path and drop a stale copy
+# (see CMD_start for why every module, framefield included, has to go).
+import sys
+SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
+if SINGULAR_SRC not in sys.path:
+    sys.path.insert(0, SINGULAR_SRC)
+if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
+    for _mod in list(sys.modules):
+        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
+            del sys.modules[_mod]
 
 import rhinoscriptsyntax as rs
 
 from compas_singular.rhino import mesh_ui
-from compas_singular.rhino.helpers.helpers import clear_layer
+from compas_singular.rhino.helpers import clear_layer
 # This step reads its layout from the document (read_coarse) and touches no
 # boundary geometry, so the wall helpers that used to be imported here --
 # read_boundary_loops, coarse_edges_to_curves, snap_corners_to_walls,
 # read_boundaries, curve_to_polyline, bake_edge_curves -- were never called.
-from CMD_start import set_settings, get_settings, read_layout
-from CMD_start import cache_path, COARSE_CACHE
+from compas_singular.rhino.project import set_settings, get_settings, read_layout
+from compas_singular.rhino.project import cache_path, COARSE_CACHE
 # One implementation, shared with CMD_quad_mesh.
-from CMD_start import resolve_densities
+from compas_singular.rhino.project import resolve_densities
+from compas_singular.rhino.project import layer_path
 
-DENSITY_LAYER = "TopologyProblem::Attributes::Densities"
+DENSITY_LAYER = layer_path("Densities")
 
 def draw(scene, coarse):
     """Every strip as a pickable ribbon, shaded by density, with its number on it.
@@ -90,10 +100,10 @@ def main():
     # Hidden while editing, so the ribbons are not drawn over the baked layout
     # and the old quad mesh. ``LayerVisible`` raises on a missing layer, and
     # QuadMesh does not exist until step 6 has run once.
-    if rs.IsLayer("TopologyProblem::Skeleton::Mesh"):
-        rs.LayerVisible("TopologyProblem::Skeleton::Mesh", False)
-    if rs.IsLayer("TopologyProblem::QuadMesh"):
-        rs.LayerVisible("TopologyProblem::QuadMesh", False)
+    if rs.IsLayer(layer_path("Mesh")):
+        rs.LayerVisible(layer_path("Mesh"), False)
+    if rs.IsLayer(layer_path("QuadMesh")):
+        rs.LayerVisible(layer_path("QuadMesh"), False)
 
     draw(scene, coarse)
 
@@ -153,10 +163,10 @@ def main():
         scene.clear()
         clear_layer(DENSITY_LAYER)
         # Back on however the command ends, Esc and errors included.
-        if rs.IsLayer("TopologyProblem::Skeleton::Mesh"):
-            rs.LayerVisible("TopologyProblem::Skeleton::Mesh", True)
-        if rs.IsLayer("TopologyProblem::QuadMesh"):
-            rs.LayerVisible("TopologyProblem::QuadMesh", True)
+        if rs.IsLayer(layer_path("Mesh")):
+            rs.LayerVisible(layer_path("Mesh"), True)
+        if rs.IsLayer(layer_path("QuadMesh")):
+            rs.LayerVisible(layer_path("QuadMesh"), True)
 
     # Onto the side-car, like the patterns in CMD_dense_pattern: the densities
     # are an attribute of the layout, and a bake cannot carry attributes. Not in

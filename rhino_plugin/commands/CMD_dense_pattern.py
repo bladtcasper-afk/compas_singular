@@ -2,22 +2,32 @@
 
 # r: compas
 
-#Temporary import of compas_singular development library
-from CMD_start import import_compas_singular
-import_compas_singular()
+# Development bootstrap -- delete once compas_singular is installed into Rhino's
+# Python. MUST run before any compas_singular import: Rhino resets sys.path between
+# runs but keeps sys.modules, so put the source on the path and drop a stale copy
+# (see CMD_start for why every module, framefield included, has to go).
+import sys
+SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
+if SINGULAR_SRC not in sys.path:
+    sys.path.insert(0, SINGULAR_SRC)
+if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
+    for _mod in list(sys.modules):
+        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
+            del sys.modules[_mod]
 
 import rhinoscriptsyntax as rs
 
 from compas_singular.datastructures import coarse_edges_to_curves, snap_corners_to_walls, CoarsePseudoQuadMesh
 from compas_singular.framefield.field import CrossField
-from compas_singular.rhino.helpers.helpers import bake_mesh, clear_layer
-from compas_singular.rhino.helpers.helpers import read_boundaries, read_boundary_loops, read_polylines
+from compas_singular.rhino.helpers import bake_mesh, clear_layer
+from compas_singular.rhino.helpers import read_boundaries, read_boundary_loops, read_polylines
 from compas_singular.framefield.quality import mesh_quality
 from compas_singular.rhino import mesh_ui
 
-from CMD_start import get_settings, set_settings
-from CMD_start import cache_path, read_layout, FIELD_CACHE, COARSE_CACHE
-from CMD_start import resolve_relax, resolve_symmetry
+from compas_singular.rhino.project import get_settings, set_settings
+from compas_singular.rhino.project import cache_path, read_layout, FIELD_CACHE, COARSE_CACHE
+from compas_singular.rhino.project import resolve_relax, resolve_symmetry
+from compas_singular.rhino.project import ROOT
 from compas_singular.datastructures.mesh_quad_coarse.patterns import PATTERNS
 
 
@@ -31,7 +41,7 @@ coarse = CoarsePseudoQuadMesh.load_from_json(
         cache_path(COARSE_CACHE, create=False), default=None)
 
 
-scene = mesh_ui.PickableMesh("TopologyProblem::Attributes::TempPattern")
+scene = mesh_ui.PickableMesh(ROOT + "::Attributes::TempPattern")
 
 rs.LayerVisible(layer="Skeleton", visible=False)
 rs.LayerVisible(layer="QuadMesh", visible=False)

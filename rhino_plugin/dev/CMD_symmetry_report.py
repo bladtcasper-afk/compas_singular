@@ -11,13 +11,23 @@ Reads exactly what ``CMD_coarse_mesh`` reads -- same layers, same spacing, same
 sampler -- so the numbers describe the real solve and not an idealisation.
 """
 
-from CMD_start import import_compas_singular
-import_compas_singular()
+# Development bootstrap -- delete once compas_singular is installed into Rhino's
+# Python. MUST run before any compas_singular import: Rhino resets sys.path between
+# runs but keeps sys.modules, so put the source on the path and drop a stale copy
+# (see CMD_start for why every module, framefield included, has to go).
+import sys
+SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
+if SINGULAR_SRC not in sys.path:
+    sys.path.insert(0, SINGULAR_SRC)
+if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
+    for _mod in list(sys.modules):
+        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
+            del sys.modules[_mod]
 
 
-from compas_singular.rhino.helpers.helpers import read_boundaries
+from compas_singular.rhino.helpers import read_boundaries
 from compas_singular.framefield.symmetry import ELEMENTS, Symmetry
-from CMD_start import get_settings
+from compas_singular.rhino.project import get_settings
 
 settings = get_settings()
 SPACING = settings["triangulation_spacing"]
@@ -102,3 +112,5 @@ print("  Reading it: a worst deviation under ~1e-3 on an element that still")
 print("  fails is DRAWING PRECISION -- the shape is symmetric to the eye and")
 print("  not to detect()'s 1e-6. A deviation of the order of the plate itself")
 print("  is a genuinely asymmetric input, and the tag says which curve.")
+print("")
+print("(read-only report -- nothing in the document was changed)")

@@ -42,8 +42,20 @@ selection in ``compas_singular.editing.guide_chain``. This file is the picks, th
 lines, the preview and the bake -- plus :func:`smooth_whole` / :func:`smooth_region`, which
 put the options together and take no Rhino input, so they can be run without Rhino.
 """
-from CMD_start import LAYER_DATA, import_compas_singular
-import_compas_singular()
+# Development bootstrap -- delete once compas_singular is installed into Rhino's
+# Python. MUST run before any compas_singular import: Rhino resets sys.path between
+# runs but keeps sys.modules, so put the source on the path and drop a stale copy
+# (see CMD_start for why every module, framefield included, has to go).
+import sys
+SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
+if SINGULAR_SRC not in sys.path:
+    sys.path.insert(0, SINGULAR_SRC)
+if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
+    for _mod in list(sys.modules):
+        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
+            del sys.modules[_mod]
+
+from compas_singular.rhino.project import LAYER_DATA
 
 import Rhino
 import System
@@ -52,7 +64,7 @@ import scriptcontext as sc
 import compas_rhino as cr
 from compas.geometry import Point
 from compas_rhino.conversions import curve_to_compas
-from compas_singular.rhino.helpers.helpers import mesh_from_rhino
+from compas_singular.rhino.helpers import mesh_from_rhino
 
 from compas_singular.datastructures import QuadMesh
 from compas_singular.datastructures.mesh.smoothing import automated_boundary_constraints
@@ -68,7 +80,7 @@ from compas_singular.editing import guide_chain
 from compas_singular.editing import mean_edge_length
 from compas_singular.editing.guide_chain import DEFAULT_MAX_ANGLE
 from compas_singular.editing.guide_chain import DEFAULT_TOLERANCE_FACTOR
-from compas_singular.rhino.helpers.helpers import bake_mesh, clear_layer, curve_points
+from compas_singular.rhino.helpers import bake_mesh, clear_layer, curve_points
 
 ALGORITHMS = ["Area", "Centroid", "CenterOfMass", "ForceDensity"]
 BOUNDARY_MODES = ["Sliding", "Fixed", "Free"]

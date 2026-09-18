@@ -69,9 +69,18 @@ The divisions then have to carry the outer boundary themselves, as they did
 before the walls were read separately: the layout's boundary is whatever ends
 up with one patch beside it. ``Inner`` curves are still walls and holes.
 """
-#Temporary import of compas_singular development library
-from CMD_start import import_compas_singular
-import_compas_singular()
+# Development bootstrap -- delete once compas_singular is installed into Rhino's
+# Python. MUST run before any compas_singular import: Rhino resets sys.path between
+# runs but keeps sys.modules, so put the source on the path and drop a stale copy
+# (see CMD_start for why every module, framefield included, has to go).
+import sys
+SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
+if SINGULAR_SRC not in sys.path:
+    sys.path.insert(0, SINGULAR_SRC)
+if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
+    for _mod in list(sys.modules):
+        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
+            del sys.modules[_mod]
 
 import re
 
@@ -84,12 +93,12 @@ from compas_rhino.conversions import point_to_compas
 from compas_singular.datastructures import CoarsePseudoQuadMesh
 from compas_singular.datastructures import split_at_corners
 from compas_singular.datastructures import split_at_junctions
-from compas_singular.rhino.helpers.helpers import bake_mesh, bake_points
-from compas_singular.rhino.helpers.helpers import bake_polylines, clear_layer
-from compas_singular.rhino.helpers.helpers import curve_points
+from compas_singular.rhino.helpers import bake_mesh, bake_points
+from compas_singular.rhino.helpers import bake_polylines, clear_layer
+from compas_singular.rhino.helpers import curve_points
 
-from CMD_start import get_settings
-from CMD_start import cache_path, COARSE_CACHE
+from compas_singular.rhino.project import get_settings
+from compas_singular.rhino.project import cache_path, COARSE_CACHE
 
 #How finely a CURVED input curve is sampled, as a multiple of the background
 #spacing. The same factor CMD_coarse_mesh samples its walls at, and for the same

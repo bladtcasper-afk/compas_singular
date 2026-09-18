@@ -1,9 +1,18 @@
 #! python3
 # r:compas
 
-#Temporary import of compas_singular development library
-from CMD_start import import_compas_singular
-import_compas_singular()
+# Development bootstrap -- delete once compas_singular is installed into Rhino's
+# Python. MUST run before any compas_singular import: Rhino resets sys.path between
+# runs but keeps sys.modules, so put the source on the path and drop a stale copy
+# (see CMD_start for why every module, framefield included, has to go).
+import sys
+SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
+if SINGULAR_SRC not in sys.path:
+    sys.path.insert(0, SINGULAR_SRC)
+if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
+    for _mod in list(sys.modules):
+        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
+            del sys.modules[_mod]
 
 
 from collections import Counter
@@ -13,9 +22,9 @@ import compas_rhino as cr
 
 from compas.scene import Scene
 from compas_singular.rhino.dual_mesh import dual_mesh
-from compas_singular.rhino.helpers.helpers import read_mesh, bake_mesh, clear_layer
+from compas_singular.rhino.helpers import read_mesh, bake_mesh, clear_layer
 from compas.datastructures import mesh_conway_dual
-from compas_singular.rhino.helpers.helpers import mesh_from_rhino
+from compas_singular.rhino.helpers import mesh_from_rhino
 
 if not rs.IsLayer("QuadMesh"):
     raise RuntimeError("No dense quad mesh has been generated yet. The layer does not exist yet.")

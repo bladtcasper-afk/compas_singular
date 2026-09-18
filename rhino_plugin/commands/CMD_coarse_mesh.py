@@ -2,9 +2,18 @@
 
 # r: compas
 
-#Temporary import of compas_singular development library
-from CMD_start import import_compas_singular
-import_compas_singular()
+# Development bootstrap -- delete once compas_singular is installed into Rhino's
+# Python. MUST run before any compas_singular import: Rhino resets sys.path between
+# runs but keeps sys.modules, so put the source on the path and drop a stale copy
+# (see CMD_start for why every module, framefield included, has to go).
+import sys
+SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
+if SINGULAR_SRC not in sys.path:
+    sys.path.insert(0, SINGULAR_SRC)
+if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
+    for _mod in list(sys.modules):
+        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
+            del sys.modules[_mod]
 
 
 import rhinoscriptsyntax as rs
@@ -15,11 +24,12 @@ import compas_rhino as cr
 from compas_rhino.conversions import point_to_rhino
 
 from compas_singular.algorithms import SkeletonDecomposition
-from compas_singular.framefield.decomposition import FieldDecomposition
-from compas_singular.rhino.helpers.helpers import clear_layer, read_boundary_loops, bake_edge_curves, bake_polylines, read_boundaries
+from compas_singular.framefield.field_decomposition import FieldDecomposition
+from compas_singular.rhino.helpers import clear_layer, read_boundary_loops, bake_edge_curves, bake_polylines, read_boundaries
 from compas_singular.rhino.coarse_curves import coarse_edges_to_curves, snap_corners_to_walls
-from CMD_start import get_settings, resolve_relax, resolve_symmetry
-from CMD_start import cache_path, COARSE_CACHE, FIELD_CACHE
+from compas_singular.rhino.project import get_settings, resolve_relax, resolve_symmetry
+from compas_singular.rhino.project import cache_path, COARSE_CACHE, FIELD_CACHE
+from compas_singular.rhino.project import ROOT
 
 #The walls the layout's boundary edges densify ALONG, as a multiple of the
 #background spacing. Finer than the background, because these points are the
@@ -169,7 +179,7 @@ def main():
             print("snapped {} boundary corner(s) onto their wall, worst {:.4f}".format(
                 snapped, worst))
 
-        rs.AddLayer(name="Skeleton", parent="TopologyProblem")
+        rs.AddLayer(name="Skeleton", parent=ROOT)
 
         layer = rs.AddLayer(name="Poles", parent="Skeleton")
         vkeys = coarse_mesh.poles()
