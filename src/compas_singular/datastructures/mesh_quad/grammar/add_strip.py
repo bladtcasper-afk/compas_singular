@@ -1,26 +1,119 @@
+"""**Add a strip along a polyedge. Topology only -- nothing here moves a vertex.**
+
+``add_strip`` splits every vertex of the polyedge in two and fills the band
+between the copies, which is thesis 5.3.1. Both copies are created AT THE
+POSITION of the vertex they replace, so the new strip has **zero width** until
+something separates them. That separation is deliberately not done here: it is a
+geometric decision, it differs per caller, and hiding it inside the grammar made
+it impossible to add a strip without also moving the rest of the mesh.
+
+Openers in the codebase, for reference:
+
+* :meth:`~compas_singular.editing.CoarseEditor._open_strip` -- exact rule, the
+  new pair goes at one third and two thirds of the span the polyedge crossed.
+  Corners on the layout boundary are projected back onto the wall.
+* :meth:`~compas_singular.editing.DenseMeshEditor.relax` -- centroid smoothing
+  with every boundary ring held except the new pair.
+
+**A caller that opens neither leaves coincident vertices**, which survive
+``is_manifold`` but collapse a face to zero area -- and at float32 that is enough
+to make a whole Rhino mesh fail to bake.
+
+This module replaced a second implementation that lived in ``grammar_pattern.py``
+until 2026-09-18. That one duplicated the whole polyedge in a single pass, keyed
+by vertex, so a polyedge visiting the same vertex twice deleted it twice; it also
+ended with a 20-iteration constrained smooth of the WHOLE mesh. The walk below
+consumes the polyedge one vertex at a time and re-derives the remainder, which is
+what makes U-turns and self-crossings tractable -- see ``add_strip``.
+"""
 from compas.topology import breadth_first_paths
 from compas.datastructures.mesh.operations.substitute import mesh_substitute_vertex_in_faces
 from compas.itertools import pairwise
 
-# from ..grammar_pattern import strip_polyedge_update
-
 
 __all__ = [
+    'add_strip',
+    'add_strips',
+    'split_strip',
+    'split_strips',
+    'strip_polyedge_update',
+    'is_polyedge_valid_for_strip_addition',
 ]
 
 
-def add_strips(mesh, polyedges, callback=None, callback_args=None):
-    to_add = polyedges[:]
-    while len(to_add) > 0:
-        polyedge = to_add.pop()
-        add_strip(mesh, polyedge)
-        # update polyedges
-        if callback:
-            if callable(callback):
-                callback(mesh, callback_args)
+def add_strips(mesh, polyedges):
+    """Add a strip along each polyedge, in order.
+
+    The polyedges still to come are re-derived after every insertion: an
+    insertion renumbers and replaces the very vertices they are written in terms
+    of, so a polyedge collected before the first strip is meaningless after it.
+
+    Parameters
+    ----------
+    mesh : QuadMesh
+        A quad mesh, with ``attributes['strips']`` already collected.
+    polyedges : list[list[int]]
+        Polyedges, each a list of vertex keys.
+
+    Returns
+    -------
+    list
+        The new strip keys, in the order the strips were added.
+    """
+    pending = list(polyedges)
+    new_skeys = []
+
+    while pending:
+        polyedge = pending.pop()
+        # ``list(...)``: ``add_strip`` consumes the polyedge it is given.
+        new_skey, old_to_new = add_strip(mesh, list(polyedge))
+        new_skeys.append(new_skey)
+        pending = [strip_polyedge_update(mesh, pending_polyedge, old_to_new)
+                   for pending_polyedge in pending]
+
+    return new_skeys
 
 
 def add_strip(mesh, polyedge):
+    """**Add a strip along** ``polyedge``. Topology only -- the strip has zero width.
+
+    Each vertex ``Vi`` of the polyedge becomes two, ``Vi`` is substituted by the
+    left copy in the faces on one side and by the right copy in those on the
+    other, and the band between them is the new strip (thesis 5.3.1). Strip
+    LABELS are preserved, so densities set per strip survive this.
+
+    The polyedge is consumed. Pass a copy to keep yours -- and note that
+    ``mesh.attributes['polyedges']`` hands out its own lists, so passing one
+    straight in corrupts it.
+
+    Parameters
+    ----------
+    mesh : QuadMesh
+        A quad mesh. ``attributes['strips']`` must be non-empty --
+        ``update_strip_data`` does ``max(...) + 1`` and raises on an empty dict.
+    polyedge : list[int]
+        Vertex keys in order, each joined to the next by an edge. Either closed,
+        or with both ends on the boundary.
+
+    Returns
+    -------
+    tuple[int, dict]
+        The new strip key, and ``{old vertex: (left copy, right copy)}``. The
+        left and right polyedges are the values of that map read in polyedge
+        order; the pairs in it are exactly the vertices an opener has to
+        separate.
+
+    Notes
+    -----
+    The walk takes one vertex per iteration and rebuilds what is left of the
+    polyedge through the two vertices just created
+    (``polyedge_from_to_via_vertices``). That is what lets a polyedge revisit a
+    vertex -- a U-turn or a self-crossing -- instead of deleting it twice.
+    Support for those is INCOMPLETE: the walk handles them, but
+    ``update_strip_data`` below does not, and a self-crossing polyedge such as
+    ``[1, 2, 8, 2, 3]`` still raises there. Guard with
+    ``is_polyedge_valid_for_strip_addition`` and keep polyedges simple.
+    """
     full_updated_polyedge = []
     # store data
     left_polyedge = []
@@ -141,27 +234,40 @@ def add_strip(mesh, polyedge):
                 updated_polyedge += polyedge_from_to_via_vertices(mesh, from_vkey, to_vkey, via_vkeys)[1:-1]
         polyedge = updated_polyedge
 
-    # include pseudo closed polyedges
-
     old_vkeys_to_new_vkeys = {u0: (u1, u2) for u0, u1, u2 in zip(full_updated_polyedge, left_polyedge, right_polyedge)}
 
-    # for fkey in mesh.faces():
-    #    print(mesh.face_vertices(fkey))
     n = update_strip_data(mesh, full_updated_polyedge, old_vkeys_to_new_vkeys, closed=is_closed)
-    # print(left_polyedge, right_polyedge)
     return n, old_vkeys_to_new_vkeys
 
 
-def add_element_start(mesh, u, v):
-    pass
+def split_strip(mesh, skey, n=2):
+    """Refine a strip into ``n`` strips. Topology only -- see the module note.
+
+    Returns
+    -------
+    list
+        The existing strip key, followed by the ``n - 1`` new ones.
+    """
+    return [skey] + [add_strip(mesh, list(mesh.strip_side_polyedges(skey)[0]))[0]
+                     for _ in range(n - 1)]
 
 
-def add_element_main(mesh, u, v):
-    pass
+def split_strips(mesh, skey_to_n):
+    """Refine several strips. Topology only -- see the module note.
 
+    Parameters
+    ----------
+    mesh : QuadMesh
+        A quad mesh.
+    skey_to_n : dict
+        Strip keys pointing to the number of strips to refine each one into.
 
-def add_element_end(mesh, u, v):
-    pass
+    Returns
+    -------
+    dict
+        Each split strip key, pointing to the keys of the strips refining it.
+    """
+    return {skey: split_strip(mesh, skey, n) for skey, n in skey_to_n.items()}
 
 
 def update_strip_data(mesh, full_updated_polyedge, old_vkeys_to_new_vkeys, closed=False):
@@ -177,7 +283,6 @@ def update_strip_data(mesh, full_updated_polyedge, old_vkeys_to_new_vkeys, close
 
     # orthogonal strips
     orth_to_update = {}
-    # orth_skeys = []
     for old_u, old_v in pairwise(sequence):
         new_u = old_vkeys_to_new_vkeys[old_u][0]
         new_v = old_vkeys_to_new_vkeys[old_v][0]
@@ -213,9 +318,75 @@ def update_strip_data(mesh, full_updated_polyedge, old_vkeys_to_new_vkeys, close
     return n
 
 
-def update_polyedge(polyedge, old_vkey_to_new_vkey):
+def strip_polyedge_update(mesh, polyedge, vertex_modifications):
+    """Rewrite ``polyedge`` in terms of the vertices an insertion left behind.
 
-    return [old_vkey_to_new_vkey.get(vkey, vkey) for vkey in polyedge]
+    Parameters
+    ----------
+    mesh : QuadMesh
+        A quad mesh.
+    polyedge : list[int]
+        A polyedge, as a list of the OLD vertex keys.
+    vertex_modifications : dict
+        Old vertex keys pointing to the new ones that replaced them -- the
+        second return value of :func:`add_strip`.
+
+    Returns
+    -------
+    list
+        The shortest path that visits the replacements in the original order.
+    """
+    closed = polyedge[0] == polyedge[-1]
+
+    if closed:
+        polyedge = polyedge[:-1]
+
+    # update polyedge with candidate vertices
+    polyedge_modifications = {vkey: (vertex_modifications[vkey] if vkey in vertex_modifications else [vkey]) for vkey in polyedge}
+    # list all candidate vertices to form new polyedge
+    candidate_vertices = tuple(set([vkey for vkeys in polyedge_modifications.values() for vkey in vkeys]))
+    # adjacency restricted to candidate vertices
+    adjacency = {vkey: [nbr for nbr in mesh.vertex_neighbors(vkey) if nbr in candidate_vertices] for vkey in mesh.vertices() if vkey in candidate_vertices}
+
+    # for each combination of boundary vertex extremities, get the shortest
+    # valid path through the modified vertices of the polyedges
+    shortest_polyedge = None
+    # start vertices on boundary
+    for vkey_start in polyedge_modifications[polyedge[0]]:
+        if mesh.is_vertex_on_boundary(vkey_start):
+            # end vertices on boundary
+            for vkey_end in polyedge_modifications[polyedge[-1]]:
+                if mesh.is_vertex_on_boundary(vkey_end):
+                    # iterate through all paths between start and end vertices
+                    # starting by the shortest
+                    for candidate_polyedge in breadth_first_paths(adjacency, vkey_start, vkey_end):
+                        is_valid = True
+                        # if was initailly closed, make sure that temporary end
+                        # is adjacent to start
+                        if closed:
+                            if candidate_polyedge[0] not in mesh.vertex_neighbors(candidate_polyedge[-1]):
+                                continue
+                        # check that vertices in path come from the modified
+                        # vertices of the polyedge in the same order
+                        i = 0
+                        for vkey in candidate_polyedge:
+                            if vkey in polyedge_modifications[polyedge[i]]:
+                                continue
+                            elif vkey in polyedge_modifications[polyedge[i + 1]]:
+                                i += 1
+                            else:
+                                is_valid = False
+                                break
+                        # update if shorter
+                        if is_valid:
+                            if shortest_polyedge is None or len(shortest_polyedge) > len(candidate_polyedge):
+                                shortest_polyedge = candidate_polyedge
+                            break
+
+    if closed:
+        shortest_polyedge.append(shortest_polyedge[0])
+
+    return shortest_polyedge
 
 
 def sort_faces(mesh, u, v, w):
@@ -276,104 +447,3 @@ def is_polyedge_valid_for_strip_addition(mesh, polyedge):
         if polyedge[0] == polyedge[-1] or (mesh.is_vertex_on_boundary(polyedge[0]) and mesh.is_vertex_on_boundary(polyedge[-1])):
             return True
     return False
-
-# ==============================================================================
-# Main
-# ==============================================================================
-
-
-if __name__ == '__main__':
-    pass
-
-    # import compas
-    # from compas_singular.datastructures.mesh_quad_coarse.mesh_quad_coarse import CoarseQuadMesh
-    # from compas.datastructures import mesh_smooth_centroid
-    # from compas_singular.datastructures.mesh.operations import mesh_move_by
-    # from compas.datastructures import meshes_join
-    # from compas_plotters.meshplotter import MeshPlotter
-
-    # mesh = CoarseQuadMesh.from_obj(compas.get('faces.obj'))
-    # mesh.collect_strips()
-    # #polyedge = [0, 1, 2, 8, 14, 13, 12, 6, 0]
-    # #polyedge = [7, 8, 9, 15, 21, 20, 19, 13, 7]
-    # polyedge = [0, 1, 7, 6, 0]
-    # output = add_strip(mesh, polyedge)
-    # print(output)
-    # mesh_smooth_centroid(mesh, kmax=10, fixed=mesh.vertices_on_boundary())
-    # plotter = MeshPlotter(mesh, figsize=(5, 5))
-    # plotter.draw_vertices(radius=0.2, text='key')
-    # plotter.draw_edges()
-    # plotter.draw_faces()
-    # plotter.show()
-
-    # # plotter = MeshPlotter(mesh, figsize = (5, 5))
-    # # plotter.draw_vertices(radius = 0.25, text='key')
-    # # plotter.draw_edges()
-    # # plotter.draw_faces(text='key')
-    # # plotter.show()
-
-    # # polyedges = [
-    # # 	[6, 7, 8, 9, 10, 11],
-    # # 	[0, 1, 2, 3, 4, 5],
-    # # 	[30, 31, 32, 33, 34, 35],
-    # # 	[24, 25, 26, 32],
-    # # 	[14, 15, 21, 20, 14],
-    # # 	[6, 7, 8, 14, 13, 7, 1],
-    # # 	# [2, 8, 2],
-    # # 	[1, 2, 8, 2, 3],
-    # # 	# [2, 8, 14, 8, 2],
-    # # 	[0, 1, 2, 8, 2, 3, 4, 5],
-    # # ]
-
-    # # # from compas.utilities import window
-    # # # for u, v, w in window(polyedges[0], n=3):
-    # # # 	 print(sort_faces(mesh, u, v, w))
-
-    # meshes = []
-    # for i, polyedge in enumerate(polyedges):
-    # 	print(polyedge)
-    # 	mesh2 = mesh.copy()
-    # 	add_strip(mesh2, polyedge)
-    # 	#mesh_smooth_centroid(mesh2, fixed=[vkey for vkey in mesh.vertices_on_boundary() if len(mesh.vertex_neighbors(vkey)) == 2], kmax=1)
-    # 	mesh_smooth_centroid(mesh2, kmax=20)
-    # 	mesh_move_by(mesh2, [i * 10.0, 0.0, 0.0])
-    # 	meshes.append(mesh2)
-
-    # mesh = meshes_join(meshes)
-
-    # plotter = MeshPlotter(mesh, figsize=(20, 20))
-    # plotter.draw_vertices()#radius=0.1, text='key')
-    # plotter.draw_edges()
-    # plotter.draw_faces()
-    # plotter.show()
-
-    # #print(polyedge_from_to_via_vertices(mesh, 6, 8, [12, 13, 14]))
-
-    # vertices = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0], [0.5, 0.5, 0.0]]
-    # faces = [[0, 1, 2, 4] , [2, 3, 0, 4]]
-    # mesh = CoarseQuadMesh.from_vertices_and_faces(vertices, faces)
-    # polyedge = [2, 4, 0]
-    # add_strip(mesh, polyedge)
-    # for fkey in mesh.faces():
-    # 	print(mesh.face_vertices(fkey))
-    # mesh_smooth_centroid(mesh, kmax=10)
-    # plotter = MeshPlotter(mesh, figsize=(20, 20))
-    # plotter.draw_vertices(radius=0.001, text='key')
-    # plotter.draw_edges()
-    # plotter.draw_faces()
-    # plotter.show()
-
-    # vertices = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]]
-    # faces = [[0, 1, 2, 3]]
-    # mesh = CoarseQuadMesh.from_vertices_and_faces(vertices, faces)
-    # mesh.collect_strips()
-    # polyedge = [0, 1, 2, 3, 0]
-    # add_strip(mesh, polyedge)
-    # print(mesh.attributes['strips'])
-    # print('boundary: ', mesh.vertices_on_boundary())
-    # mesh_smooth_centroid(mesh, kmax=2, fixed=mesh.vertices_on_boundary())
-    # plotter = MeshPlotter(mesh, figsize=(20, 20))
-    # plotter.draw_vertices(radius=0.01, text='key')
-    # plotter.draw_edges()
-    # plotter.draw_faces()
-    # plotter.show()
