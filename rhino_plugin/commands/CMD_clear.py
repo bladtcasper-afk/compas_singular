@@ -1,29 +1,19 @@
 #! python3
 # r: compas
-
-# Development bootstrap -- delete once compas_singular is installed into Rhino's
-# Python. MUST run before any compas_singular import: Rhino resets sys.path between
-# runs but keeps sys.modules, so put the source on the path and drop a stale copy
-# (see CMD_start for why every module, framefield included, has to go).
-import sys
-SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
-if SINGULAR_SRC not in sys.path:
-    sys.path.insert(0, SINGULAR_SRC)
-if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
-    for _mod in list(sys.modules):
-        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
-            del sys.modules[_mod]
+# r: pydantic
 
 import rhinoscriptsyntax as rs
 from compas_singular.rhino.helpers import clear_layer
-
-
+from compas_singular.rhino.session import RhinoSession
 
 
 items = ("InputBoundaries", "No", "Yes"), ("FrameField", "No", "Yes"), ("Skeleton", "No", "Yes"), ("QuadMesh", "No", "Yes"), ("TrashBin", "No", "Yes")
 defaults = (False, True, True, True, True)
+#: What the session holds for each layer, cleared with it.
+SESSION_ITEMS = {"InputBoundaries": "domain", "FrameField": "field",
+                 "Skeleton": "coarse", "QuadMesh": "dense"}
 
-to_clear = rs.GetBoolean("Clear?", items, defaults)
+to_clear = rs.GetBoolean("Clear?", items, defaults) or [False] * len(items)
 
 objects_deleted_count = 0
 cleared = []
@@ -32,6 +22,11 @@ for i in range(len(items)):
         objects_deleted_count += clear_layer(items[i][0], True)
         cleared.append(items[i][0])
 
+names = [SESSION_ITEMS[layer] for layer in cleared if layer in SESSION_ITEMS]
+if names:
+    session = RhinoSession.current()
+    session.clear(*names)
+    session.record("Clear")
 
 print(f"Deleted {objects_deleted_count} object(s) from: {', '.join(cleared) or 'nothing'}.")
 print("note: clearing an earlier layer (e.g. InputBoundaries or Skeleton) leaves any "

@@ -1,11 +1,13 @@
 #! python3
 
 # r: compas
+# r: pydantic
+# r: compas_rui
 
 """**Step 5 -- how many elements across each strip.**
 
-    reads   TopologyProblem::Skeleton::Mesh
-    writes  <document cache>/coarse.json   the layout WITH strips_density
+    reads   the session's layout
+    writes  the session's layout, WITH strips_density
     scratch TopologyProblem::Attributes::Densities   pickable strips + labels
 
 ``pick`` a strip and give it a number, or set a global ``target`` -- a length
@@ -18,74 +20,52 @@ everything in line with it, which is why the band and not the edge is the unit.
 The edge-picking version of this command is kept in
 ``backup_2026-09-14_density_edge_pick/`` (with the ``mesh_ui`` it ran against).
 
-**The densities are stored by strip key, on the layout, and the layout is saved
-to the side-car** -- like the face patterns ``CMD_dense_pattern`` sets. Strip
+**The densities are stored by strip key, on the layout, and the layout is stored
+in the session** -- like the face patterns ``CMD_dense_pattern`` sets. Strip
 keys are NOT stable across a bake (``collect_strips`` numbers strips in edge
 order, and a layout read back from Rhino comes back in whatever order the
 geometry did), so they are only trusted together with the strips they were
-saved with: ``read_layout`` uses the side-car only while it still describes the
-baked layout, and the strips are never re-collected on it. A layout that has
-lost its densities -- read from the document, or rebuilt in step 3 or 4 -- is
-re-set from the global target by ``resolve_densities``; per-strip picks are gone
-at that point, because the strips they belonged to may be too.
+saved with, and the strips are never re-collected here. A layout that has lost
+its densities -- read from the document, or rebuilt in step 3 or 4 -- is re-set
+from the global target by ``resolve_densities``; per-strip picks are gone at
+that point, because the strips they belonged to may be too.
 """
 
-# Development bootstrap -- delete once compas_singular is installed into Rhino's
-# Python. MUST run before any compas_singular import: Rhino resets sys.path between
-# runs but keeps sys.modules, so put the source on the path and drop a stale copy
-# (see CMD_start for why every module, framefield included, has to go).
-import sys
-SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
-if SINGULAR_SRC not in sys.path:
-    sys.path.insert(0, SINGULAR_SRC)
-if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
-    for _mod in list(sys.modules):
-        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
-            del sys.modules[_mod]
 
 import rhinoscriptsyntax as rs
 
 from compas_singular.rhino import mesh_ui
-from compas_singular.rhino.helpers import clear_layer
-# This step reads its layout from the document (read_coarse) and touches no
-# boundary geometry, so the wall helpers that used to be imported here --
-# read_boundary_loops, coarse_edges_to_curves, snap_corners_to_walls,
-# read_boundaries, curve_to_polyline, bake_edge_curves -- were never called.
 from compas_singular.rhino.project import set_settings, get_settings, read_layout
-from compas_singular.rhino.project import cache_path, COARSE_CACHE
 # One implementation, shared with CMD_quad_mesh.
 from compas_singular.rhino.project import resolve_densities
 from compas_singular.rhino.project import layer_path
+from compas_singular.rhino.session import RhinoSession
 
 DENSITY_LAYER = layer_path("Densities")
 
-def draw(scene, coarse):
+def draw(layout):
     """Every strip as a pickable ribbon, shaded by density, with its number on it.
 
     Drawn the way ``CMD_edit_coarse_mesh`` draws strips for removing and
-    dividing -- ``mesh_ui.draw_strips`` -- but with ``collect=False``: what is
-    picked has to come back as the key ``strips_density`` is stored under, and a
-    re-collection may number the same bands differently.
+    dividing -- ``RhinoCoarseObject.draw_strips`` -- but with ``collect=False``:
+    what is picked has to come back as the key ``strips_density`` is stored
+    under, and a re-collection may number the same bands differently.
 
     The label is the density the strip will actually be meshed at. The shade is
     relative: lightest blue for the smallest density in this layout, darkest for
     the largest.
     """
-    strip_densities = coarse.get_strip_densities()
-    scene.draw_strips(coarse, collect=False,
-                      strip_colors=mesh_ui.density_colors(strip_densities),
-                      labels={skey: d for skey, d in strip_densities.items()})
+    strip_densities = layout.mesh.get_strip_densities()
+    layout.draw_strips(collect=False,
+                       strip_colors=mesh_ui.density_colors(strip_densities),
+                       labels={skey: d for skey, d in strip_densities.items()})
 
 
 def main():
+    session = RhinoSession.current()
     settings = get_settings()
-    # The side-car when it still matches the baked layout, the document
-    # otherwise. Either way the strips below are this layout's own.
-    # ``read_layout`` already raises if the 'Mesh' layer is empty -- no need
-    # to check ``guids`` again, and unconditionally reloading the side-car
-    # here (as this used to do) is exactly what throws that check away: a
-    # stale coarse.json would get re-saved as if it were current.
-    coarse, poles, _source = read_layout()
+    # A COPY of the session's layout, handed back at the end.
+    coarse = read_layout()
 
     # The densities saved on the layout by a previous run, when it has a full
     # set; every strip set by the last global target otherwise.
@@ -95,7 +75,8 @@ def main():
         coarse.number_of_faces(), len(list(coarse.strips())),
         settings[target_setting(settings)], settings["density_mode"]))
 
-    scene = mesh_ui.PickableMesh(DENSITY_LAYER)
+    # The layout's scene object, drawing the copy being edited on a scratch layer.
+    layout = session.scene.add(coarse, layer=DENSITY_LAYER, show_faces=False)
 
     # Hidden while editing, so the ribbons are not drawn over the baked layout
     # and the old quad mesh. ``LayerVisible`` raises on a missing layer, and
@@ -105,7 +86,7 @@ def main():
     if rs.IsLayer(layer_path("QuadMesh")):
         rs.LayerVisible(layer_path("QuadMesh"), False)
 
-    draw(scene, coarse)
+    draw(layout)
 
     try:
         while True:
@@ -116,7 +97,7 @@ def main():
                 # Strip after strip until Esc, redrawn after each so the shade
                 # and number of the one just set are visible before the next.
                 while True:
-                    skey = scene.pick_strip("Pick a strip to set its density (Esc to finish)")
+                    skey = layout.pick_strip("Pick a strip to set its density (Esc to finish)")
                     if skey is None:
                         break
                     current = coarse.get_strip_density(skey)
@@ -125,7 +106,7 @@ def main():
                     if value is None:
                         continue
                     coarse.set_strip_density(skey, int(value))
-                    draw(scene, coarse)
+                    draw(layout)
 
             elif option == "target_length":
                 value = rs.GetReal("Target quad edge length",
@@ -137,7 +118,7 @@ def main():
                     # Every strip, picked ones included: the target replaces
                     # all densities, and the labels show the new numbers.
                     coarse.set_strips_density_target(value)
-                    draw(scene, coarse)
+                    draw(layout)
             
             elif option == "target_density":
                 value = rs.GetInteger("Elements across every strip",
@@ -147,31 +128,32 @@ def main():
                     settings["density_mode"] = "density"
                     set_settings(settings)
                     coarse.set_strips_density(int(value))
-                    draw(scene, coarse)
+                    draw(layout)
 
             elif option == "clear":
                 # Emptied first, so resolve_densities re-sets every strip from
                 # the current target instead of keeping the picked numbers.
                 coarse.attributes['strips_density'] = {}
                 resolve_densities(coarse, settings, verbose=False)
-                draw(scene, coarse)
+                draw(layout)
                 print("picks cleared -- every strip follows the target.")
 
             else:
                 break
     finally:
-        scene.clear()
-        clear_layer(DENSITY_LAYER)
+        layout.clear()
+        session.scene.remove(layout)
         # Back on however the command ends, Esc and errors included.
         if rs.IsLayer(layer_path("Mesh")):
             rs.LayerVisible(layer_path("Mesh"), True)
         if rs.IsLayer(layer_path("QuadMesh")):
             rs.LayerVisible(layer_path("QuadMesh"), True)
 
-    # Onto the side-car, like the patterns in CMD_dense_pattern: the densities
+    # Into the session, like the patterns in CMD_dense_pattern: the densities
     # are an attribute of the layout, and a bake cannot carry attributes. Not in
-    # the ``finally`` -- a command that raised must not overwrite a good cache.
-    coarse.save_to_json(cache_path(COARSE_CACHE))
+    # the ``finally`` -- a command that raised must not overwrite a good layout.
+    session.coarse = coarse
+    session.record("Densities")
     print("densities: saved on the layout ({} strip(s))".format(
         len(coarse.get_strip_densities())))
     print("note: a topology-changing edit in CMD_edit_coarse_mesh (add_polyedge, "
@@ -184,7 +166,6 @@ def main():
 def target_setting(settings):
     """The settings key of the global rule currently in force."""
     return "target_density" if settings["density_mode"] == "density" else "target_length"
-
 
 
 if __name__ == "__main__":

@@ -1,5 +1,7 @@
 #! python3
-# r:compas
+# r: compas
+# r: pydantic
+
 """Smooth a dense quad mesh with chains of vertices attached to guide curves.
 
 Two ways to constrain, asked for first:
@@ -36,18 +38,6 @@ The whole algorithm lives in ``compas_singular.editing.guide_chain`` and is meas
 without Rhino, in ``examples/guide_chain_tests``. This file is the picks, the prompts and
 the bake.
 """
-# Development bootstrap -- delete once compas_singular is installed into Rhino's
-# Python. MUST run before any compas_singular import: Rhino resets sys.path between
-# runs but keeps sys.modules, so put the source on the path and drop a stale copy
-# (see CMD_start for why every module, framefield included, has to go).
-import sys
-SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
-if SINGULAR_SRC not in sys.path:
-    sys.path.insert(0, SINGULAR_SRC)
-if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
-    for _mod in list(sys.modules):
-        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
-            del sys.modules[_mod]
 
 from compas_singular.rhino.project import LAYER_DATA
 

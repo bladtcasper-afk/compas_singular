@@ -1,35 +1,21 @@
 #! python3
 
 # r: compas
-
-# Development bootstrap -- delete once compas_singular is installed into Rhino's
-# Python. MUST run before any compas_singular import: Rhino resets sys.path between
-# runs but keeps sys.modules, so put the source on the path and drop a stale copy
-# (see CMD_start for why every module, framefield included, has to go).
-import sys
-SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
-if SINGULAR_SRC not in sys.path:
-    sys.path.insert(0, SINGULAR_SRC)
-if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
-    for _mod in list(sys.modules):
-        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
-            del sys.modules[_mod]
-
+# r: pydantic
 
 import rhinoscriptsyntax as rs
 import scriptcontext as sc
 import Rhino
 
 import compas_rhino as cr
-from compas_rhino.conversions import point_to_rhino
 
 from compas_singular.algorithms import SkeletonDecomposition
 from compas_singular.framefield.field_decomposition import FieldDecomposition
-from compas_singular.rhino.helpers import clear_layer, read_boundary_loops, bake_edge_curves, bake_polylines, read_boundaries
+from compas_singular.rhino.helpers import clear_layer, read_boundary_loops, read_boundaries
 from compas_singular.rhino.coarse_curves import coarse_edges_to_curves, snap_corners_to_walls
 from compas_singular.rhino.project import get_settings, resolve_relax, resolve_symmetry
-from compas_singular.rhino.project import cache_path, COARSE_CACHE, FIELD_CACHE
-from compas_singular.rhino.project import ROOT
+from compas_singular.rhino.session import RhinoSession
+from compas_singular.symmetry import Domain
 
 #The walls the layout's boundary edges densify ALONG, as a multiple of the
 #background spacing. Finer than the background, because these points are the
@@ -54,14 +40,14 @@ def coarse_from_field(settings, outer, inners, guides):
     """Frame-field decomposition. The mirror of ``coarse_from_skeleton`` above.
 
     Solved fresh every time this step runs, and the only step that solves: steps
-    4 and 6 read the field back from the ``field.json`` side-car written below.
+    4 and 6 read the field back from the session, where ``main`` stores it.
     The user is choosing to (re)build the coarse mesh, so the extra computation
     when nothing changed is an accepted cost for a call site that reads the same,
     directly, as ``SkeletonDecomposition.from_boundary`` below.
     """
     decomposition = FieldDecomposition.from_boundary(
         outer, inner_boundaries=inners, guides=guides,
-        mode=settings["guide_allignment"],
+        mode=settings["guide_alignment"],
         target_length=settings["triangulation_spacing"],
         relax=resolve_relax(settings, guides),
         symmetry=resolve_symmetry(settings))
@@ -79,7 +65,7 @@ def coarse_from_field(settings, outer, inners, guides):
     coarse_mesh = decomposition.coarse_mesh()
 
     #Which route built this layout, so step 6 does not have to guess. It rides
-    #in ``attributes`` and so travels with the side-car JSON.
+    #in ``attributes`` and so travels with the session.
     coarse_mesh.attributes["route"] = "field"
 
     return coarse_mesh, skeleton, decomposition.get_field()
@@ -151,12 +137,12 @@ def main():
             print("Unrecognised mode: {}".format(mode))
 
     
-    #Bake results
+    #Store and draw the results
     if coarse_mesh and skeleton:
         rs.EnableRedraw(False)
         clear_layer("Skeleton", clean_sublayers = True) #Clean Layer before adding objects
         
-        #BEFORE the bake, or the baked mesh and the edge curves disagree about where
+        #BEFORE the curves, or the layout and its edge curves disagree about where
         #the corners are. A boundary corner of the layout IS a point of the domain
         #boundary, but nothing upstream puts it there -- the background
         #triangulation places it, and on a curved wall that means on a CHORD of the
@@ -179,54 +165,13 @@ def main():
             print("snapped {} boundary corner(s) onto their wall, worst {:.4f}".format(
                 snapped, worst))
 
-        rs.AddLayer(name="Skeleton", parent=ROOT)
-
-        layer = rs.AddLayer(name="Poles", parent="Skeleton")
-        vkeys = coarse_mesh.poles()
-        pts = [coarse_mesh.vertex_coordinates(v) for v in vkeys]
-        points = [point_to_rhino(pt) for pt in pts]
-        guids = rs.AddPoints(points)
-        for guid in guids:
-            rs.ObjectLayer(guid, layer=layer)
-
-        #``rs.AddPolyline`` RAISES -- 'Unable to add polyline to document' -- on a
-        #rib Rhino will not take, and it judges that at the DOCUMENT tolerance, not
-        #at 1e-9: a separatrix that doubles back on itself by half a tolerance is
-        #geometrically fine and still unbakeable. That used to kill the command
-        #here, which cost the MESH as well, because the mesh is baked below this.
-        #``bake_polylines`` cleans each rib and guards the add.
-        layer = rs.AddLayer(name="Polylines", parent="Skeleton")
-        _guids, skipped = bake_polylines(skeleton, layer)
-        print("separatrices: {} baked".format(len(_guids)))
-        if skipped:
-            print("  {} rib(s) skipped -- Rhino refused them (coincident points at "
-                  "the document tolerance, or fewer than two)".format(skipped))
-
-        layer = rs.AddLayer(name="Mesh", parent="Skeleton")
-        # face_vertices gives vertex KEYS, the vertex list is positional, and the
-        # two only agree while the keys are 0..n-1. Repair and weld leave gaps, and
-        # the baked faces would then reference the wrong corners -- silently.
-        index = {v: i for i, v in enumerate(coarse_mesh.vertices())}
-        vertices = [coarse_mesh.vertex_attributes(v, "xyz") for v in coarse_mesh.vertices()]
-        faces = [[index[v] for v in coarse_mesh.face_vertices(f)] for f in coarse_mesh.faces()]
-        guid = rs.AddMesh(vertices, faces)
-        rs.ObjectLayer(guid, layer=layer)
-
-        #The layout WITH its curvature. A Rhino mesh has straight edges, so on a
-        #curved domain the mesh above is drawn cutting the corner off its own
-        #boundary -- which reads as the workflow having lost the curve when only
-        #the display has. These polylines are what CMD_quad_mesh densifies along,
-        #rebuilt there from the same document data rather than read back from here.
+        #The SHAPE of every coarse edge -- what the layout densifies along. A Rhino
+        #mesh has straight edges, so on a curved domain the layout is drawn cutting
+        #the corner off its own boundary; these curves, drawn on EdgeCurves, show
+        #what it will actually follow.
         curves, tally = coarse_edges_to_curves(
             coarse_mesh, loops=[outer_loop] + inner_loops, polylines=skeleton)
-        # AddLayer returns the FULL '::' path, which is what every rs call below
-        # needs -- a nested layer's short name is not resolvable on its own.
-        edge_layer = rs.AddLayer(name="EdgeCurves", parent="Skeleton", color=(0, 120, 200))
-        _guids, skipped = bake_edge_curves(curves.values(), edge_layer)
         print("coarse edges: {}".format(tally))
-        if skipped:
-            print("  {} edge curve(s) Rhino refused -- those edges densify as "
-                  "chords".format(skipped))
         if tally["chord"]:
             print("  {} edge(s) densify as a straight chord -- interior edges with "
                   "no traced branch, which is expected, or a boundary corner that "
@@ -236,26 +181,21 @@ def main():
                   "this is what makes one circle come out round and the next a "
                   "polygon".format(tally["wall_missed"]))
 
-        #The side-cars: everything the bake above could not carry.
-        #
-        #``rs.AddMesh`` stores vertices and faces and nothing else, so the
-        #layout's own knowledge -- strips, poles, the route that built it --
-        #dies at the bake and every later step re-derives it. ``save_to_json``
-        #carries the whole ``attributes`` dict, and the field cannot be baked at
-        #all. Written LAST, so a failure in the bake above never leaves a
-        #side-car describing a layout the document does not have.
-        #
-        #``curves`` -- already computed above for the EdgeCurves bake -- is
-        #stored on the layout too, so a later step (CMD_quad_mesh, or a reload
-        #of this side-car) can just ask ``coarse.edges_to_curves()`` instead of
-        #re-deriving it from the document every time.
+        #Into the session: the layout with everything it knows -- strips, poles,
+        #the route that built it, the shape of every edge and the separatrices
+        #those shapes come from -- and the field, which cannot be drawn at all.
+        #Recording DRAWS the layout: Skeleton::Mesh, ::Poles, ::EdgeCurves and
+        #::Polylines (``RhinoSession.draw``).
         coarse_mesh.set_edges_to_curves(curves)
+        coarse_mesh.set_shape_polylines(skeleton)
         coarse_mesh.set_global_face_pattern("ortho")
-        coarse_mesh.save_to_json(cache_path(COARSE_CACHE))
-        print("layout cached: {}".format(cache_path(COARSE_CACHE, create=False)))
-        if field is not None:
-            field.save_to_json(cache_path(FIELD_CACHE))
-            print("field cached:  {}".format(cache_path(FIELD_CACHE, create=False)))
+        session = RhinoSession.current()
+        session.domain = Domain(outer, inners, guides, point_features)
+        session.coarse = coarse_mesh
+        session.field = field               # None on the skeleton route
+        session.record("Coarse mesh")
+        print("layout stored in the session{}, and drawn".format(
+            ", with its field" if field is not None else ""))
         print("note: this replaces any previous layout -- densities (CMD_densities) and "
               "patterns (CMD_dense_pattern) set on it do not carry over.")
         print("next: CMD_edit_coarse_mesh to hand-edit the layout, then CMD_densities and "

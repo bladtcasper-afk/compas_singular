@@ -1,6 +1,7 @@
 #! python3
 
 # r: compas
+# r: pydantic
 
 """**Step: read a coarse layout DRAWN over the domain boundaries.**
 
@@ -8,7 +9,7 @@
             TopologyProblem::Skeleton::EdgeCurves    the division lines
             TopologyProblem::Skeleton::Poles         collapsed corners, if any
     writes  TopologyProblem::Skeleton::{Mesh, Poles, Polylines}
-            <document cache>/coarse.json
+            the session's layout
     never   touches Outer, Inner or EdgeCurves -- they are the input
 
 The mirror of ``CMD_coarse_mesh``: that one GENERATES a layout, this one reads
@@ -69,18 +70,6 @@ The divisions then have to carry the outer boundary themselves, as they did
 before the walls were read separately: the layout's boundary is whatever ends
 up with one patch beside it. ``Inner`` curves are still walls and holes.
 """
-# Development bootstrap -- delete once compas_singular is installed into Rhino's
-# Python. MUST run before any compas_singular import: Rhino resets sys.path between
-# runs but keeps sys.modules, so put the source on the path and drop a stale copy
-# (see CMD_start for why every module, framefield included, has to go).
-import sys
-SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
-if SINGULAR_SRC not in sys.path:
-    sys.path.insert(0, SINGULAR_SRC)
-if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
-    for _mod in list(sys.modules):
-        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
-            del sys.modules[_mod]
 
 import re
 
@@ -93,12 +82,10 @@ from compas_rhino.conversions import point_to_compas
 from compas_singular.datastructures import CoarsePseudoQuadMesh
 from compas_singular.datastructures import split_at_corners
 from compas_singular.datastructures import split_at_junctions
-from compas_singular.rhino.helpers import bake_mesh, bake_points
-from compas_singular.rhino.helpers import bake_polylines, clear_layer
 from compas_singular.rhino.helpers import curve_points
 
 from compas_singular.rhino.project import get_settings
-from compas_singular.rhino.project import cache_path, COARSE_CACHE
+from compas_singular.rhino.session import RhinoSession
 
 #How finely a CURVED input curve is sampled, as a multiple of the background
 #spacing. The same factor CMD_coarse_mesh samples its walls at, and for the same
@@ -517,38 +504,28 @@ def main():
         print("  {} triangular patch(es), kept as pseudo-quads with a collapsed "
               "corner".format(sides[3]))
 
-    # ``route`` rides in ``attributes`` and so travels with the side-car. It is
+    # ``route`` rides in ``attributes`` and so travels with the session. It is
     # what a later step reads to know the layout was not generated: there is no
     # field behind it and no traced network to warp.
     coarse.attributes["route"] = "drawn"
 
     # ------------------------------------------------------------------
-    # bake -- never onto Outer, Inner or EdgeCurves, which are the input
+    # into the session -- and never onto Outer, Inner or EdgeCurves, the input
     # ------------------------------------------------------------------
-    bake_mesh(coarse, rs.AddLayer(name="Mesh", parent="Skeleton"))
+    # ``shape_polylines`` is what the edge curves are rebuilt from, matching by
+    # the geometric key of each edge's two ends. Every piece IS one coarse edge
+    # with exactly those ends, so every edge finds its curve and no interior
+    # edge densifies as a chord. The walls are included: a boundary edge's shape
+    # comes from the Outer and Inner curves first, and these are its fallback.
+    coarse.set_shape_polylines(pieces)
 
-    pole_layer = rs.AddLayer(name="Poles", parent="Skeleton")
-    clear_layer(pole_layer)
-    pole_points = [coarse.vertex_coordinates(v) for v in coarse.poles()]
-    if pole_points:
-        bake_points(pole_points, pole_layer)
-
-    # ``Polylines`` is where CMD_quad_mesh looks for the curve belonging to each
-    # coarse edge, matching by the geometric key of its two ends. Every piece IS
-    # one coarse edge with exactly those ends, so every edge finds its curve
-    # there and no interior edge densifies as a chord. The walls are included:
-    # CMD_quad_mesh takes a boundary edge's shape from the Outer and Inner curves
-    # first, and these are only its fallback.
-    _baked, skipped = bake_polylines(
-        pieces, rs.AddLayer(name="Polylines", parent="Skeleton"))
-    if skipped:
-        print("  {} curve(s) Rhino refused on the Polylines layer".format(skipped))
-
-    # The side-car: strips, densities, poles, the drawn curves and the route, none
-    # of which survives ``rs.AddMesh``. Written last, so a failed bake never
-    # leaves a cache describing a layout the document does not have.
-    coarse.save_to_json(cache_path(COARSE_CACHE))
-    print("layout cached: {}".format(cache_path(COARSE_CACHE, create=False)))
+    # Recording draws the layout on Skeleton::Mesh, its poles on ::Poles and the
+    # pieces on ::Polylines. EdgeCurves is left alone for a DRAWN layout: the
+    # curves there are the ones just read.
+    session = RhinoSession.current()
+    session.coarse = coarse
+    session.record("Read coarse mesh")
+    print("layout stored in the session, and drawn")
     print("note: this replaces any previous layout -- densities (CMD_densities) and "
           "patterns (CMD_dense_pattern) set on it do not carry over.")
     print("next: CMD_densities, then CMD_quad_mesh.")

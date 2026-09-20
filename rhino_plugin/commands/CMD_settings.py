@@ -1,5 +1,7 @@
 #! python3
 # r: compas
+# r: pydantic
+
 """Show and edit this document's settings.
 
     reads   document user text "settings"      over the defaults
@@ -13,18 +15,6 @@ the density target; ``CMD_quad_mesh``: field_aware) -- all through the same stor
 so what is shown here is always what they will use.
 """
 
-# Development bootstrap -- delete once compas_singular is installed into Rhino's
-# Python. MUST run before any compas_singular import: Rhino resets sys.path between
-# runs but keeps sys.modules, so put the source on the path and drop a stale copy
-# (see CMD_start for why every module, framefield included, has to go).
-import sys
-SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
-if SINGULAR_SRC not in sys.path:
-    sys.path.insert(0, SINGULAR_SRC)
-if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
-    for _mod in list(sys.modules):
-        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
-            del sys.modules[_mod]
 
 import rhinoscriptsyntax as rs
 
@@ -54,7 +44,7 @@ def main():
         section = rs.GetString(
             message="Edit settings",
             defaultString="Done",
-            strings=["Background_Spacing", "Guide_Allignment", "Density_Mode",
+            strings=["Background_Spacing", "Guide_Alignment", "Density_Mode",
                      "Target_Length", "Target_Density", "Field_Aware", "Symmetry",
                      "Relax", "Defaults", "Done"])
         # rs.GetString returns the option as typed or clicked; compare lower-case.
@@ -66,11 +56,11 @@ def main():
                                settings["triangulation_spacing"], 1e-3)
             if value:
                 settings["triangulation_spacing"] = value
-        elif section == "guide_allignment":
+        elif section == "guide_alignment":
             answer = choose("Elements run ALONG (tangent) or ACROSS (perpendicular) the guides?",
-                            settings["guide_allignment"], ["tangent", "perpendicular"])
+                            settings["guide_alignment"], ["tangent", "perpendicular"])
             if answer:
-                settings["guide_allignment"] = answer
+                settings["guide_alignment"] = answer
         elif section == "density_mode":
             answer = choose("Strips with no picked density: by target LENGTH or fixed DENSITY?",
                             settings["density_mode"], ["length", "density"])

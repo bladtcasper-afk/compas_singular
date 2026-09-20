@@ -1,14 +1,13 @@
 #! python3
 
 # r: compas
+# r: pydantic
 
 """**Densify the coarse layout into the quad mesh.**
 
-    reads   TopologyProblem::Skeleton::{Mesh, Poles, Polylines}
+    reads   the session's layout WITH its attributes, and its field if step 3 solved one
             TopologyProblem::InputBoundaries::{Outer, Inner}
-            <document cache>/coarse.json   the layout WITH its attributes
-            <document cache>/field.json    the cross field, if step 3 solved one
-    writes  TopologyProblem::QuadMesh
+    writes  the session's dense mesh, drawn on TopologyProblem::QuadMesh
 
 **A coarse edge is a straight chord, and the coarse layout has to stay that
 way.** Strips, densities, poles and ``add_strip`` are all defined on the
@@ -22,40 +21,27 @@ on an ellipse and 74% on a disc, and on a radius-5 disc the dense boundary sits
 That mapping used to be dropped here. The layout is baked as a Rhino mesh, and a
 Rhino mesh is vertices and faces -- it cannot carry a per-edge polyline -- so
 this step read the layout back and called a bare ``densification()``.
-``coarse_edges_to_curves`` rebuilds the mapping from the document instead: the
-walls come from the input curves on ``InputBoundaries``, the interior branches
-from ``Skeleton::Polylines``. Nothing is cached and nothing is keyed by vertex
-index, so it survives a save, a reopen, an edit in CMD_edit_coarse_mesh, and the
-single-precision round trip ``rs.AddMesh`` puts every corner through.
+``coarse_edges_to_curves`` rebuilds the mapping: the walls come from the input
+curves on ``InputBoundaries``, the interior branches from the layout's own
+``shape_polylines``. Nothing is keyed by vertex index, so it survives an edit in
+CMD_edit_coarse_mesh.
 
 Read the ``coarse edges`` tally it prints. ``chord`` is the count that costs
 area, and on a curved domain it should be interior edges only.
 """
 
-# Development bootstrap -- delete once compas_singular is installed into Rhino's
-# Python. MUST run before any compas_singular import: Rhino resets sys.path between
-# runs but keeps sys.modules, so put the source on the path and drop a stale copy
-# (see CMD_start for why every module, framefield included, has to go).
-import sys
-SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
-if SINGULAR_SRC not in sys.path:
-    sys.path.insert(0, SINGULAR_SRC)
-if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
-    for _mod in list(sys.modules):
-        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
-            del sys.modules[_mod]
 
 import rhinoscriptsyntax as rs
 
 from compas_singular.datastructures import coarse_edges_to_curves, snap_corners_to_walls
-from compas_singular.framefield.field import CrossField
-from compas_singular.rhino.helpers import bake_mesh, clear_layer
-from compas_singular.rhino.helpers import read_boundaries, read_boundary_loops, read_polylines
+from compas_singular.rhino.helpers import clear_layer
+from compas_singular.rhino.helpers import read_boundaries, read_boundary_loops
 from compas_singular.framefield.quality import mesh_quality
 
 from compas_singular.rhino.project import get_settings, set_settings
-from compas_singular.rhino.project import cache_path, read_layout, FIELD_CACHE, DENSE_CACHE
+from compas_singular.rhino.project import layout_polylines, read_layout
 from compas_singular.rhino.project import resolve_relax, resolve_symmetry
+from compas_singular.rhino.session import RhinoSession
 # One implementation, shared with CMD_densities.
 from compas_singular.rhino.project import resolve_densities
 from compas_singular.rhino.project import ROOT
@@ -73,18 +59,14 @@ def main():
     # ------------------------------------------------------------------
     # what the previous steps left behind
     # ------------------------------------------------------------------
-    # The side-car when it still matches the baked layout, the document
-    # otherwise -- see ``read_layout``. Trusting the side-car unconditionally
-    # used to mean a stale coarse.json (one CMD_edit_coarse_mesh never
-    # finished writing, say) silently densified whatever it had, with the
-    # baked ``Mesh`` layer showing the real, edited layout and nobody told.
-    coarse, _poles, _source = read_layout()
+    # A COPY of the session's layout: snapping and densities below change it,
+    # and it goes back into the session only when this step records.
+    coarse = read_layout()
 
-    # The field is a side-car because it cannot be baked: it is 443 background
-    # vertices and a complex number per vertex, and no Rhino object holds that.
-    # ``default=None`` because a skeleton-route document legitimately has none.
-    field = CrossField.load_from_json(cache_path(FIELD_CACHE, create=False),
-                                      default=None)
+    # The field lives in the session because it cannot be baked: it is 443
+    # background vertices and a complex number per vertex, and no Rhino object
+    # holds that. ``None`` on the skeleton route, legitimately.
+    field = RhinoSession.current().field
 
     # ------------------------------------------------------------------
     # is the field still this document's field?
@@ -103,7 +85,7 @@ def main():
         # "solver settings changed" on every guided document and throw away a
         # perfectly good field.
         why = field.mismatch(outer, inners, guides=guides,
-                             mode=settings["guide_allignment"],
+                             mode=settings["guide_alignment"],
                              target_length=settings["triangulation_spacing"],
                              relax=resolve_relax(settings, guides),
                              symmetry=resolve_symmetry(settings))
@@ -119,6 +101,9 @@ def main():
     )
 
     option_defaults = [False, True, True]
+
+    if coarse.attributes['decomposition_type'] == 'field':
+        option_defaults[0] = True
 
     options = rs.GetBoolean("Densify the coarse layout.", options, option_defaults)
     if options is None:
@@ -138,9 +123,7 @@ def main():
     # ------------------------------------------------------------------
     # A coarse edge is a straight chord and the layout has to keep it that way,
     # so the SHAPE of each edge is handed to ``densification`` separately. Built
-    # from the DOCUMENT -- walls plus the branches on ``Skeleton::Polylines`` --
-    # so it survives a save, a reopen and the single-precision round trip
-    # ``rs.AddMesh`` puts every corner through.
+    # from the walls in the DOCUMENT plus the layout's own shape polylines.
     wall_sampling = settings["triangulation_spacing"] * WALL_SAMPLING_FACTOR
     outer_loop, inner_loops = read_boundary_loops(wall_sampling)
     loops = [outer_loop] + inner_loops
@@ -151,13 +134,8 @@ def main():
         print("snapped {} boundary corner(s) onto their wall, worst {:.4f}".format(
             snapped, worst))
 
-    # ``AddLayer`` on an existing layer returns its FULL '::' path without
-    # recreating it, and the full path is what ``ObjectsByLayer`` needs -- a
-    # nested layer's short name is not resolvable on its own. Same idiom as
-    # CMD_edit_coarse_mesh.
-    polyline_layer = rs.AddLayer(name="Polylines", parent="Skeleton")
     edges_to_curves, tally = coarse_edges_to_curves(
-        coarse, loops=loops, polylines=read_polylines(polyline_layer))
+        coarse, loops=loops, polylines=layout_polylines(coarse))
 
     # ------------------------------------------------------------------
     # densities, then the mesh
@@ -173,10 +151,15 @@ def main():
         print(coarse.edges_to_curves())
         dense = coarse.quad_mesh(boundary_curvature=boundary_curvature, skeleton_curvature=skeleton_curvature)
 
+    # What was under QuadMesh belonged to the previous mesh: an edited copy, a
+    # smoothed one, a dual. Recording draws the new one on QuadMesh itself.
     layer = rs.AddLayer("QuadMesh", parent=ROOT)
     clear_layer(layer, clean_sublayers=True)
-    bake_mesh(dense, layer)
-    dense.save_to_json(cache_path(DENSE_CACHE))
+    session = RhinoSession.current()
+    session.coarse = coarse          # with the densities it was meshed at
+    session.dense = dense
+
+    session.record("Quad mesh")
 
     # ------------------------------------------------------------------
     # what to read in the output
@@ -202,7 +185,7 @@ def main():
               "this is what makes one circle come out round and the next a "
               "polygon".format(tally["wall_missed"]))
 
-    print("baked to '{}'".format(layer))
+    print("drawn on '{}'".format(layer))
     print("note: re-running this step regenerates from the coarse layout and "
           "overwrites any hand edits made in CMD_edit_quad_mesh.")
     print("next: CMD_smoothen / CMD_smoothen_guide to relax the mesh, CMD_dual for "

@@ -1,16 +1,15 @@
 #! python3
 
 # r: compas
+# r: pydantic
+# r: compas_rui
 
 """**Step 4 -- edit the COARSE layout by hand, then commit it.**
 
-    reads   TopologyProblem::Skeleton::Mesh          the layout
-            TopologyProblem::Skeleton::Poles         its poles
+    reads   the session's layout and field
             TopologyProblem::InputBoundaries::*      the domain
-    writes  TopologyProblem::Skeleton::Mesh          on 'commit' only
-            TopologyProblem::Skeleton::Poles
-            TopologyProblem::Skeleton::Polylines     the re-traced separatrices
-            TopologyProblem::Skeleton::EdgeCurves    the layout WITH its curvature
+    writes  the session's layout                     on 'commit' only, drawn on
+            TopologyProblem::Skeleton::{Mesh, Poles, Polylines, EdgeCurves}
     scratch TopologyProblem::Skeleton::TempEdit      pickable corners and edges
 
 Six operations:
@@ -55,9 +54,10 @@ drawing, prompting, baking. The editing itself -- the cut planner, the all-quad
 gate, the strip deletion, the curve map, the commit -- is
 ``compas_singular.editing.CoarseEditor`` and imports no ``rs`` at all, so
 the same four operations can be scripted and tested with Rhino closed. The
-generic half of the interaction (draw a mesh as pickable objects, pick a vertex
-or an edge, drag with a live preview) is ``compas_singular.rhino.mesh_ui``,
-shared with CMD_edit_quad_mesh. What stays here is what only this command needs:
+generic half of the interaction (draw a mesh as pickable objects, pick a vertex,
+an edge or a strip) is the layout's scene object, ``RhinoCoarseObject``, and the
+drag with a live preview is ``mesh_ui.drag_point``, both shared with
+CMD_edit_quad_mesh. What stays here is what only this command needs:
 drawing a curve ACROSS the layout, and the prompts that phrase this step.
 
 **Why a line is never one edge.** A quad layout cannot gain or lose a single
@@ -71,42 +71,21 @@ message says which half of it was hit.
 # imports
 # ----------------------------------------------------------------------
 
-# Development bootstrap -- delete once compas_singular is installed into Rhino's
-# Python. MUST run before any compas_singular import: Rhino resets sys.path between
-# runs but keeps sys.modules, so put the source on the path and drop a stale copy
-# (see CMD_start for why every module, framefield included, has to go).
-import sys
-SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
-if SINGULAR_SRC not in sys.path:
-    sys.path.insert(0, SINGULAR_SRC)
-if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
-    for _mod in list(sys.modules):
-        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
-            del sys.modules[_mod]
-
 
 import rhinoscriptsyntax as rs
 import scriptcontext as sc
 import Rhino
 from System.Drawing import Color
 
-from compas_singular.datastructures import CoarsePseudoQuadMesh
 from compas_singular.editing import CoarseEditor
-from compas_singular.framefield.field import CrossField
 from compas_singular.rhino import mesh_ui
 from compas_singular.rhino.mesh_ui import FINISH
 from compas_singular.rhino.coarse_curves import coarse_edges_to_curves
-from compas_singular.rhino.helpers import bake_edge_curves
-from compas_singular.rhino.helpers import bake_mesh
-from compas_singular.rhino.helpers import bake_points
-from compas_singular.rhino.helpers import bake_polylines
-from compas_singular.rhino.helpers import clear_layer
 from compas_singular.rhino.helpers import read_boundaries
 from compas_singular.rhino.helpers import read_boundary_loops
-from compas_singular.rhino.helpers import read_coarse
-from compas_singular.rhino.helpers import read_polylines
 from compas_singular.rhino.project import get_settings
-from compas_singular.rhino.project import cache_path, COARSE_CACHE, FIELD_CACHE
+from compas_singular.rhino.project import layout_polylines, read_layout
+from compas_singular.rhino.session import RhinoSession
 
 
 # ----------------------------------------------------------------------
@@ -142,32 +121,26 @@ EDGE_CURVE_LAYER = rs.AddLayer(name="EdgeCurves", parent="Skeleton", color=(0, 1
 # Read ONCE. This samples every boundary curve in the document, and the command
 # used to do it twice with identical arguments and throw the first result away.
 outer, inners, guides, point_features = read_boundaries(spacing=SPACING)
-coarse, poles = read_coarse()
-guids = rs.ObjectsByLayer("Mesh")
-if not guids:
-    raise RuntimeError(
-        "No coarse layout on '{}' ".format(
-            "Mesh"))
-coarse = CoarsePseudoQuadMesh.load_from_json(
-        cache_path(COARSE_CACHE, create=False), default=None)
+# A copy; 'commit' hands the edited layout back to the session.
+coarse = read_layout()
 print("layout: {} patch(es), {} corner(s), {} pole(s)".format(
-    coarse.number_of_faces(), coarse.number_of_vertices(), len(poles)))
+    coarse.number_of_faces(), coarse.number_of_vertices(), len(coarse.poles())))
 
 # **This step no longer solves a field.** It used to call ``get_decomposition()``
 # for one reason only -- ``edit_coarse`` lived on the decomposition -- and paid
 # for a full solve to do it. The editor is anchored on the LAYOUT now, so all it
 # needs is what step 3 already left behind:
 #
-#   * the traced separatrices, baked on ``Skeleton::Polylines``. They give a cut
+#   * the traced separatrices, the layout's ``shape_polylines``. They give a cut
 #     across a curved edge the shape of the two halves it makes, and they are
-#     republished with the user's own curves through ``editor.all_polylines``;
-#   * the cross field, from the side-car ``field.json`` -- the same file step 6
-#     reads. It is CARRIED, not consulted: nothing in an edit depends on it, and
-#     ``default=None`` because a skeleton-route document legitimately has none.
-field = CrossField.load_from_json(cache_path(FIELD_CACHE, create=False),
-                                  default=None)
-polylines = read_polylines(POLYLINE_LAYER)
-print("separatrices: {} read from the document".format(len(polylines)))
+#     stored again with the user's own curves through ``editor.all_polylines``;
+#   * the cross field, from the session -- the same one step 6 reads. It is
+#     CARRIED, not consulted: nothing in an edit depends on it, and it is None
+#     on a skeleton-route document, legitimately.
+session = RhinoSession.current()
+field = session.field
+polylines = layout_polylines(coarse)
+print("separatrices: {} on the layout".format(len(polylines)))
 
 #: What ``commit()`` puts here, and the only thing the write-back below tests.
 #: It used to read ``decomposition.edit_notes``, which was a side channel through
@@ -177,19 +150,31 @@ COMMIT_NOTES = {}
 
 editor = CoarseEditor(coarse, field=field, loops=[outer] + inners,
                       polylines=polylines)
-scene = mesh_ui.PickableMesh(EDIT_LAYER)
+# The layout's scene object, drawing the layout being edited on a scratch layer.
+layout = session.scene.add(editor.mesh, layer=EDIT_LAYER, show_faces=False,
+                           show_vertices=True, show_edges=True)
 
 
-def redraw():
-    """The layout as pickable corners and edges, poles coloured.
+def redraw(special=None):
+    """The layout as pickable corners and edges, poles coloured -- or ``special``.
 
     An edge carrying a drawn shape is drawn as that shape -- drawing an added
     arc as the chord it is stored as would make a cut that worked look like one
-    that snapped straight.
+    that snapped straight. The editor's mesh is handed over every time: an edit
+    can replace it with a new object.
     """
-    scene.draw(editor.mesh,
-               edge_shape=editor.edge_shape,
-               special=editor.mesh.poles() if hasattr(editor.mesh, "poles") else ())
+    layout.mesh = editor.mesh
+    layout.edge_shape = editor.edge_shape
+    if special is None:
+        special = editor.mesh.poles() if hasattr(editor.mesh, "poles") else ()
+    layout.special = special
+    layout.redraw()
+
+
+def draw_strips():
+    """Every strip of the layout being edited, as a pickable ribbon."""
+    layout.mesh = editor.mesh
+    layout.draw_strips()
 
 
 # ----------------------------------------------------------------------
@@ -237,7 +222,7 @@ def move_vertices():
     """Drag corners until Esc. ``True`` if any moved."""
     changed = False
     while True:
-        vkey = scene.pick_vertex("Select a coarse corner")
+        vkey = layout.pick_vertex("Select a coarse corner")
         if vkey is None:
             return changed
         on_boundary = editor.is_vertex_on_boundary(vkey)
@@ -280,7 +265,7 @@ def move_pole():
             return changed
         redraw()
         sc.doc.Views.Redraw()
-        pkey = scene.pick_vertex("Select a pole to move (highlighted)")
+        pkey = layout.pick_vertex("Select a pole to move (highlighted)")
         if pkey is None:
             return changed
         if pkey not in poles:
@@ -297,10 +282,10 @@ def move_pole():
                 "with one or two patches, to a neighbouring corner).".format(pkey))
             continue
 
-        scene.draw(editor.mesh, edge_shape=editor.edge_shape, special=targets)
+        redraw(special=targets)
         sc.doc.Views.Redraw()
         print("  pole {} can move to corner(s) {}".format(pkey, targets))
-        vkey = scene.pick_vertex("New corner for pole {} (highlighted, Esc to "
+        vkey = layout.pick_vertex("New corner for pole {} (highlighted, Esc to "
                                  "pick another pole)".format(pkey))
         if vkey is None:
             continue
@@ -339,7 +324,7 @@ def choose_mode():
 
 def pick_second_edge():
     """The edge to end ON. ``(guid, geometry)``, or ``(None, None)``."""
-    picked = scene.pick_edge("Select the coarse edge to end ON")
+    picked = layout.pick_edge("Select the coarse edge to end ON")
     if picked is None:
         return None, None
     _edge, guid = picked
@@ -392,7 +377,7 @@ def draw_polyline(start_pt):
                 return None       # Esc -> back to the mode menu
 
             point = gp.Point()
-            snapped = scene.closest_edge_point(point)
+            snapped = layout.closest_edge_point(point)
             if snapped:
                 points.append(snapped)   # exact point on the layout edge
                 break                    # landed on the layout -> path complete
@@ -512,7 +497,7 @@ def add_polyedge():
         temp_point = None
         obj_id = None
         try:
-            picked = scene.pick_edge("Select the coarse edge to start FROM")
+            picked = layout.pick_edge("Select the coarse edge to start FROM")
             if picked is None:
                 return changed
             _edge, first_guid = picked
@@ -568,7 +553,7 @@ def remove_strip():
     """Delete a picked strip, until Esc. ``True`` if any went.
 
     **The strip is picked as a SURFACE, not as an edge.** Each band is drawn as a
-    ribbon down its own middle -- see ``mesh_ui.draw_strips`` for why a filled
+    ribbon down its own middle -- see ``RhinoCoarseObject.draw_strips`` for why a filled
     band cannot be picked -- so what the user clicks is the thing that goes.
 
     **A pick deletes the strip immediately -- there is no "are you sure".**
@@ -580,11 +565,11 @@ def remove_strip():
     """
     changed = False
     while True:
-        scene.draw_strips(editor.mesh)
+        draw_strips()
         sc.doc.Views.Redraw()
-        skey = scene.pick_strip("Pick a strip to remove (Esc to return to the menu)")
+        skey = layout.pick_strip("Pick a strip to remove (Esc to return to the menu)")
         if skey is None:
-            scene._clear_strips()
+            layout.clear_strips()
             sc.doc.Views.Redraw()
             return changed
 
@@ -614,7 +599,7 @@ def remove_strip():
         redraw()
         # The ribbons describe the layout as it WAS; redrawn at the top of
         # the loop, but cleared here so nothing stale is on screen meanwhile.
-        scene._clear_strips()
+        layout.clear_strips()
 
 # ----------------------------------------------------------------------
 # add a strip -- Robin's grammar rule, along existing corners
@@ -636,7 +621,7 @@ def add_strip():
     **Esc cancels; Enter saves.** The two used to mean the same thing --
     whichever ended the picking loop went on to add the strip -- which made Esc
     a save with no way to back out of a run picked by mistake. They are picked
-    with :meth:`~compas_singular.rhino.mesh_ui.PickableMesh.pick_vertex_or_finish`
+    with ``RhinoCoarseObject.pick_vertex_or_finish``
     now, which tells them apart: Esc abandons the whole pick and returns to the
     menu with nothing added, Enter stops picking and adds the strip from the
     corners picked so far.
@@ -647,7 +632,7 @@ def add_strip():
     cancelled = False
     try:
         while True:
-            picked = scene.pick_vertex_or_finish(
+            picked = layout.pick_vertex_or_finish(
                 "Corner {} of the new line (Enter when done, Esc to cancel)"
                 .format(len(polyedge) + 1))
             if picked is None:
@@ -670,10 +655,10 @@ def add_strip():
             # Show the run so far. Picking corner by corner is otherwise blind:
             # the keys are on the command line, but nothing on screen says which
             # way the line is going or whether the last pick was the intended one.
-            scene.show_path(polyedge, mesh=editor.mesh)
+            layout.show_path(polyedge)
             print("  {} corner(s): {}".format(len(polyedge), polyedge))
     finally:
-        scene.clear_path()
+        layout.clear_path()
         sc.doc.Views.Redraw()
 
     if cancelled:
@@ -710,11 +695,11 @@ def divide_strip():
     """
     changed = False
     while True:
-        scene.draw_strips(editor.mesh)
+        draw_strips()
         sc.doc.Views.Redraw()
-        skey = scene.pick_strip("Pick a strip to divide in two (Esc to return to the menu)")
+        skey = layout.pick_strip("Pick a strip to divide in two (Esc to return to the menu)")
         if skey is None:
-            scene._clear_strips()
+            layout.clear_strips()
             sc.doc.Views.Redraw()
             return changed
 
@@ -729,7 +714,7 @@ def divide_strip():
                                   notes.get("faces_out")))
         changed = True
         redraw()
-        scene._clear_strips()
+        layout.clear_strips()
 
 
 # ----------------------------------------------------------------------
@@ -784,7 +769,7 @@ mesh_guids = rs.ObjectsByLayer(MESH_LAYER)
 rs.HideObjects(mesh_guids)
 
 redraw()
-lock_state = scene.unlock()
+lock_state = layout.unlock()
 rs.LayerVisible("Poles", False)
 rs.LayerVisible("Polylines", False)
 rs.LayerVisible("EdgeCurves", False)
@@ -824,9 +809,9 @@ try:
 finally:
     # Everything the command put on screen comes off, in the order that leaves
     # the document as it was found even if an operation raised.
-    scene.relock(lock_state)
-    scene.clear()
-    clear_layer(EDIT_LAYER)
+    layout.relock(lock_state)
+    layout.clear()
+    session.scene.remove(layout)
     rs.ShowObjects([guid for guid in mesh_guids if rs.IsObject(guid)])
     sc.doc.Views.Redraw()
 
@@ -836,69 +821,25 @@ finally:
 # ----------------------------------------------------------------------
 
 if COMMITTED is None:
-    print("nothing committed -- '{}' is unchanged.".format(MESH_LAYER))
+    print("nothing committed -- the layout is unchanged.")
 else:
-    rs.EnableRedraw(False)
-    # ``commit()`` mutated the layout read at the top of this file in place, so
-    # this IS ``coarse`` -- returned as well so the reference is explicit.
     committed = COMMITTED
-    bake_mesh(committed, MESH_LAYER)
 
-    # Poles come from the COMMITTED mesh, keys and coordinates both. Reading
-    # keys from one mesh and coordinates from another is not a style point:
-    # a rebuilding commit renumbers -- measured 2 of 8 unchanged on a disc -- so
-    # the old code baked pole points at arbitrary wrong corners, or raised.
-    pole_keys = committed.poles() if hasattr(committed, "poles") else []
-    bake_points([committed.vertex_coordinates(vkey) for vkey in pole_keys],
-                POLES_LAYER)
-
-    # The traced separatrix network, plus any curve the user drew. These are
-    # what CMD_quad_mesh matches coarse edges against, so a stale set here
-    # silently costs curvature there.
+    # The shape of every edge of the COMMITTED layout, from the walls in the
+    # document and ``editor.all_polylines``: the separatrices this command read
+    # plus every curve the user drew in it. A drawn arc missing from that set
+    # comes out a straight chord in CMD_quad_mesh, so both go onto the layout.
     #
-    # They are NOT re-traced against the edited layout -- ``_build`` is cached
-    # and the field was not re-solved -- so after a corner is moved they will
-    # visibly not line up with it. That is correct rather than a glitch: an
-    # edge that no longer matches its old separatrix falls back to a chord, and
-    # seeing the mismatch is seeing what will actually be densified.
-    #
-    # ``editor.all_polylines``, which is the traced network this command READ
-    # from the layer plus the curves the user drew during this session. That the
-    # two are published together is not cosmetic: CMD_quad_mesh rebuilds the
-    # edge-curve mapping from this layer ALONE, so a drawn arc that misses this
-    # bake comes out a straight chord there. The old route through the
-    # decomposition had a matching trap -- ``decomposition_polylines()``
-    # reassigned the list and dropped the user curves, measured 48 entries down
-    # to 47 -- which is the same failure reached by a different road.
-    ribs = editor.all_polylines
-    _guids, skipped = bake_polylines(ribs, POLYLINE_LAYER)
-    print("separatrices: {} baked".format(len(_guids)))
-    if skipped:
-        # Not fatal, and it must not be: this runs AFTER the mesh is written, so
-        # raising here would leave the document half updated -- the layout new,
-        # this layer emptied by the clear and never refilled, and the next
-        # command quietly chording every edge. rs.AddPolyline RAISES on geometry
-        # Rhino refuses, which is exactly how that used to happen.
-        print("  {} rib(s) skipped -- Rhino refused them (coincident points at "
-              "the document tolerance, or fewer than two)".format(skipped))
-
-    # Refresh the curved layout. Left alone it would still show the shape from
-    # before the edit, which is worse than not drawing it at all. Rebuilt with
-    # the SAME document-only builder CMD_quad_mesh uses, so what is on screen
-    # is what will actually be densified -- including a moved interior edge
-    # falling back to a chord, which is the truthful state and worth seeing.
+    # They are NOT re-traced against the edited layout -- the field was not
+    # re-solved -- so after a corner is moved an edge may no longer match its
+    # separatrix. That edge falls back to a chord, which is what will actually
+    # be densified.
     outer_loop, inner_loops = read_boundary_loops(WALL_SAMPLING)
     curves, tally = coarse_edges_to_curves(
         committed,
         loops=[outer_loop] + inner_loops,
-        polylines=read_polylines(POLYLINE_LAYER))
-    _guids, skipped = bake_edge_curves(curves.values(), EDGE_CURVE_LAYER)
-    skeleton = coarse.polylines()
-    bake_polylines(skeleton, "Polylines")
+        polylines=editor.all_polylines)
     print("coarse edges: {}".format(tally))
-    if skipped:
-        print("  {} edge curve(s) Rhino refused -- those edges densify as "
-              "chords".format(skipped))
     if tally.get("wall_missed"):
         print("  {} boundary edge(s) did NOT get their wall arc -- on a hole "
               "this is what makes one circle come out round and the next a "
@@ -911,30 +852,21 @@ else:
     if notes.get("off_wall"):
         print("  {} corner(s) sit on no wall -- expected only where a patch was "
               "deleted".format(notes["off_wall"]))
-    # Densities stored in step 5 are keyed on edge midpoints, and this edit
-    # moved some of those. Step 5 reports how many overrides survived.
-    print("layout written back to '{}'".format(MESH_LAYER))
     print("note: any per-strip densities from CMD_densities and patterns from "
           "CMD_dense_pattern survive a move alone, but are dropped by a "
           "topology change (move_pole, add_polyedge, add_strip, remove_strip, "
           "divide_strip) -- "
           "CMD_densities re-derives them from the target in that case.")
 
-    # The side-car, refreshed to match. Steps 5 and 6 prefer it over the baked
-    # mesh because it carries what a bake cannot -- strips, ``face_pole``, the
-    # route -- but only while it still describes the SAME layout; ``read_layout``
-    # compares the two and falls back to the document otherwise. Leaving a stale
-    # one here would therefore not be wrong, just wasteful: every later step
-    # would silently do the re-derivation this exists to avoid.
-    #
-    # ``curves`` -- already computed above for the EdgeCurves bake -- goes on
-    # too, for the same reason: without it a reload has to re-derive the
-    # curvature from the document again instead of just reading it back.
+    # Into the session. Recording draws it: the layout on Skeleton::Mesh, its
+    # poles, its edge curves and its shape polylines on their layers.
     committed.set_edges_to_curves(curves)
+    committed.set_shape_polylines(editor.all_polylines)
     committed.attributes.setdefault("route", "field")
     committed.attributes["edited"] = True
-    committed.save_to_json(cache_path(COARSE_CACHE))
-    rs.EnableRedraw(True)
+    session.coarse = committed
+    session.record("Edit coarse mesh")
+    print("layout written back to the session, and drawn")
 
 rs.LayerVisible("Poles", True)
 rs.LayerVisible("Polylines", True)

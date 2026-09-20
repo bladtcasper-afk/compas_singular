@@ -1,18 +1,18 @@
 #! python3
 # r: compas
+# r: pydantic
 """**Attach this document to the standalone MCP server. Toggle on, toggle off.**
 
     reads   Outer / Inner / Guides / PointFeatures    the domain
             TopologyProblem::QuadMesh             the dense mesh
             Mesh + Poles                          the coarse layout, on request
-            Skeleton::Polylines + coarse.json     with pull_coarse
+            the session's layout                  with pull_coarse
             the current selection                 with pull, selection=true
     writes  TopologyProblem::QuadMesh             only on a push
             ...::QuadMesh::MCP::Before            the mesh that was there
+            the session's layout                  on a push_coarse, drawn by it on
             TopologyProblem::Skeleton::{Mesh, Poles, Polylines, EdgeCurves}
-                                                  only on a push_coarse
             ...::Skeleton::MCP::Before            the layout that was there
-            <document cache>/coarse.json          its strips, densities, patterns
             TopologyProblem::MCP::Markers::<kind> text dots, on push_markers
     prints  one line per request served
 
@@ -45,49 +45,22 @@ leak, and a request posted while Rhino is closed simply waits instead of failing
 3. It never changes your selection, your current layer, or your view.
 4. It writes only under ``TopologyProblem``. Never to a layer you made.
 
-**A purge is expected, not an error.** Every command's bootstrap block
-empties every ``compas_singular`` module out of ``sys.modules``, so running any
-other command in the family leaves this one holding an orphaned copy. The handler
-notices and rebinds. That is safe here only because the wire format is plain
+**A purge is expected, not an error.** ``CMD_dev_reload`` empties every
+``compas_singular`` module out of ``sys.modules``, which leaves this one holding an
+orphaned copy. The handler notices and rebinds. That is safe here only because the wire format is plain
 JSON with no compas types in it -- nothing is pickled and nothing is
 ``isinstance``-checked across the boundary, so two copies of the package alive at
 once cannot produce the ``not the same object as ...Mesh`` failure.
 """
 
-# Development bootstrap -- delete once compas_singular is installed into Rhino's
-# Python. MUST run before any compas_singular import: Rhino resets sys.path between
-# runs but keeps sys.modules, so put the source on the path and drop a stale copy
-# (see CMD_start for why every module, framefield included, has to go).
 import sys
-SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
-if SINGULAR_SRC not in sys.path:
-    sys.path.insert(0, SINGULAR_SRC)
-if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
-    for _mod in list(sys.modules):
-        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
-            del sys.modules[_mod]
-
-
-def ensure_paths():
-    """The path half of the bootstrap, and NOT the purge -- safe to call at any time.
-
-    The handler runs on later script runs, after Rhino has re-initialised
-    ``sys.path``, so a late import there fails with a bare ``ModuleNotFoundError``
-    unless the source goes back on the path first. Delete with the bootstrap.
-    """
-    if SINGULAR_SRC not in sys.path:
-        sys.path.insert(0, SINGULAR_SRC)
-
-
 import traceback
 
 import Rhino
 import rhinoscriptsyntax as rs
 import scriptcontext as sc
 
-from compas_singular.rhino.project import COARSE_CACHE
 from compas_singular.rhino.project import ROOT
-from compas_singular.rhino.project import cache_path
 from compas_singular.rhino.project import layer_path
 
 
@@ -125,31 +98,31 @@ _BOUND = {}
 def _bind():
     """Import everything the handler needs and hold the references.
 
-    Called once at attach and again whenever a purge is detected. Uses
-    ``ensure_paths`` -- safe to call anywhere -- rather than the bootstrap's
-    purge, which is only safe in a module body.
+    Called once at attach and again whenever a purge is detected.
     """
-    ensure_paths()
+    import compas
     import compas_singular
     from compas_singular.mcp.bridge import spool
     from compas_singular.mcp.bridge import wire
     from compas_singular.rhino.helpers import bake_mesh
-    from compas_singular.rhino.helpers import bake_polylines
     from compas_singular.rhino.helpers import clear_layer
     from compas_singular.rhino.helpers import curve_points
     from compas_singular.rhino.helpers import read_coarse
     from compas_singular.rhino.helpers import mesh_from_rhino
     from compas_singular.rhino.helpers import read_boundary_loops
     from compas_singular.rhino.helpers import read_mesh
-    from compas_singular.rhino.helpers import read_polylines
     from compas_singular.rhino import mesh_ui
+    from compas_singular.rhino.project import layout_polylines
+    from compas_singular.rhino.session import RhinoSession
     _BOUND.update({
         "package": compas_singular, "spool": spool, "wire": wire,
-        "bake_mesh": bake_mesh, "bake_polylines": bake_polylines,
+        "compas": compas, "session": RhinoSession.current,
+        "layout_polylines": layout_polylines,
+        "bake_mesh": bake_mesh,
         "clear_layer": clear_layer, "curve_points": curve_points,
         "read_coarse": read_coarse, "mesh_from_rhino": mesh_from_rhino,
         "read_boundary_loops": read_boundary_loops, "read_mesh": read_mesh,
-        "read_polylines": read_polylines, "ensure_layer": mesh_ui.ensure_layer,
+        "ensure_layer": mesh_ui.ensure_layer,
     })
     return _BOUND
 
@@ -305,36 +278,20 @@ def _verb_pull(args):
 
 
 def _verb_pull_coarse(args):
-    """Read a coarse layout the way ``compas_singular.rhino.project.read_layout`` does. Changes nothing.
+    """Read the session's coarse layout, and the domain from the document. Changes nothing.
 
-    Everything a layout needs to come back as it went out: the baked mesh on
-    ``Skeleton::Mesh`` with its poles, the edge shapes on ``Skeleton::Polylines``,
-    the side-car carrying strips / densities / patterns, and the domain. The
-    side-car is sent as TEXT and matched against the mesh on the server, so the
-    link still decides nothing.
+    Everything a layout needs to come back as it went out: its corners and poles,
+    the polylines its edges take their shape from, and the layout itself as TEXT
+    (the ``side_car`` field) carrying strips / densities / patterns. The server
+    matches the text against the corners, so the link still decides nothing.
     """
-    import os
     bound = _fresh()
     spacing = float(args.get("spacing") or 0.125)
     outer, inners, guides, points = _read_domain(bound, spacing)
 
-    mesh = None
-    try:
-        mesh, _poles = bound["read_coarse"]()
-    except RuntimeError:
-        mesh = None
-
-    polylines = []
-    try:
-        polylines = bound["read_polylines"](dict(SKELETON_LAYERS)["polylines"])
-    except Exception:
-        polylines = []
-
-    side_car = None
-    path = cache_path(COARSE_CACHE, create=False)
-    if os.path.isfile(path):
-        with open(path, "r") as stream:
-            side_car = stream.read()
+    layout = bound["session"]().coarse
+    side_car = bound["compas"].json_dumps(layout) if layout is not None else None
+    polylines = bound["layout_polylines"](layout) if layout is not None else []
 
     return {
         "document": document_name(),
@@ -342,10 +299,10 @@ def _verb_pull_coarse(args):
         "inners": [[list(p) for p in loop] for loop in inners],
         "guides": [[list(p) for p in g] for g in guides],
         "points": points,
-        "layout": bound["wire"].mesh_to_wire(mesh) if mesh is not None else None,
+        "layout": bound["wire"].mesh_to_wire(layout) if layout is not None else None,
         "polylines": [[list(p) for p in curve] for curve in polylines],
         "side_car": side_car,
-        "side_car_path": path if side_car is not None else None,
+        "side_car_path": "session" if side_car is not None else None,
     }
 
 
@@ -407,42 +364,24 @@ def _verb_push(args):
     }
 
 
-def _write_side_car(text):
-    """Write the layout's side-car, keeping the one it replaces. ``(path, backup)``.
-
-    Outside the undo record, necessarily -- Rhino's undo does not reach files.
-    That is safe by design: ``project.read_layout`` only trusts a side-car
-    whose corners match the mesh on ``Skeleton::Mesh``, so a Ctrl+Z of the push
-    leaves this one unmatched and ignored, and ``coarse_before.json`` still holds
-    what was there.
-    """
-    import os
-    import shutil
-    path = cache_path(COARSE_CACHE)
-    backup = None
-    if os.path.isfile(path):
-        backup = cache_path(COARSE_CACHE + "_before")
-        shutil.copyfile(path, backup)
-    with open(path, "w") as stream:
-        stream.write(text)
-    return path, backup
-
-
 def _verb_push_coarse(args):
-    """Bake a coarse layout where the CMD_ commands look for one. A write.
+    """Make a coarse layout the session's, and draw it. A write.
 
-    Everything is computed by the server: the layout, its poles, the shape of
-    every edge, and the side-car carrying what a bake cannot -- strips, densities
-    and dense patterns. This verb only puts them in the document, the four
-    layers ``CMD_coarse_mesh`` would have written, so ``CMD_densities``,
+    Everything is computed by the server: the layout WITH what only it knows --
+    strips, densities, dense patterns, the shape of every edge -- in the
+    ``side_car`` text, and the shaped edges in ``polylines``. Recording draws it
+    on the four layers ``CMD_coarse_mesh`` would have, so ``CMD_densities``,
     ``CMD_quad_mesh`` and ``CMD_edit_coarse_mesh`` carry on from it.
     """
     bound = _fresh()
     payload = args.get("layout")
-    if not payload:
+    side_car = args.get("side_car")
+    if not payload or not side_car:
         raise ValueError("the push carried no layout")
     mesh = bound["wire"].mesh_from_wire(payload)
-    side_car = args.get("side_car")
+    layout = bound["compas"].json_loads(side_car)
+    if not layout.shape_polylines():
+        layout.set_shape_polylines(args.get("polylines") or [])
 
     try:
         selected = list(rs.SelectedObjects() or [])
@@ -465,23 +404,14 @@ def _verb_push_coarse(args):
                 except Exception:
                     pass
 
-        layers = dict(SKELETON_LAYERS)
-        bound["bake_mesh"](mesh, layers["mesh"], clear_existing=False)
-
-        poles = [list(p) for p in payload.get("poles") or []]
-        counts["poles"] = 0
-        if poles:
-            # RAISES on refusal, like every rs.Add* -- let it: a layout pushed
-            # without its poles would read back with its pseudo-quads unregistered.
-            for guid in rs.AddPoints(poles) or []:
-                rs.ObjectLayer(guid, layers["poles"])
-                counts["poles"] += 1
-
-        for key in ("polylines", "edge_curves"):
-            guids, skipped = bound["bake_polylines"](
-                args.get(key) or [], layers[key], clear_existing=False)
-            counts[key] = len(guids)
-            counts[key + "_skipped"] = skipped
+        # Into the session INSIDE the undo record, so one Ctrl+Z takes back the
+        # layout and its drawing together. Recording draws it.
+        session = bound["session"]()
+        session.coarse = layout
+        session.record("MCP push coarse")
+        counts["poles"] = len(layout.poles())
+        counts["polylines"] = len(layout.shape_polylines())
+        counts["edge_curves"] = len(layout.edges_to_curves())
     finally:
         sc.doc.EndUndoRecord(serial)
         try:
@@ -492,10 +422,6 @@ def _verb_push_coarse(args):
         except Exception:
             pass
 
-    side_car_path = backup = None
-    if side_car:
-        side_car_path, backup = _write_side_car(side_car)
-
     result = {
         "document": document_name(),
         "layers": dict(SKELETON_LAYERS),
@@ -503,8 +429,8 @@ def _verb_push_coarse(args):
         "vertices": mesh.number_of_vertices(),
         "before_layer": COARSE_BEFORE_LAYER if moved else None,
         "moved_aside": moved,
-        "side_car": side_car_path,
-        "side_car_before": backup,
+        "side_car": "session",
+        "side_car_before": None,
         "undo_record": "MCP push coarse",
     }
     result.update(counts)

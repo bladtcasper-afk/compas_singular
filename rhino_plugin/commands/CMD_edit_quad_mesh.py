@@ -1,6 +1,8 @@
 #! python3
 
 # r: compas
+# r: pydantic
+# r: compas_rui
 
 """**Step 7 -- edit the FINAL mesh by hand.**
 
@@ -58,18 +60,6 @@ everything done here. If an edit can be made on the coarse layout, make it there
 # imports
 # ----------------------------------------------------------------------
 
-# Development bootstrap -- delete once compas_singular is installed into Rhino's
-# Python. MUST run before any compas_singular import: Rhino resets sys.path between
-# runs but keeps sys.modules, so put the source on the path and drop a stale copy
-# (see CMD_start for why every module, framefield included, has to go).
-import sys
-SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
-if SINGULAR_SRC not in sys.path:
-    sys.path.insert(0, SINGULAR_SRC)
-if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
-    for _mod in list(sys.modules):
-        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
-            del sys.modules[_mod]
 
 import rhinoscriptsyntax as rs
 import scriptcontext as sc
@@ -78,11 +68,11 @@ from compas_singular.datastructures import QuadMesh
 from compas_singular.editing import DenseMeshEditor
 from compas_singular.rhino import mesh_ui
 from compas_singular.rhino.helpers import bake_mesh
-from compas_singular.rhino.helpers import clear_layer
 from compas_singular.rhino.helpers import mesh_from_rhino
 from compas_singular.rhino.helpers import read_boundary_loops
 from compas_singular.rhino.project import get_settings
 from compas_singular.rhino.project import ROOT, layer_path
+from compas_singular.rhino.session import RhinoSession
 
 
 # ----------------------------------------------------------------------
@@ -163,8 +153,11 @@ def special_vertices():
 
 
 def redraw():
-    removed, added = scene.sync(editor.mesh, special=special_vertices())
-    return removed, added
+    """Only what changed: a dense mesh is too big to redraw after every click.
+    The editor's mesh is handed over every time: an edit can replace it."""
+    mesh_object.mesh = editor.mesh
+    mesh_object.special = special_vertices()
+    return mesh_object.sync()
 
 
 def edit(mutate):
@@ -195,7 +188,7 @@ def warn_non_manifold(notes):
 def move_vertex():
     changed = False
     while True:
-        vkey = scene.pick_vertex("Select a vertex to move (Esc to return to the menu)")
+        vkey = mesh_object.pick_vertex("Select a vertex to move (Esc to return to the menu)")
         if vkey is None:
             return changed
         start = editor.mesh.vertex_coordinates(vkey)
@@ -224,7 +217,7 @@ def move_vertex():
 def remove_vertex():
     changed = False
     while True:
-        vkey = scene.pick_vertex("Select a vertex to remove with its faces (Esc to return)")
+        vkey = mesh_object.pick_vertex("Select a vertex to remove with its faces (Esc to return)")
         if vkey is None:
             return changed
         ok, notes = edit(lambda: editor.remove_vertex(vkey))
@@ -241,7 +234,7 @@ def remove_vertex():
 def remove_edge():
     changed = False
     while True:
-        picked = scene.pick_edge("Select an edge to remove (Esc to return to the menu)")
+        picked = mesh_object.pick_edge("Select an edge to remove (Esc to return to the menu)")
         if picked is None:
             return changed
         edge, _guid = picked
@@ -315,7 +308,7 @@ def draw_edges():
 def add_line():
     changed = False
     while True:
-        picked = scene.pick_edge("Pick an edge; the whole line through it gains a strip (Esc to return)")
+        picked = mesh_object.pick_edge("Pick an edge; the whole line through it gains a strip (Esc to return)")
         if picked is None:
             return changed
         edge, _guid = picked
@@ -336,7 +329,7 @@ def add_line():
 def remove_line():
     changed = False
     while True:
-        picked = scene.pick_edge("Pick an edge; the whole strip through it is removed (Esc to return)")
+        picked = mesh_object.pick_edge("Pick an edge; the whole strip through it is removed (Esc to return)")
         if picked is None:
             return changed
         edge, _guid = picked
@@ -450,7 +443,9 @@ if not walls:
           "on the outline.")
 
 editor = DenseMeshEditor(mesh, walls=walls)
-scene = mesh_ui.PickableMesh(EDIT_LAYER)
+# The mesh's scene object (a RhinoDenseObject), drawing it on a scratch layer.
+session = RhinoSession.current()
+mesh_object = session.scene.add(mesh, layer=EDIT_LAYER)
 
 # This session's starting point, on its own layer, hidden. Refreshed every run:
 # a backup kept from before a re-run of CMD_quad_mesh would be a mesh of a
@@ -470,7 +465,7 @@ OPERATIONS = ["move_vertex", "remove_vertex", "remove_edge", "remove_face",
 
 try:
     redraw()
-    lock_state = scene.unlock()
+    lock_state = mesh_object.unlock()
     try:
         while True:
             operation = mesh_ui.ask("next", OPERATIONS, "exit")
@@ -513,11 +508,10 @@ try:
                         print("Left unsaved -- '{}' is unchanged.".format(source_layer))
                 break
     finally:
-        scene.relock(lock_state)
+        mesh_object.relock(lock_state)
 finally:
-    scene.clear()
-    if rs.IsLayer(EDIT_LAYER):
-        clear_layer(EDIT_LAYER)
+    mesh_object.clear()
+    session.scene.remove(mesh_object)
     if rs.IsObject(source_guid):
         rs.ShowObjects([source_guid])
     sc.doc.Views.Redraw()

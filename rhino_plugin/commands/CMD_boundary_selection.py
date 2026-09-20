@@ -1,19 +1,7 @@
 #! python3
 
 # r: compas
-
-# Development bootstrap -- delete once compas_singular is installed into Rhino's
-# Python. MUST run before any compas_singular import: Rhino resets sys.path between
-# runs but keeps sys.modules, so put the source on the path and drop a stale copy
-# (see CMD_start for why every module, framefield included, has to go).
-import sys
-SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
-if SINGULAR_SRC not in sys.path:
-    sys.path.insert(0, SINGULAR_SRC)
-if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
-    for _mod in list(sys.modules):
-        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
-            del sys.modules[_mod]
+# r: pydantic
 
 import rhinoscriptsyntax as rs
 import Rhino
@@ -186,7 +174,6 @@ def delete_pts():
         print("No point features selected for deletion.")    
 
 
-
 #Boundary Selection
 rs.AddLayer(name="Outer", parent="InputBoundaries", color=(255, 0, 0))
 rs.AddLayer(name="Inner", parent="InputBoundaries", color=(0, 255, 0))
@@ -197,7 +184,7 @@ rs.AddLayer(name="TrashBin", parent=ROOT, color=(90, 90, 90), visible=False)
 while True:
     section = rs.GetString(message="Edit boundary", defaultString="Continue",
                            strings=["Outer", "Inner", "Background_Triangulation",
-                                    "Point_Features", "Guides", "Guide_Allignment",
+                                    "Point_Features", "Guides", "Guide_Alignment",
                                     "Field_Solver", "Clear", "Continue"])
     section = (section or "Continue").lower()
     # NOTE the output always contains NO capitals!
@@ -207,12 +194,12 @@ while True:
         edit_inner()
     elif section == "guides":
         edit_guides()
-    elif section=="Guide_Allignment".lower():
+    elif section=="Guide_Alignment".lower():
         answer = rs.GetString(message="Elements run ALONG or ACROSS the guides?",
-                              defaultString=settings["guide_allignment"],
+                              defaultString=settings["guide_alignment"],
                               strings=["tangent", "perpendicular"])
         if answer:
-            settings["guide_allignment"] = answer.lower()
+            settings["guide_alignment"] = answer.lower()
             set_settings(settings)
     elif section=="Field_Solver".lower():
         current = settings.get("relax", "auto")
@@ -316,7 +303,6 @@ coarse_mesh: CoarsePseudoQuadMesh = decomposition.decomposition_mesh(point_featu
 
 #this methods collects the strips and returns skey and vertix indices. Afterwards skey can be collected using .strips
 coarse_mesh.collect_strips()
-
 
 
 #using skey the density of each strip can also be set individually

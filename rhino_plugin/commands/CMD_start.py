@@ -1,39 +1,19 @@
 #! python3
 
 # r: compas
+# r: pydantic
 
 """Reset the project: empty the ``TopologyProblem`` layers and recreate them.
 
-Settings, layer names and side-car paths live in ``compas_singular.rhino.project``;
-no command imports another. Edit the settings with ``CMD_settings``.
+The session is reset with them: every item goes, the settings stay. Layer names
+live in ``compas_singular.rhino.project``; no command imports another. Edit the
+settings with ``CMD_settings``.
 """
-
-# ----------------------------------------------------------------------
-# Development bootstrap -- delete once compas_singular is installed into Rhino's
-# Python. MUST run before any compas_singular import.
-#
-# Rhino keeps its interpreter alive between runs: it re-initialises ``sys.path``
-# but keeps ``sys.modules``. So the source goes on the path every run, and every
-# ``compas_singular`` module is dropped so this run imports fresh ones.
-# ``framefield`` must be dropped WITH everything else (2026-08-28): kept, it holds
-# the previous run's ``Mesh`` classes, ``isinstance`` is silently false, and
-# pickling fails with "not the same object as ...Mesh".
-import sys
-SINGULAR_SRC = r"C:\Users\Casper\libraries\carbcomn\compas_singular\compas_singular\src"
-if SINGULAR_SRC not in sys.path:
-    sys.path.insert(0, SINGULAR_SRC)
-if not getattr(sys, "compas_singular_keep_modules", False):  # set by headless tests
-    for _mod in list(sys.modules):
-        if _mod == "compas_singular" or _mod.startswith("compas_singular."):
-            del sys.modules[_mod]
-# ----------------------------------------------------------------------
-
 import rhinoscriptsyntax as rs
 
 from compas_singular.rhino.project import LAYER_DATA
 from compas_singular.rhino.project import ROOT
-from compas_singular.rhino.project import get_settings
-from compas_singular.rhino.project import set_settings
+from compas_singular.rhino.session import RhinoSession
 
 
 def reset_project():
@@ -44,6 +24,10 @@ def reset_project():
     session DELETED the user's whole ``TopologyProblem`` layer as a side effect of
     an import. Nothing imports this file any more; the guard stays anyway.
     """
+    # Before the purge below, which deletes the session's anchor with every other
+    # object under ROOT.
+    settings = RhinoSession.current().settings
+
     #Setup of project folder
     project_folder = ROOT
     if rs.IsLayer(project_folder):
@@ -65,10 +49,14 @@ def reset_project():
     for name, color in LAYER_DATA.values():
         rs.AddLayer(name=name, color=color)
 
-    # Write the settings back, so a document that has none gets the defaults
-    # stored on it. Settings the document already has are kept.
-    settings = set_settings(get_settings())
-    print(settings)
+    # An empty session with the settings kept. Cleared explicitly: with its anchor
+    # gone, the document reads as one from before sessions, and the legacy
+    # import would bring an old side-car layout or field back.
+    session = RhinoSession.current()
+    session.clear(*session.ITEMS)
+    session.settings = settings
+    session.record("Start")
+    print(settings.model_dump())
 
     # Say so. A reset that silently stops happening -- if a future Rhino ran
     # this file under a name other than "__main__" -- would look like a command
