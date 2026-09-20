@@ -38,3 +38,7 @@ DATA = os.path.abspath(os.path.join(HERE, '../../data'))
 TEMP = os.path.abspath(os.path.join(HERE, '../../temp'))
 
 __all__ = []
+
+#: compas finds scene objects through this: ``compas_singular.rhino.scene``
+#: registers how a coarse layout is drawn in Rhino (only when Rhino is present).
+__all_plugins__ = ['compas_singular.rhino.scene']
