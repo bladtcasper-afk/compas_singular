@@ -45,6 +45,21 @@ class CoarseQuadMesh(QuadMesh):
         self.attributes['polygonal_mesh'] = None
         # The SHAPE of each coarse edge, when it is known. See :meth:`edges_to_curves`.
         self.attributes['edges_to_curves'] = []
+        self.attributes['decomposition_type'] = None
+
+    @property
+    def __data__(self):
+        """Everything but the dense mesh this layout last produced.
+
+        ``quad_mesh`` and ``polygonal_mesh`` are derived: :meth:`densification`
+        rebuilds them, and the editors already drop them as stale. Written out,
+        a densified plate's layout grows from 11 KB to 71 KB, and a session that
+        also keeps the dense mesh as an item of its own would get it back as
+        TWO objects.
+        """
+        data = super(CoarseQuadMesh, self).__data__
+        data['attributes'] = dict(data['attributes'], quad_mesh=None, polygonal_mesh=None)
+        return data
 
     @classmethod
     def __from_data__(cls, data):
@@ -195,6 +210,24 @@ class CoarseQuadMesh(QuadMesh):
         self.attributes['edges_to_curves'] = [
             [u, v, [list(point) for point in points]]
             for (u, v), points in (edges_to_curves or {}).items()]
+
+    def shape_polylines(self):
+        """The polylines the coarse edges take their SHAPE from. ``[]`` if none.
+
+        The traced separatrices on the field route, the skeleton branches on the
+        skeleton route, the drawn pieces for a drawn layout -- plus any curve cut
+        in by hand. ``coarse_edges_to_curves`` matches coarse edges against these
+        to build :meth:`edges_to_curves` again after the corners moved, so they
+        belong to the layout: a layout with the wrong set here densifies its
+        interior edges as chords.
+        """
+        return [[list(point) for point in polyline]
+                for polyline in self.attributes.get('shape_polylines') or []]
+
+    def set_shape_polylines(self, polylines):
+        """Remember the polylines the edges take their shape from. ``None`` clears them."""
+        self.attributes['shape_polylines'] = [
+            [list(point) for point in polyline] for polyline in (polylines or [])]
 
     def _filtered_edges_to_curves(self, boundary_curvature, skeleton_curvature):
         """The stored :meth:`edges_to_curves`, kept only where its toggle allows it.

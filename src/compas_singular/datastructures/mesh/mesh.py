@@ -134,10 +134,16 @@ class Mesh(Mesh):
         """
         if not os.path.isfile(filepath):
             return default
+        return cls.from_json(filepath)
 
-        mesh = cls.from_json(filepath)
-
-        for key in ('strips', 'strips_density', 'polyedges', 'edges_to_curves', 'dense_pattern'):
+    @classmethod
+    def __from_data__(cls, data):
+        """Every way a mesh is decoded comes through here, so the key repair
+        :meth:`load_from_json` describes is done HERE. A mesh inside a larger
+        JSON document (a session) is decoded without ever touching
+        ``load_from_json``, and used to come back with ``'3'`` polyedge keys."""
+        mesh = super(Mesh, cls).__from_data__(data)
+        for key in ('strips', 'strips_density', 'polyedges', 'edges_to_curves', 'dense_pattern', 'decomposition_type'):
             table = mesh.attributes.get(key)
             if not isinstance(table, dict):
                 continue

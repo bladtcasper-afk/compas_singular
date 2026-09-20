@@ -524,7 +524,9 @@ class SkeletonDecomposition(Skeleton):
         boundary_polylines = [polyline for polyline in polylines if TOL.geometric_key(polyline[0]) in boundary_keys and TOL.geometric_key(polyline[1]) in boundary_keys]
         other_polylines = [polyline for polyline in polylines if TOL.geometric_key(polyline[0]) not in boundary_keys or TOL.geometric_key(polyline[1]) not in boundary_keys]
         self.repair_notes = []
-        self.mesh = CoarsePseudoQuadMesh.from_polylines(boundary_polylines, other_polylines)
+        mesh = CoarsePseudoQuadMesh.from_polylines(boundary_polylines, other_polylines)
+        mesh.attributes['decomposition_type'] = 'skeleton'
+        self.mesh = mesh
         self.solve_triangular_faces()
         self.quadrangulate_polygonal_faces()
         self.repair_polygonal_faces(poles)

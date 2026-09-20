@@ -44,6 +44,7 @@ from math import cos
 from math import sin
 from numbers import Number
 
+from compas.data import Data
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import factorized
@@ -179,7 +180,7 @@ def wrap_to_period(delta):
     return delta - PERIOD * round(delta / PERIOD)
 
 
-class CrossField(object):
+class CrossField(Data):
     """A boundary-aligned cross field on a planar triangulation.
 
     Attributes
@@ -200,6 +201,7 @@ class CrossField(object):
     """
 
     def __init__(self, background, u, relaxed=False, iterations=None, residual=None):
+        super(CrossField, self).__init__()
         self.background = background
         self.u = u
         self.theta = {vkey: phase(value) / 4.0 for vkey, value in u.items()}
@@ -780,6 +782,17 @@ class CrossField(object):
             os.makedirs(folder)
         compas.json_dump(self.__jsondata__(), filepath, pretty=pretty)
         return filepath
+
+    @property
+    def __data__(self):
+        """compas ``Data``: the same payload as :meth:`save_to_json`, so a field
+        can travel inside a larger JSON document (a session) and come back
+        exactly."""
+        return self.__jsondata__()
+
+    @classmethod
+    def __from_data__(cls, data):
+        return cls.__from_jsondata__(data)
 
     def __jsondata__(self):
         """The payload :meth:`save_to_json` writes: plain types plus one Mesh."""

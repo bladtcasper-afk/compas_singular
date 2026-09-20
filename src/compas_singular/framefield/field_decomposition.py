@@ -634,6 +634,7 @@ class FieldDecomposition(object):
             if fallback is not None:
                 mesh = fallback
 
+        mesh.attributes['decomposition_type'] = 'field'
         self.mesh = mesh
         self._mesh_poles = poles_key
         self._edited = False
