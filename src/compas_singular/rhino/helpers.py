@@ -1,7 +1,7 @@
 import compas
 
 from compas.geometry import is_polygon_in_polygon_xy, is_point_in_polygon_xy, Polygon, Polyline
-from compas_rhino.conversions import point_to_rhino, polyline_to_rhino
+from compas_rhino.conversions import polyline_to_rhino
 from compas_rhino.conversions import vertices_and_faces_to_rhino
 from compas_rhino.conversions import mesh_to_compas
 from compas_rhino.conversions import point_to_compas
@@ -19,7 +19,7 @@ def clear_layer(layer, clean_sublayers=False):
 	if not rs.IsLayer(layer):
 		print(f"No layer named {layer}. Deleted nothing.")
 		return 0
-	
+
 	layer = rs.LayerName(layer, fullpath = True)
 	count = 0 # Number of deleted objects
 	objs = rs.ObjectsByLayer(layer)
@@ -39,18 +39,6 @@ def clear_layer(layer, clean_sublayers=False):
 						count += len(objs)
 
 	return count
-
-
-def bake_points(points, layer, color=None, clear_existing=True):
-	if not rs.IsLayer(layer):
-		rs.AddLayer(layer, color)
-	if clear_existing:
-		clear_layer(layer)
-
-	guids = rs.AddPoints([point_to_rhino(pt) for pt in points])
-	for guid in guids:
-		rs.ObjectLayer(guid, layer=layer)
-	return guids
 
 
 def clean_polyline_points(points, tol=None):
@@ -301,23 +289,6 @@ def read_polylines(layer):
 	return out
 
 
-def bake_edge_curves(curves, layer, color=None):
-	"""Bake one polyline per coarse edge -- the layout WITH its curvature.
-
-	The coarse layout is baked as a Rhino mesh, and a Rhino mesh has straight
-	edges: on a curved domain it is drawn cutting the corner off its own
-	boundary, which reads as the workflow having lost the curve when in fact
-	only the display has. These are what the layout actually densifies along.
-
-	Returns ``(guids, skipped)`` -- see :func:`bake_polylines`. An edge whose
-	curve Rhino will not take densifies as a chord, which is worth printing
-	rather than losing.
-	"""
-	polylines = [Polyline([list(p) for p in curve]) for curve in curves
-				 if len(curve) >= 2]
-	return bake_polylines(polylines, layer, color=color)
-
-
 def read_boundaries(spacing=None):
 	"""``(outer, inners, guides, poles)``: polylines closed except the guides.
 
@@ -378,7 +349,7 @@ def read_boundaries(spacing=None):
 
 
 def read_coarse():
-	guids = rs.ObjectsByLayer("Mesh")
+	guids = rs.ObjectsByLayer("Mesh") if rs.IsLayer("Mesh") else None
 	if not guids:
 		raise RuntimeError(
 			"No coarse layout on '{}' ".format(
@@ -389,7 +360,7 @@ def read_coarse():
 	faces = [[v for i, v in enumerate(f) if v != f[i - 1]] for f in faces]
 
 	poles = [list(point_to_compas(cr.objects.find_object(guid).Geometry))
-			for guid in rs.ObjectsByLayer("Poles") or []]
+			for guid in (rs.ObjectsByLayer("Poles") if rs.IsLayer("Poles") else None) or []]
 
 	coarse_mesh = CoarsePseudoQuadMesh.from_vertices_and_faces_with_poles(
 		vertices, faces, poles)
