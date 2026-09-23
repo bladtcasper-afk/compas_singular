@@ -30,7 +30,7 @@ def route_name(decomposition):
 
 def domain_of(decomposition):
     """The :class:`~.domain.Domain` a decomposition was built from."""
-    from .domain import Domain
+    from compas_singular.symmetry.domain import Domain
     inputs = getattr(decomposition, 'inputs', None) or {}
     if not inputs.get('outer_boundary'):
         raise ValueError('this decomposition has no stored inputs -- build it with from_boundary '
@@ -40,7 +40,7 @@ def domain_of(decomposition):
         guides = inputs.get('polyline_features') or []
         poles = inputs.get('point_features') or []
     else:
-        from ..framefield.constraints import as_curve_list
+        from compas_singular.framefield.constraints import as_curve_list
         guides = as_curve_list(inputs.get('guides')) or []
         poles = inputs.get('poles') or []
     return Domain(inputs['outer_boundary'], inputs.get('inner_boundaries') or [], guides, poles)
@@ -82,8 +82,8 @@ class FieldMesher(object):
         self.inputs = dict(decomposition.inputs)
         target = self.inputs.get('target_length')
         if target is None:
-            from ..geometry import bounding_box_diagonal
-            from ._geometry import open_loop
+            from compas_singular.geometry import bounding_box_diagonal
+            from compas_singular.symmetry._geometry import open_loop
             outer = open_loop(self.inputs['outer_boundary'])
             inners = [open_loop(h) for h in (self.inputs.get('inner_boundaries') or [])]
             target = 0.04 * bounding_box_diagonal(outer, *inners)

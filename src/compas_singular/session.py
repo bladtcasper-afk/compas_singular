@@ -33,7 +33,7 @@ from __future__ import print_function
 import compas
 from compas.data import Data
 
-from .settings import Settings
+from compas_singular.settings import Settings
 
 
 __all__ = ['SingularSession', 'UNDO_DEPTH']

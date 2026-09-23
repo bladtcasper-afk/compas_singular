@@ -5,9 +5,9 @@ from __future__ import division
 from compas.datastructures.graph.operations.join import graph_polylines
 from compas.tolerance import TOL
 
-from ..mesh import Mesh
-from ..mesh import trimesh_face_circle
-from ..network import Network
+from compas_singular.datastructures.mesh import Mesh
+from compas_singular.datastructures.mesh import trimesh_face_circle
+from compas_singular.datastructures.network import Network
 
 
 __all__ = ["Skeleton"]

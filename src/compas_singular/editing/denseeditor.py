@@ -101,10 +101,10 @@ from compas.itertools import pairwise
 # namespace, but not from the module it lives in.
 from compas.datastructures.mesh.smoothing import mesh_smooth_centroid
 
-from ..datastructures.mesh_quad.grammar.add_strip import add_strip as _grammar_add_strip
-from ..datastructures.mesh_quad.grammar.add_strip import is_polyedge_valid_for_strip_addition
-from ..datastructures.mesh_quad.grammar.add_strip import split_strips
-from .editor import MeshEditor
+from compas_singular.datastructures.mesh_quad.grammar.add_strip import add_strip as _grammar_add_strip
+from compas_singular.datastructures.mesh_quad.grammar.add_strip import is_polyedge_valid_for_strip_addition
+from compas_singular.datastructures.mesh_quad.grammar.add_strip import split_strips
+from compas_singular.editing.editor import MeshEditor
 
 
 __all__ = ['DenseMeshEditor', 'RELAX_ITERATIONS', 'DRAW_SNAP']

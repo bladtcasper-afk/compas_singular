@@ -16,7 +16,7 @@ from compas_singular.datastructures.mesh_quad.grammar.delete_strip import delete
 from compas_singular.utilities import list_split
 
 
-from ..mesh import Mesh
+from compas_singular.datastructures.mesh import Mesh
 
 
 __all__ = ['QuadMesh']

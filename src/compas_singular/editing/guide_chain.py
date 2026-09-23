@@ -55,9 +55,9 @@ from compas.geometry import Point
 from compas.geometry import Polyline
 from compas.geometry import angle_vectors
 
-from ..datastructures.mesh.smoothing import closest_point_on_constraint
-from ..datastructures.mesh.smoothing import mesh_boundary_loops
-from ..datastructures.mesh.smoothing import mesh_boundary_polylines
+from compas_singular.datastructures.mesh.smoothing import closest_point_on_constraint
+from compas_singular.datastructures.mesh.smoothing import mesh_boundary_loops
+from compas_singular.datastructures.mesh.smoothing import mesh_boundary_polylines
 
 
 __all__ = [

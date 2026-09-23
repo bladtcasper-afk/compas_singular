@@ -61,7 +61,7 @@ def _side_car(doc, filename, kind):
 
 def _drawn_layout():
     """The layout baked on ``Skeleton::Mesh`` with its poles, or ``None``."""
-    from .helpers import read_coarse
+    from compas_singular.rhino.helpers import read_coarse
     try:
         coarse, _poles = read_coarse()
     except RuntimeError:                 # nothing drawn
@@ -73,8 +73,8 @@ def _drawn_polylines():
     """The separatrices baked on ``Skeleton::Polylines``."""
     import rhinoscriptsyntax as rs
 
-    from .helpers import read_polylines
-    from .project import layer_path
+    from compas_singular.rhino.helpers import read_polylines
+    from compas_singular.rhino.project import layer_path
 
     layer = layer_path('Polylines')
     return read_polylines(layer) if rs.IsLayer(layer) else []

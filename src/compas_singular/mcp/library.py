@@ -32,7 +32,7 @@ from __future__ import print_function
 import json
 import os
 
-from .describe import DEFAULT_THRESHOLDS
+from compas_singular.mcp.describe import DEFAULT_THRESHOLDS
 
 
 __all__ = [
@@ -221,7 +221,7 @@ def fingerprint(metrics, walls=0, faces=None):
     aspect = metrics.get('aspect_max')
     dominant = 'none'
     limits = thresholds()
-    from .describe import band
+    from compas_singular.mcp.describe import band
     worst_band, dominant = 'good', 'none'
     for metric in ('min_angle', 'max_angle', 'aspect_max'):
         if metric not in limits:

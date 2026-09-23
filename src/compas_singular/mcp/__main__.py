@@ -16,8 +16,8 @@ from __future__ import print_function
 
 import sys
 
-from .protocol import serve
-from .server import build
+from compas_singular.mcp.protocol import serve
+from compas_singular.mcp.server import build
 
 
 def main(argv=None):

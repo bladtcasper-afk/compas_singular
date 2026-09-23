@@ -48,13 +48,13 @@ from math import atan2
 from math import hypot
 from math import pi
 
-from ._geometry import SegmentHash
-from ._geometry import chord_sags
-from .domain import Domain
-from .group import SymmetryGroup
-from .group import _mirror
-from .group import _rotation
-from .report import SymmetryReport
+from compas_singular.symmetry._geometry import SegmentHash
+from compas_singular.symmetry._geometry import chord_sags
+from compas_singular.symmetry.domain import Domain
+from compas_singular.symmetry.group import SymmetryGroup
+from compas_singular.symmetry.group import _mirror
+from compas_singular.symmetry.group import _rotation
+from compas_singular.symmetry.report import SymmetryReport
 
 
 __all__ = ['find_symmetry', 'Matcher']

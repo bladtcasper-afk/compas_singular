@@ -218,13 +218,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from .mesh import *  # noqa: F401 F403
-from .mesh_quad import *  # noqa: F401 F403
-from .mesh_quad_coarse import *  # noqa: F401 F403
-from .mesh_quad_pseudo import *  # noqa: F401 F403
-from .mesh_quad_pseudo_coarse import *  # noqa: F401 F403
-from .network import *  # noqa: F401 F403
-from .skeleton import *  # noqa: F401 F403
+from compas_singular.datastructures.mesh import *  # noqa: F401 F403
+from compas_singular.datastructures.mesh_quad import *  # noqa: F401 F403
+from compas_singular.datastructures.mesh_quad_coarse import *  # noqa: F401 F403
+from compas_singular.datastructures.mesh_quad_pseudo import *  # noqa: F401 F403
+from compas_singular.datastructures.mesh_quad_pseudo_coarse import *  # noqa: F401 F403
+from compas_singular.datastructures.network import *  # noqa: F401 F403
+from compas_singular.datastructures.skeleton import *  # noqa: F401 F403
 
 import types  # noqa: E402
 

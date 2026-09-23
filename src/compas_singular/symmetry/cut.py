@@ -46,13 +46,13 @@ from math import hypot
 from math import pi
 from math import sin
 
-from ._geometry import area_centroid
-from ._geometry import open_loop
-from ._geometry import oriented
-from ._geometry import point_in_polygon
-from ._geometry import signed_area
-from .group import _mirror
-from .group import _rotation
+from compas_singular.symmetry._geometry import area_centroid
+from compas_singular.symmetry._geometry import open_loop
+from compas_singular.symmetry._geometry import oriented
+from compas_singular.symmetry._geometry import point_in_polygon
+from compas_singular.symmetry._geometry import signed_area
+from compas_singular.symmetry.group import _mirror
+from compas_singular.symmetry.group import _rotation
 
 
 __all__ = ['cut_unit', 'UnitDomain', 'clip_halfplane']

@@ -28,8 +28,8 @@ from compas.geometry import distance_point_point
 from compas.geometry import intersection_segment_segment_xy
 from compas.itertools import pairwise
 
-from .constraints import PERIOD
-from .field import wrap_to_period
+from compas_singular.framefield.constraints import PERIOD
+from compas_singular.framefield.field import wrap_to_period
 
 
 __all__ = ['Tracer', 'Separatrix']
@@ -327,7 +327,7 @@ class Tracer(object):
         round hole the field is polar, so every site scores alike and the arc
         spacing decides; on an irregular hole the score does the work.
         """
-        from .separatrix_network import _arc_lengths
+        from compas_singular.framefield.separatrix_network import _arc_lengths
 
         _seg, cum = _arc_lengths(loop)
         total = cum[-1]
@@ -431,7 +431,7 @@ class Tracer(object):
         -------
         list[(point, direction)]
         """
-        from .separatrix_network import boundary_corners
+        from compas_singular.framefield.separatrix_network import boundary_corners
 
         launches = []
         for loop in self.background.inners:
@@ -442,7 +442,7 @@ class Tracer(object):
 
     def corner_points(self, corner_limit=pi / 12.0):
         """Every boundary corner, as a flat list of points."""
-        from .separatrix_network import boundary_corners
+        from compas_singular.framefield.separatrix_network import boundary_corners
         out = []
         for loop in [self.background.outer] + list(self.background.inners):
             for i in boundary_corners(loop, corner_limit):
@@ -596,7 +596,7 @@ class Tracer(object):
         -------
         list[(point, direction)]
         """
-        from .separatrix_network import boundary_corners
+        from compas_singular.framefield.separatrix_network import boundary_corners
 
         launches = []
         for loop_index, loop in enumerate([self.background.outer] + list(self.background.inners)):

@@ -34,8 +34,8 @@ from __future__ import print_function
 from copy import deepcopy
 from math import hypot
 
-from ._geometry import signed_area
-from .replicate import seam_membership
+from compas_singular.symmetry._geometry import signed_area
+from compas_singular.symmetry.replicate import seam_membership
 
 
 __all__ = ['match_rotation_seams']
@@ -231,7 +231,7 @@ def match_rotation_seams(unit, max_splits=8):
 
 def _split_across(unit, name, t):
     """Give seam ``name`` a corner at distance ``t`` by splitting the strip there."""
-    from ..editing import CoarseEditor
+    from compas_singular.editing import CoarseEditor
 
     seam = dict((s.name, s) for s in unit.seams)[name]
     eps = unit.eps

@@ -13,7 +13,7 @@ from compas.itertools import pairwise
 import compas_rhino
 from compas_rhino.geometry import RhinoSurface
 
-from .curve import RhinoCurve
+from compas_singular.rhino.geometry.curve import RhinoCurve
 
 
 __all__ = ["RhinoSurface"]

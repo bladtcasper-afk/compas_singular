@@ -27,17 +27,17 @@ from math import radians
 
 from compas.geometry import vector_average
 
-from ..datastructures import CoarsePseudoQuadMesh
-from ..datastructures import PseudoQuadMesh
-from ..datastructures.mesh_quad_coarse.mesh_quad_coarse import CoarseQuadMesh
-from ._geometry import point_in_polygon
-from .cut import Seam
-from .cut import cut_unit
-from .cut import subgroups_avoiding_poles
-from .group import SymmetryGroup
-from .replicate import expand
-from .replicate import rotation_partners
-from .replicate import seam_membership
+from compas_singular.datastructures import CoarsePseudoQuadMesh
+from compas_singular.datastructures import PseudoQuadMesh
+from compas_singular.datastructures.mesh_quad_coarse.mesh_quad_coarse import CoarseQuadMesh
+from compas_singular.symmetry._geometry import point_in_polygon
+from compas_singular.symmetry.cut import Seam
+from compas_singular.symmetry.cut import cut_unit
+from compas_singular.symmetry.cut import subgroups_avoiding_poles
+from compas_singular.symmetry.group import SymmetryGroup
+from compas_singular.symmetry.replicate import expand
+from compas_singular.symmetry.replicate import rotation_partners
+from compas_singular.symmetry.replicate import seam_membership
 
 
 __all__ = ['SymmetricUnit', 'SymmetricQuadUnit', 'build_unit']
@@ -229,7 +229,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
 
         Returns the number of corners moved.
         """
-        from .matching import _move
+        from compas_singular.symmetry.matching import _move
         runs = self.symmetry.get('seam_runs') or {}
         seams = dict((s.name, s) for s in self.seams)
         boundary = set(v for loop in self.vertices_on_boundaries() for v in loop)
@@ -467,7 +467,7 @@ def build_unit(report, mesher, keys=None, centre='route', seam=None, route=None)
     if not group.mirrors and group.n > 1 and seam is None:
         # A rotation seam is free, and whether the route's corners on its two
         # sides can be matched depends on where it runs. Try the best few.
-        from .cut import rotation_seam_candidates
+        from compas_singular.symmetry.cut import rotation_seam_candidates
         errors = []
         candidates = rotation_seam_candidates(report.domain, group, 1e-7 * (report.domain.diagonal or 1.0), count=4)
         for angle in candidates:
@@ -533,6 +533,6 @@ def build_unit(report, mesher, keys=None, centre='route', seam=None, route=None)
         unit.symmetry['notes'].append('{} corner(s) the route placed just off a seam were moved '
                                       'onto it'.format(snapped))
     if unit_domain.seams and unit_domain.seams[0].kind == 'rotation':
-        from .matching import match_rotation_seams
+        from compas_singular.symmetry.matching import match_rotation_seams
         match_rotation_seams(unit)
     return unit

@@ -36,7 +36,7 @@ from __future__ import print_function
 
 import time
 
-from ..framefield.quality import mesh_quality
+from compas_singular.framefield.quality import mesh_quality
 
 
 __all__ = ['MeshSession', 'UNDO_DEPTH']

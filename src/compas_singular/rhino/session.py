@@ -34,7 +34,7 @@ import compas
 
 from compas_singular.session import SingularSession
 
-from . import document
+from compas_singular.rhino import document
 
 try:
     import scriptcontext as sc
@@ -58,7 +58,7 @@ def display_options():
     too. The dense mesh leaves the sublayers of ``QuadMesh`` alone: ``Edited``,
     ``Smoothened`` and ``Dual`` belong to other commands.
     """
-    from .project import layer_path
+    from compas_singular.rhino.project import layer_path
     return {
         'coarse': dict(layer=layer_path('Mesh'), show_faces=True, joined=True,
                        poles_layer=layer_path('Poles'),
@@ -101,7 +101,7 @@ class RhinoSession(SingularSession):
         if self._scene is None:
             from compas.scene import Scene
 
-            from .scene import ensure_registered
+            from compas_singular.rhino.scene import ensure_registered
 
             ensure_registered()
             self._scene = Scene(context='Rhino')
@@ -133,7 +133,7 @@ class RhinoSession(SingularSession):
             session.take(compas.json_loads(text))
         else:
             # A document from before sessions existed, or a new one.
-            from .legacy import read_legacy
+            from compas_singular.rhino.legacy import read_legacy
             read_legacy(session)
         # The document already shows what it holds: Rhino restored the display
         # together with the snapshot, or it was drawn when the snapshot was.
@@ -177,7 +177,7 @@ class RhinoSession(SingularSession):
 
     def _draw_item(self, item, options):
         """Clear the item's layers and draw it there; with ``None``, only clear."""
-        from .project import ensure_layers
+        from compas_singular.rhino.project import ensure_layers
 
         ensure_layers()
         if item is None:

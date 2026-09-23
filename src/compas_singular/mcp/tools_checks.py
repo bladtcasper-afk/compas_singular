@@ -34,8 +34,8 @@ from __future__ import print_function
 
 from math import hypot
 
-from .handle import vertex_handle
-from .registry import tool
+from compas_singular.mcp.handle import vertex_handle
+from compas_singular.mcp.registry import tool
 
 
 __all__ = []

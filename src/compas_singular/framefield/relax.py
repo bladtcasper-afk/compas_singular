@@ -238,7 +238,7 @@ def relaxation_constraints(mesh, seam_edge=None, edges_to_curves=None, corner_an
 
 def _quality(mesh):
     """``(min angle, max angle, max aspect)`` -- the three the gate compares."""
-    from .quality import mesh_quality
+    from compas_singular.framefield.quality import mesh_quality
     q = mesh_quality(mesh)
     return q['min_angle'], q['max_angle'], q['aspect_max']
 

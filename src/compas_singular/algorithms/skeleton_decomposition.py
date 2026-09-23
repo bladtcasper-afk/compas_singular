@@ -27,18 +27,18 @@ from compas.tolerance import TOL
 
 from compas_singular.algorithms import boundary_triangulation
 
-from ..datastructures import CoarsePseudoQuadMesh
-from ..datastructures import Network
-from ..datastructures import Skeleton
-from ..datastructures import mesh_weld
-from ..datastructures import split_quad_in_pseudo_quads
-from ..datastructures import trimesh_face_circle
-from ..geometry import bounding_box_diagonal
-from ..geometry import discretise_boundary
-from ..geometry import discretise_line
-from ..utilities import list_split
+from compas_singular.datastructures import CoarsePseudoQuadMesh
+from compas_singular.datastructures import Network
+from compas_singular.datastructures import Skeleton
+from compas_singular.datastructures import mesh_weld
+from compas_singular.datastructures import split_quad_in_pseudo_quads
+from compas_singular.datastructures import trimesh_face_circle
+from compas_singular.geometry import bounding_box_diagonal
+from compas_singular.geometry import discretise_boundary
+from compas_singular.geometry import discretise_line
+from compas_singular.utilities import list_split
 
-from .propagation import quadrangulate_faces
+from compas_singular.algorithms.propagation import quadrangulate_faces
 
 
 __all__ = ['SkeletonDecomposition']
@@ -230,8 +230,8 @@ class SkeletonDecomposition(Skeleton):
             ``print`` it for the group and its keys; ``report.geometry()`` gives
             the centre, mirror lines and rotation arcs to draw.
         """
-        from ..symmetry import find_symmetry
-        from ..symmetry.routes import domain_of
+        from compas_singular.symmetry import find_symmetry
+        from compas_singular.symmetry.routes import domain_of
         self.symmetry_report = find_symmetry(domain=domain_of(self), tol=tol, include=include,
                                              max_order=max_order)
         return self.symmetry_report
@@ -259,8 +259,8 @@ class SkeletonDecomposition(Skeleton):
         -------
         :class:`compas_singular.symmetry.SymmetricUnit`
         """
-        from ..symmetry import build_unit
-        from ..symmetry.routes import mesher_for
+        from compas_singular.symmetry import build_unit
+        from compas_singular.symmetry.routes import mesher_for
         report = report or self.symmetry_report or self.find_symmetry()
         return build_unit(report, mesher_for(self), keys=keys, centre=centre, seam=seam)
 
@@ -637,8 +637,8 @@ class SkeletonDecomposition(Skeleton):
             If this decomposition was not built by :meth:`from_boundary`, so
             there are no walls to derive the curves from.
         """
-        from ..datastructures import coarse_edges_to_curves
-        from ..datastructures import snap_corners_to_walls
+        from compas_singular.datastructures import coarse_edges_to_curves
+        from compas_singular.datastructures import snap_corners_to_walls
 
         if coarse is None:
             coarse = self.mesh
@@ -1093,7 +1093,7 @@ class SkeletonDecomposition(Skeleton):
             return
 
         try:
-            from ..editing.repair import solve_non_quad_faces
+            from compas_singular.editing.repair import solve_non_quad_faces
         except Exception as exc:      # the frame-field extras are optional
             self.repair_notes.append(
                 'polygonal faces left and the fallback repair is unavailable ({})'.format(exc))

@@ -24,7 +24,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from .group import SymmetryGroup
+from compas_singular.symmetry.group import SymmetryGroup
 
 
 __all__ = ['seam_membership', 'rotation_partners', 'expand', 'orbit_maps']

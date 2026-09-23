@@ -66,14 +66,14 @@ DEFAULT_SETTINGS = Settings().model_dump()
 def get_settings():
     """The session's settings, as a dict a command can change and hand to :func:`set_settings`."""
     _require_rhino()
-    from .session import RhinoSession
+    from compas_singular.rhino.session import RhinoSession
     return RhinoSession.current().settings.model_dump()
 
 
 def set_settings(settings):
     """Store ``settings`` (a dict) in the session, and record it. Returns them as stored."""
     _require_rhino()
-    from .session import RhinoSession
+    from compas_singular.rhino.session import RhinoSession
     session = RhinoSession.current()
     session.settings = Settings.model_validate(settings)
     session.record('Settings')
@@ -217,7 +217,7 @@ def read_layout(verbose=True):
         (:mod:`compas_singular.rhino.legacy`).
     """
     _require_rhino()
-    from .session import RhinoSession
+    from compas_singular.rhino.session import RhinoSession
 
     layout = RhinoSession.current().coarse
     if layout is None:
@@ -240,6 +240,6 @@ def layout_polylines(coarse):
     if polylines:
         return polylines
     _require_rhino()
-    from .helpers import read_polylines
+    from compas_singular.rhino.helpers import read_polylines
     layer = layer_path("Polylines")
     return read_polylines(layer) if rs.IsLayer(layer) else []

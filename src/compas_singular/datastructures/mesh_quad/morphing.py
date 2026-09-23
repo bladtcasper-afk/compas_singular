@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-from ..mesh.operations import mesh_move_vertices_by
+from compas_singular.datastructures.mesh.operations import mesh_move_vertices_by
 # from .coloring import quad_mesh_polyedge_2_coloring
 
 from compas.itertools import pairwise

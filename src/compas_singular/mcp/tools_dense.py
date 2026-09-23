@@ -26,12 +26,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ..editing.denseeditor import DenseMeshEditor
-from .bridge import wire
-from .describe import describe
-from .handle import resolve
-from .library import thresholds
-from .registry import tool
+from compas_singular.editing.denseeditor import DenseMeshEditor
+from compas_singular.mcp.bridge import wire
+from compas_singular.mcp.describe import describe
+from compas_singular.mcp.handle import resolve
+from compas_singular.mcp.library import thresholds
+from compas_singular.mcp.registry import tool
 
 
 __all__ = []
@@ -64,7 +64,7 @@ def _editor(session):
                              'rhino_pull or load_mesh first')
     mesh = session.mesh
     if not hasattr(mesh, 'collect_polyedges'):
-        from ..datastructures import QuadMesh
+        from compas_singular.datastructures import QuadMesh
         mesh = wire.mesh_from_wire(wire.mesh_to_wire(mesh), cls=QuadMesh)
         session.mesh = mesh
     walls = [[list(p) for p in getattr(w, 'points', w)] for w in session.walls]

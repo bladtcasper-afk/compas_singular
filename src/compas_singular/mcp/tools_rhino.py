@@ -30,12 +30,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from .bridge import spool
-from .bridge import wire
-from .describe import describe
-from .handle import vertex_handle
-from .library import thresholds
-from .registry import tool
+from compas_singular.mcp.bridge import spool
+from compas_singular.mcp.bridge import wire
+from compas_singular.mcp.describe import describe
+from compas_singular.mcp.handle import vertex_handle
+from compas_singular.mcp.library import thresholds
+from compas_singular.mcp.registry import tool
 
 
 __all__ = []
@@ -339,7 +339,7 @@ def unseen_coarse_refusal(session):
     },
     destructive=True, open_world=True, title='Push the coarse layout to Rhino')
 def _t_rhino_push_coarse(session, timeout=30.0):
-    from . import tools_coarse
+    from compas_singular.mcp import tools_coarse
     import compas
 
     if session.coarse is None:
@@ -438,8 +438,8 @@ def _layout_from_pull(result):
     """
     import compas
     from compas.tolerance import TOL
-    from ..datastructures import CoarsePseudoQuadMesh
-    from . import tools_coarse
+    from compas_singular.datastructures import CoarsePseudoQuadMesh
+    from compas_singular.mcp import tools_coarse
 
     payload = result['layout']
     baked = CoarsePseudoQuadMesh.from_vertices_and_faces_with_poles(
@@ -540,7 +540,7 @@ def _layout_from_pull(result):
     },
     read_only=True, open_world=True, title='Pull the coarse layout from Rhino')
 def _t_rhino_pull_coarse(session, spacing=0.125, timeout=30.0):
-    from . import tools_coarse
+    from compas_singular.mcp import tools_coarse
 
     reply = _ask('pull_coarse', {'spacing': float(spacing)}, timeout=timeout)
     if not reply.get('ok'):
@@ -630,8 +630,8 @@ MARKER_KINDS = ('worst', 'singularity', 'pole')
     open_world=True, title='Mark problems in Rhino')
 def _t_rhino_push_markers(session, worst=5, singularities=True, poles=True,
                           clear=False, timeout=30.0):
-    from .handle import _face_min_angle
-    from .handle import _singular_vertices
+    from compas_singular.mcp.handle import _face_min_angle
+    from compas_singular.mcp.handle import _singular_vertices
 
     markers = []
     if not clear:

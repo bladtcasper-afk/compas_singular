@@ -34,8 +34,8 @@ def register_scene_objects_rhino():
     from compas_singular.datastructures import CoarsePseudoQuadMesh
     from compas_singular.datastructures import QuadMesh
 
-    from .coarseobject import RhinoCoarseObject
-    from .denseobject import RhinoDenseObject
+    from compas_singular.rhino.scene.coarseobject import RhinoCoarseObject
+    from compas_singular.rhino.scene.denseobject import RhinoDenseObject
 
     # The registry follows the item's class hierarchy, nearest first: a layout
     # is a QuadMesh too, and still gets RhinoCoarseObject.

@@ -12,10 +12,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ..datastructures.mesh_quad_coarse.coarse_curves import BoundaryLoop  # noqa: F401
-from ..datastructures.mesh_quad_coarse.coarse_curves import coarse_edges_to_curves  # noqa: F401
-from ..datastructures.mesh_quad_coarse.coarse_curves import mean_edge_length  # noqa: F401
-from ..datastructures.mesh_quad_coarse.coarse_curves import snap_corners_to_walls  # noqa: F401
+from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import BoundaryLoop  # noqa: F401
+from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import coarse_edges_to_curves  # noqa: F401
+from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import mean_edge_length  # noqa: F401
+from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import snap_corners_to_walls  # noqa: F401
 
 
 __all__ = [

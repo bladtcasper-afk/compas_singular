@@ -38,7 +38,7 @@ from __future__ import print_function
 from compas.geometry import distance_point_point
 from compas.itertools import pairwise
 
-from .rebuild import warp_polyline
+from compas_singular.editing.rebuild import warp_polyline
 
 
 __all__ = ['warp_edge_curve', 'warp_chorded_edges']

@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from . import library
-from .registry import tool
+from compas_singular.mcp import library
+from compas_singular.mcp.registry import tool
 
 
 __all__ = []

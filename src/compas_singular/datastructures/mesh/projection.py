@@ -21,11 +21,11 @@ from compas.geometry import Point
 from compas.geometry import closest_point_in_cloud
 from compas.geometry import distance_point_point
 
-from .smoothing import _closest_curve
-from .smoothing import _split_loop_at_corners
-from .smoothing import closest_point_on_constraint
-from .smoothing import constrained_smoothing
-from .smoothing import mesh_boundary_loops
+from compas_singular.datastructures.mesh.smoothing import _closest_curve
+from compas_singular.datastructures.mesh.smoothing import _split_loop_at_corners
+from compas_singular.datastructures.mesh.smoothing import closest_point_on_constraint
+from compas_singular.datastructures.mesh.smoothing import constrained_smoothing
+from compas_singular.datastructures.mesh.smoothing import mesh_boundary_loops
 
 
 __all__ = [

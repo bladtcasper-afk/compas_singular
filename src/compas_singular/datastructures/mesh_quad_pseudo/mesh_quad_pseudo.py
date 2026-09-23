@@ -4,7 +4,7 @@ from __future__ import division
 
 from compas.tolerance import TOL
 
-from ..mesh_quad import QuadMesh
+from compas_singular.datastructures.mesh_quad import QuadMesh
 from compas_singular.utilities import list_split
 
 

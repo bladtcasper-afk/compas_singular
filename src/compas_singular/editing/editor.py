@@ -42,14 +42,14 @@ from __future__ import print_function
 
 from copy import deepcopy
 
-from ..datastructures.mesh_quad.grammar.add_strip import split_strips
-from ..datastructures.mesh_quad.grammar.delete_strip import collateral_strip_deletions
-from ..datastructures.mesh_quad.grammar.delete_strip import delete_strip as _grammar_delete_strip
-from ..datastructures.mesh_quad.grammar.delete_strip import (
+from compas_singular.datastructures.mesh_quad.grammar.add_strip import split_strips
+from compas_singular.datastructures.mesh_quad.grammar.delete_strip import collateral_strip_deletions
+from compas_singular.datastructures.mesh_quad.grammar.delete_strip import delete_strip as _grammar_delete_strip
+from compas_singular.datastructures.mesh_quad.grammar.delete_strip import (
     strips_to_split_to_prevent_boundary_collapse)
-from ..datastructures.mesh_quad.grammar.delete_strip import total_boundary_deletions
-from ..datastructures.mesh_quad_coarse.coarse_curves import BoundaryLoop
-from ..datastructures.mesh_quad_coarse.coarse_curves import mean_edge_length
+from compas_singular.datastructures.mesh_quad.grammar.delete_strip import total_boundary_deletions
+from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import BoundaryLoop
+from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import mean_edge_length
 
 
 __all__ = ['MeshEditor', 'boundary_vertex_set']

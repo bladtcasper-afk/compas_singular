@@ -3,17 +3,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ._geometry import area_centroid
-from ._geometry import as_points
-from ._geometry import bbox_diagonal
-from ._geometry import open_loop
-from ._geometry import point_in_polygon
+from compas.data import Data
+
+from compas_singular.symmetry._geometry import area_centroid
+from compas_singular.symmetry._geometry import as_points
+from compas_singular.symmetry._geometry import bbox_diagonal
+from compas_singular.symmetry._geometry import open_loop
+from compas_singular.symmetry._geometry import point_in_polygon
 
 
 __all__ = ['Domain']
 
 
-class Domain(object):
+class Domain(Data):
     """``outer``, ``inners``, ``guides`` and ``poles`` as plain point lists.
 
     Loops are stored OPEN (the closing point is not repeated), guides as open
@@ -22,9 +24,12 @@ class Domain(object):
 
     ``guides`` means any curve that is not a wall: a cable for the field route, a
     polyline feature for the skeleton route. Symmetry does not care which.
+
+    A compas ``Data`` object, so a domain travels inside a session file.
     """
 
     def __init__(self, outer=None, inners=None, guides=None, poles=None):
+        super(Domain, self).__init__()
         self.outer = open_loop(as_points(outer)) if outer is not None else []
         self.inners = [open_loop(as_points(loop)) for loop in (inners or [])]
         self.guides = [as_points(curve) for curve in (guides or [])]
@@ -57,6 +62,14 @@ class Domain(object):
         if len(self.outer) < 3 or not point_in_polygon(point[0], point[1], self.outer):
             return False
         return not any(point_in_polygon(point[0], point[1], loop) for loop in self.inners if len(loop) >= 3)
+
+    @property
+    def __data__(self):
+        return self.to_data()
+
+    @classmethod
+    def __from_data__(cls, data):
+        return cls.from_data(data)
 
     def to_data(self):
         return {'outer': self.outer, 'inners': self.inners,

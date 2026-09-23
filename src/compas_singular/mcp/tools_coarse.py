@@ -46,18 +46,18 @@ from __future__ import print_function
 
 import os
 
-from ..algorithms.skeleton_decomposition import SkeletonDecomposition
-from ..datastructures.mesh_quad_coarse.patterns import PATTERNS
-from ..datastructures.mesh_quad_coarse.patterns import reconcile_strip_densities
-from ..editing.coarseeditor import CoarseEditor
-from ..editing.rebuild import warp_polyline
-from . import render
-from .describe import describe
-from .handle import _parse as parse_handle
-from .handle import resolve
-from .handle import vertex_handle
-from .library import thresholds
-from .registry import tool
+from compas_singular.algorithms.skeleton_decomposition import SkeletonDecomposition
+from compas_singular.datastructures.mesh_quad_coarse.patterns import PATTERNS
+from compas_singular.datastructures.mesh_quad_coarse.patterns import reconcile_strip_densities
+from compas_singular.editing.coarseeditor import CoarseEditor
+from compas_singular.editing.rebuild import warp_polyline
+from compas_singular.mcp import render
+from compas_singular.mcp.describe import describe
+from compas_singular.mcp.handle import _parse as parse_handle
+from compas_singular.mcp.handle import resolve
+from compas_singular.mcp.handle import vertex_handle
+from compas_singular.mcp.library import thresholds
+from compas_singular.mcp.registry import tool
 
 
 __all__ = []
@@ -273,7 +273,7 @@ def _edges_to_curves(session):
     if not mapping and (session.walls or user):
         # A strip edit or a cut clears the stored curves (they are keyed by
         # vertex), so a loaded layout that has been edited lands here.
-        from ..datastructures import coarse_edges_to_curves
+        from compas_singular.datastructures import coarse_edges_to_curves
         mapping, _tally = coarse_edges_to_curves(
             coarse, loops=[_closed(wall) for wall in session.walls],
             polylines=user)

@@ -14,7 +14,7 @@ from compas.colors import Color
 from compas_singular.rhino.helpers import bake_polylines
 from compas_singular.rhino.mesh_ui import ensure_layer
 
-from .meshobject import RhinoSingularMeshObject
+from compas_singular.rhino.scene.meshobject import RhinoSingularMeshObject
 
 
 __all__ = ['RhinoCoarseObject']

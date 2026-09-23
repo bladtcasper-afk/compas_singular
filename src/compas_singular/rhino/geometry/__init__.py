@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from .curve import *  # noqa: F401 F403
-from .surface import *  # noqa: F401 F403
+from compas_singular.rhino.geometry.curve import *  # noqa: F401 F403
+from compas_singular.rhino.geometry.surface import *  # noqa: F401 F403
 
 import types  # noqa: E402
 

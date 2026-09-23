@@ -181,7 +181,7 @@ def _grow(mesh, seed, rings):
 
 
 def _face_min_angle(mesh, fkey):
-    from ..framefield.quality import face_angles
+    from compas_singular.framefield.quality import face_angles
     points = [mesh.vertex_coordinates(key) for key in mesh.face_vertices(fkey)]
     angles = face_angles(points)
     return min(angles) if angles else 180.0

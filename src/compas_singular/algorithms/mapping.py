@@ -4,13 +4,13 @@ from __future__ import division
 
 import itertools as it
 
-from ..datastructures import delete_strip
-from ..datastructures import delete_strips
-from ..datastructures import add_strips
+from compas_singular.datastructures import delete_strip
+from compas_singular.datastructures import delete_strips
+from compas_singular.datastructures import add_strips
 
 # from .isomorphism import are_strips_isomorphic
-from .isomorphism import are_meshes_isomorphic
-from .isomorphism import matches_between_ismorphic_meshes
+from compas_singular.algorithms.isomorphism import are_meshes_isomorphic
+from compas_singular.algorithms.isomorphism import matches_between_ismorphic_meshes
 
 
 __all__ = []

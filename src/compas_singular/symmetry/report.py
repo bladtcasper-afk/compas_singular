@@ -7,7 +7,7 @@ from math import cos
 from math import pi
 from math import sin
 
-from ._geometry import point_in_polygon
+from compas_singular.symmetry._geometry import point_in_polygon
 
 
 __all__ = ['SymmetryReport']
@@ -104,7 +104,7 @@ class SymmetryReport(object):
             Only the stages that add something present in the domain. Comparing
             consecutive groups says which kind of feature breaks the symmetry.
         """
-        from .detect import find_symmetry
+        from compas_singular.symmetry.detect import find_symmetry
         stages = []
         include = []
         present = {'walls': bool(self.domain.outer), 'holes': bool(self.domain.inners),
@@ -204,7 +204,7 @@ class SymmetryReport(object):
             seam segments, as ``Polyline``s.
         """
         from compas.geometry import Polyline
-        from .cut import cut_unit
+        from compas_singular.symmetry.cut import cut_unit
         unit = cut_unit(self.domain, self.group.subgroup(keys), centre=centre, seam=seam)
         loops = []
         for outer, holes in unit.components:

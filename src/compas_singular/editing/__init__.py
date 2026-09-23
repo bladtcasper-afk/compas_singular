@@ -59,24 +59,24 @@ from __future__ import division
 from __future__ import print_function
 
 # The shared base. Imported first: the editors below are its subclasses.
-from .editor import MeshEditor  # noqa: F401
+from compas_singular.editing.editor import MeshEditor  # noqa: F401
 
-from .coarseeditor import *  # noqa: F401 F403
-from .denseeditor import *  # noqa: F401 F403
-from .guide_chain import *  # noqa: F401 F403
+from compas_singular.editing.coarseeditor import *  # noqa: F401 F403
+from compas_singular.editing.denseeditor import *  # noqa: F401 F403
+from compas_singular.editing.guide_chain import *  # noqa: F401 F403
 
 # NOT star-imported: ``rebuild`` also defines ``PRECISION``, which would rebind
 # ``coarse_layout``'s. Same value today, and that is exactly why a clash here
 # would go unnoticed.
-from .rebuild import coarse_from_skeleton  # noqa: F401
-from .rebuild import face_polylines  # noqa: F401
-from .rebuild import faces_from_geometry  # noqa: F401
-from .rebuild import mesh_from_faces  # noqa: F401
-from .rebuild import snap_to_loops  # noqa: F401
-from .rebuild import warp_polyline  # noqa: F401
-from .repair import densifiable  # noqa: F401
-from .repair import solve_non_quad_faces  # noqa: F401
-from .repair import topological_quad_split  # noqa: F401
+from compas_singular.editing.rebuild import coarse_from_skeleton  # noqa: F401
+from compas_singular.editing.rebuild import face_polylines  # noqa: F401
+from compas_singular.editing.rebuild import faces_from_geometry  # noqa: F401
+from compas_singular.editing.rebuild import mesh_from_faces  # noqa: F401
+from compas_singular.editing.rebuild import snap_to_loops  # noqa: F401
+from compas_singular.editing.rebuild import warp_polyline  # noqa: F401
+from compas_singular.editing.repair import densifiable  # noqa: F401
+from compas_singular.editing.repair import solve_non_quad_faces  # noqa: F401
+from compas_singular.editing.repair import topological_quad_split  # noqa: F401
 
 import types  # noqa: E402
 

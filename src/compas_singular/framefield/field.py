@@ -50,9 +50,9 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import factorized
 from scipy.sparse.linalg import spsolve
 
-from .constraints import PERIOD
-from .constraints import from_boundary
-from .constraints import representation
+from compas_singular.framefield.constraints import PERIOD
+from compas_singular.framefield.constraints import from_boundary
+from compas_singular.framefield.constraints import representation
 
 
 __all__ = ['CrossField', 'field_provenance', 'wrap_to_period']
@@ -149,8 +149,8 @@ def field_provenance(outer_boundary, inner_boundaries=None, guides=None,
         ``{'geometry': {'outer', 'inners', 'guides'}, 'params': {...}}``, all
         plain JSON types.
     """
-    from .constraints import as_curve_list
-    from .symmetry import Symmetry
+    from compas_singular.framefield.constraints import as_curve_list
+    from compas_singular.framefield.symmetry import Symmetry
 
     guides = as_curve_list(guides)
     if symmetry == 'auto':
@@ -612,12 +612,12 @@ class CrossField(Data):
         # Imported here, not at module scope: ``trace`` imports
         # ``wrap_to_period`` from this module and ``symmetry`` imports this
         # class, so either at the top is a circular import.
-        from .background import BackgroundMesh
-        from .constraints import as_curve_list
-        from .constraints import from_curves
-        from .symmetry import Symmetry
-        from .symmetry import snap_singularities
-        from .symmetry import symmetrise
+        from compas_singular.framefield.background import BackgroundMesh
+        from compas_singular.framefield.constraints import as_curve_list
+        from compas_singular.framefield.constraints import from_curves
+        from compas_singular.framefield.symmetry import Symmetry
+        from compas_singular.framefield.symmetry import snap_singularities
+        from compas_singular.framefield.symmetry import symmetrise
 
         guides = as_curve_list(guides)
 
@@ -879,9 +879,9 @@ class CrossField(Data):
     @classmethod
     def __from_jsondata__(cls, data):
         """Rebuild from :meth:`__jsondata__`'s payload."""
-        from .background import BackgroundMesh
-        from .symmetry import ELEMENTS
-        from .symmetry import Symmetry
+        from compas_singular.framefield.background import BackgroundMesh
+        from compas_singular.framefield.symmetry import ELEMENTS
+        from compas_singular.framefield.symmetry import Symmetry
 
         found = data.get('type') if isinstance(data, dict) else type(data).__name__
         if found != JSON_TYPE:
@@ -949,7 +949,7 @@ class CrossField(Data):
         object can trace, but nothing here asks it to.
         """
         if self._locator is None:
-            from .trace import Tracer
+            from compas_singular.framefield.trace import Tracer
             self._locator = Tracer(self, singularity_points=self.singularity_points)
         return self._locator
 
@@ -987,7 +987,7 @@ class CrossField(Data):
             The dense mesh, and the per-patch counts. The mesh is also set on
             ``coarse``, so ``coarse.get_quad_mesh()`` keeps working.
         """
-        from .densify import field_densification
+        from compas_singular.framefield.densify import field_densification
 
         if spend is None:
             spend = bool(self.guides)

@@ -93,7 +93,7 @@ def interior_grid(outer, inners=(), target_length=None, margin=0.45, symmetry=No
         # Imported here rather than at module scope: symmetry.py imports
         # _jitter from this module, so a top-level import either way round is
         # a cycle.
-        from .symmetry import interior_points
+        from compas_singular.framefield.symmetry import interior_points
 
         return list(interior_points(symmetry, target_length, outer, inners,
                                     margin=margin))

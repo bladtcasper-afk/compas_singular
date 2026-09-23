@@ -124,15 +124,15 @@ from compas.geometry import intersection_segment_segment_xy
 from compas.geometry import is_point_in_polygon_xy
 from compas.itertools import pairwise
 
-from ..datastructures.mesh_quad.grammar.add_strip import add_strip as _grammar_add_strip
-from ..datastructures.mesh_quad.grammar.add_strip import is_polyedge_valid_for_strip_addition
+from compas_singular.datastructures.mesh_quad.grammar.add_strip import add_strip as _grammar_add_strip
+from compas_singular.datastructures.mesh_quad.grammar.add_strip import is_polyedge_valid_for_strip_addition
 
-from ..datastructures.mesh_quad_coarse.coarse_curves import coarse_edges_to_curves
-from .curves import warp_chorded_edges
-from .editor import MeshEditor
-from .rebuild import coarse_from_skeleton
-from .rebuild import snap_to_loops
-from .repair import densifiable
+from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import coarse_edges_to_curves
+from compas_singular.editing.curves import warp_chorded_edges
+from compas_singular.editing.editor import MeshEditor
+from compas_singular.editing.rebuild import coarse_from_skeleton
+from compas_singular.editing.rebuild import snap_to_loops
+from compas_singular.editing.repair import densifiable
 
 
 __all__ = ['CoarseEditor', 'PRECISION']

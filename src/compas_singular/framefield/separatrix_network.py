@@ -36,9 +36,9 @@ __all__ = ['build_network', 'boundary_corners']
 # -- it never needed the field, and the editor must be able to reach it without
 # importing the solver. Re-exported here so existing imports keep working; import
 # from ``editing.repair`` in anything new.
-from ..editing.repair import densifiable            # noqa: F401,E402
-from ..editing.repair import solve_non_quad_faces   # noqa: F401,E402
-from ..editing.repair import topological_quad_split  # noqa: F401,E402
+from compas_singular.editing.repair import densifiable            # noqa: F401,E402
+from compas_singular.editing.repair import solve_non_quad_faces   # noqa: F401,E402
+from compas_singular.editing.repair import topological_quad_split  # noqa: F401,E402
 
 def _arc_lengths(loop):
     """Per-segment lengths and cumulative arc length of a closed loop."""
@@ -352,7 +352,7 @@ def _cluster(points, tol, loops=None, wall_tol=None, groups=None, symmetry=None)
 
     out = {i: points[j] for i, j in canonical.items()}
     if symmetry is not None and symmetry.enabled('network'):
-        from .symmetry import project_clusters
+        from compas_singular.framefield.symmetry import project_clusters
 
         out = project_clusters(points, out, symmetry)
     return out

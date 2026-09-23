@@ -9,7 +9,7 @@ from __future__ import print_function
 
 from math import hypot
 
-from ._geometry import SegmentHash
+from compas_singular.symmetry._geometry import SegmentHash
 
 
 __all__ = ['point_invariance', 'mesh_invariance']

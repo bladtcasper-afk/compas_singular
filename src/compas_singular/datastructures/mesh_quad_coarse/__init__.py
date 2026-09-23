@@ -2,10 +2,10 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-from .mesh_quad_coarse import *  # noqa: F401 F403
-from .coloring import *  # noqa: F401 F403
-from .coarse_curves import *  # noqa: F401 F403
-from .coarse_network import *  # noqa: F401 F403
+from compas_singular.datastructures.mesh_quad_coarse.mesh_quad_coarse import *  # noqa: F401 F403
+from compas_singular.datastructures.mesh_quad_coarse.coloring import *  # noqa: F401 F403
+from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import *  # noqa: F401 F403
+from compas_singular.datastructures.mesh_quad_coarse.coarse_network import *  # noqa: F401 F403
 
 import types  # noqa: E402
 

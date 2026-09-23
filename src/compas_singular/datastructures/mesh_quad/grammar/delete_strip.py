@@ -33,7 +33,7 @@ from compas.geometry import centroid_points
 from compas.itertools import pairwise
 from compas.topology import connected_components
 
-from ...network import Network
+from compas_singular.datastructures.network import Network
 
 
 __all__ = [

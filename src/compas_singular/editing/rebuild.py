@@ -89,9 +89,9 @@ from compas.geometry import Polyline
 from compas.geometry import distance_point_point
 from compas.itertools import pairwise
 
-from ..datastructures import CoarsePseudoQuadMesh
+from compas_singular.datastructures import CoarsePseudoQuadMesh
 
-from .repair import solve_non_quad_faces
+from compas_singular.editing.repair import solve_non_quad_faces
 
 
 __all__ = ['coarse_from_skeleton', 'warp_polyline', 'face_polylines',

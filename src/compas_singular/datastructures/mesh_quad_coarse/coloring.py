@@ -4,8 +4,8 @@ from __future__ import division
 
 from compas.itertools import pairwise
 
-from .mesh_quad_coarse import CoarseQuadMesh
-from ..mesh_quad.coloring import quad_mesh_strip_2_coloring
+from compas_singular.datastructures.mesh_quad_coarse.mesh_quad_coarse import CoarseQuadMesh
+from compas_singular.datastructures.mesh_quad.coloring import quad_mesh_strip_2_coloring
 
 
 __all__ = [

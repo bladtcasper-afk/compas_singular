@@ -121,8 +121,8 @@ from math import ceil
 from compas.geometry import is_point_in_polygon_xy
 
 from compas_singular.geometry.polyline import distance_to_loop
-from .background import _jitter
-from .field import CrossField
+from compas_singular.framefield.background import _jitter
+from compas_singular.framefield.field import CrossField
 
 
 __all__ = ['Symmetry', 'STEPS', 'interior_points', 'symmetrise',

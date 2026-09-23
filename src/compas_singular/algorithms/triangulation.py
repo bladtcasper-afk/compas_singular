@@ -11,10 +11,10 @@ from compas.datastructures.mesh.operations.weld import mesh_unweld_edges
 from compas.itertools import pairwise
 from compas.tolerance import TOL
 
-from ..datastructures import Mesh
-from ..datastructures import Network
-from ..datastructures import trimesh_face_circle
-from ..datastructures import is_face_degenerate
+from compas_singular.datastructures import Mesh
+from compas_singular.datastructures import Network
+from compas_singular.datastructures import trimesh_face_circle
+from compas_singular.datastructures import is_face_degenerate
 
 
 __all__ = [

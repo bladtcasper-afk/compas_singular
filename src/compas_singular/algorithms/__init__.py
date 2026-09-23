@@ -52,14 +52,14 @@ from __future__ import print_function
 import compas
 
 if not compas.IPY:
-    from .isomorphism import *  # noqa: F401 F403
+    from compas_singular.algorithms.isomorphism import *  # noqa: F401 F403
 
-from .layout import *  # noqa: F401 F403
-from .propagation import *  # noqa: F401 F403
-from .triangulation import *  # noqa: F401 F403
-from .twocoloring import *  # noqa: F401 F403
+from compas_singular.algorithms.layout import *  # noqa: F401 F403
+from compas_singular.algorithms.propagation import *  # noqa: F401 F403
+from compas_singular.algorithms.triangulation import *  # noqa: F401 F403
+from compas_singular.algorithms.twocoloring import *  # noqa: F401 F403
 
-from .skeleton_decomposition import *  # noqa: F401 F403
+from compas_singular.algorithms.skeleton_decomposition import *  # noqa: F401 F403
 
 
 import types  # noqa: E402

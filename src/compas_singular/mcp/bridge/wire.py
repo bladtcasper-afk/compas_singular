@@ -166,9 +166,9 @@ def mesh_from_wire(data, cls=None):
     # loaded after ``ensure_paths()`` without dragging the datastructures in.
     if cls is None:
         if poles:
-            from ...datastructures import CoarsePseudoQuadMesh as cls
+            from compas_singular.datastructures import CoarsePseudoQuadMesh as cls
         else:
-            from ...datastructures import QuadMesh as cls
+            from compas_singular.datastructures import QuadMesh as cls
 
     builder = getattr(cls, 'from_vertices_and_faces_with_poles', None)
     if poles and builder is not None:

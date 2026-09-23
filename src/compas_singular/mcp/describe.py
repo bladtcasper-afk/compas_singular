@@ -25,7 +25,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from .handle import vertex_handle
+from compas_singular.mcp.handle import vertex_handle
 
 
 __all__ = ['DEFAULT_THRESHOLDS', 'band', 'describe', 'format_triple']

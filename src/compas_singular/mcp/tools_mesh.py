@@ -16,26 +16,26 @@ from __future__ import print_function
 
 import math
 
-from ..datastructures.mesh.smoothing import automated_boundary_constraints
-from ..datastructures.mesh.smoothing import boundary_constrained_smoothing
-from ..datastructures.mesh.smoothing import constrained_smoothing
-from ..datastructures.mesh.smoothing import relaxation
-from ..datastructures.mesh.smoothing import smoothing_region
-from ..editing.guide_chain import GuideCurve
-from ..editing.guide_chain import attach_chain
-from ..editing.guide_chain import collect_polyedges
-from ..editing.guide_chain import guide_chain
-from ..editing.guide_chain import mean_edge_length
-from ..framefield.relax import relax_mesh
-from . import render
-from .describe import describe
-from .handle import SelectorError
-from .handle import describe_selector
-from .handle import resolve
-from .handle import select
-from .handle import vertex_handle
-from .library import thresholds
-from .registry import tool
+from compas_singular.datastructures.mesh.smoothing import automated_boundary_constraints
+from compas_singular.datastructures.mesh.smoothing import boundary_constrained_smoothing
+from compas_singular.datastructures.mesh.smoothing import constrained_smoothing
+from compas_singular.datastructures.mesh.smoothing import relaxation
+from compas_singular.datastructures.mesh.smoothing import smoothing_region
+from compas_singular.editing.guide_chain import GuideCurve
+from compas_singular.editing.guide_chain import attach_chain
+from compas_singular.editing.guide_chain import collect_polyedges
+from compas_singular.editing.guide_chain import guide_chain
+from compas_singular.editing.guide_chain import mean_edge_length
+from compas_singular.framefield.relax import relax_mesh
+from compas_singular.mcp import render
+from compas_singular.mcp.describe import describe
+from compas_singular.mcp.handle import SelectorError
+from compas_singular.mcp.handle import describe_selector
+from compas_singular.mcp.handle import resolve
+from compas_singular.mcp.handle import select
+from compas_singular.mcp.handle import vertex_handle
+from compas_singular.mcp.library import thresholds
+from compas_singular.mcp.registry import tool
 
 
 __all__ = []
@@ -237,7 +237,7 @@ def _t_inspect(session, low_angle=None, image=False, size=None):
 
 def _singularity_handles(mesh, limit=24):
     """Where the irregular vertices are, as handles. Truncated, and says so."""
-    from .handle import select as _select
+    from compas_singular.mcp.handle import select as _select
     try:
         keys, _ = _select(mesh, {'kind': 'singularities', 'rings': 0})
     except Exception:
@@ -294,7 +294,7 @@ def _t_remark(session, text, about=None):
     if not (text or '').strip():
         return {'ok': False, 'reason': 'a remark needs some text'}
     if about is not None and session.loaded:
-        from .handle import resolve
+        from compas_singular.mcp.handle import resolve
         key, how = resolve(session.mesh, about)
         if key is None:
             return {'ok': False, 'reason': 'cannot anchor the remark: ' + how}

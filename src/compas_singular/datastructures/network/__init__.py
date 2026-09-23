@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-from .network import *  # noqa: F401 F403
+from compas_singular.datastructures.network.network import *  # noqa: F401 F403
 
 import types  # noqa: E402
 

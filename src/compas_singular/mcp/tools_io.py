@@ -17,10 +17,10 @@ from __future__ import print_function
 
 import os
 
-from .describe import describe
-from .library import thresholds
-from .registry import tool
-from .tools_rhino import unseen_refusal
+from compas_singular.mcp.describe import describe
+from compas_singular.mcp.library import thresholds
+from compas_singular.mcp.registry import tool
+from compas_singular.mcp.tools_rhino import unseen_refusal
 
 
 __all__ = []

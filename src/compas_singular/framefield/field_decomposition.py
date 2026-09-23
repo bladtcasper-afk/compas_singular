@@ -20,29 +20,29 @@ from compas_singular.datastructures import CoarsePseudoQuadMesh
 from compas_singular.geometry.polyline import distance_to_polyline
 from compas_singular.geometry.polyline import project_on_polyline
 
-from .arrangement import faces_from_arrangement
-from .arrangement import faces_with_repeated_vertices
-from .arrangement import planar_arrangement
-from .background import BackgroundMesh
-from .constraints import as_curve_list
-from .constraints import from_boundary
-from .constraints import from_curves
-from .densify import field_densification
+from compas_singular.framefield.arrangement import faces_from_arrangement
+from compas_singular.framefield.arrangement import faces_with_repeated_vertices
+from compas_singular.framefield.arrangement import planar_arrangement
+from compas_singular.framefield.background import BackgroundMesh
+from compas_singular.framefield.constraints import as_curve_list
+from compas_singular.framefield.constraints import from_boundary
+from compas_singular.framefield.constraints import from_curves
+from compas_singular.framefield.densify import field_densification
 # These moved to ``editing`` -- they weld, snap and repair a layout from plain
 # geometry and never needed the field. The import direction is one-way:
 # ``framefield`` may use ``editing``, never the reverse.
-from ..editing.rebuild import coarse_from_skeleton
-from ..editing.rebuild import mesh_from_faces
-from ..editing.rebuild import warp_polyline
-from .field import CrossField
-from .quality import hard_floor
-from .quality import mesh_quality
-from .separatrix_network import SHARP_TURN
-from .separatrix_network import build_network
-from ..editing.repair import densifiable
-from ..editing.repair import solve_non_quad_faces
-from ..editing.repair import topological_quad_split
-from .trace import Tracer
+from compas_singular.editing.rebuild import coarse_from_skeleton
+from compas_singular.editing.rebuild import mesh_from_faces
+from compas_singular.editing.rebuild import warp_polyline
+from compas_singular.framefield.field import CrossField
+from compas_singular.framefield.quality import hard_floor
+from compas_singular.framefield.quality import mesh_quality
+from compas_singular.framefield.separatrix_network import SHARP_TURN
+from compas_singular.framefield.separatrix_network import build_network
+from compas_singular.editing.repair import densifiable
+from compas_singular.editing.repair import solve_non_quad_faces
+from compas_singular.editing.repair import topological_quad_split
+from compas_singular.framefield.trace import Tracer
 
 
 __all__ = ['FieldDecomposition']
@@ -454,8 +454,8 @@ class FieldDecomposition(object):
         -------
         :class:`compas_singular.symmetry.SymmetryReport`
         """
-        from ..symmetry import find_symmetry
-        from ..symmetry.routes import domain_of
+        from compas_singular.symmetry import find_symmetry
+        from compas_singular.symmetry.routes import domain_of
         self.symmetry_report = find_symmetry(domain=domain_of(self), tol=tol, include=include,
                                              max_order=max_order)
         return self.symmetry_report
@@ -475,8 +475,8 @@ class FieldDecomposition(object):
         -------
         :class:`compas_singular.symmetry.SymmetricUnit`
         """
-        from ..symmetry import build_unit
-        from ..symmetry.routes import mesher_for
+        from compas_singular.symmetry import build_unit
+        from compas_singular.symmetry.routes import mesher_for
         report = report or self.symmetry_report or self.find_symmetry()
         return build_unit(report, mesher_for(self), keys=keys, centre=centre, seam=seam)
 
@@ -1276,7 +1276,7 @@ class FieldDecomposition(object):
         this way has every patch corner on a boundary, which is the one case
         ``from_polylines`` cannot return. See :meth:`decomposition_mesh`.
         """
-        from .separatrix_network import boundary_corners
+        from compas_singular.framefield.separatrix_network import boundary_corners
 
         return [loop for loop in self.background.inners
                 if not boundary_corners(loop)]

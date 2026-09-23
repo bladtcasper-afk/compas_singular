@@ -34,10 +34,10 @@ into symmetry afterwards.
 """
 from __future__ import absolute_import
 
-from .group import SymmetryGroup  # noqa: F401
-from .domain import Domain  # noqa: F401
-from .report import SymmetryReport  # noqa: F401
-from .detect import find_symmetry  # noqa: F401
+from compas_singular.symmetry.group import SymmetryGroup  # noqa: F401
+from compas_singular.symmetry.domain import Domain  # noqa: F401
+from compas_singular.symmetry.report import SymmetryReport  # noqa: F401
+from compas_singular.symmetry.detect import find_symmetry  # noqa: F401
 
 
 def __getattr__(name):
@@ -45,7 +45,7 @@ def __getattr__(name):
     # would make ``compas_singular.symmetry`` impossible to import from inside
     # ``compas_singular.datastructures``' own initialisation. Resolve them lazily.
     if name in ('SymmetricUnit', 'SymmetricQuadUnit', 'build_unit'):
-        from . import unit
+        from compas_singular.symmetry import unit
         return getattr(unit, name)
     raise AttributeError(name)
 

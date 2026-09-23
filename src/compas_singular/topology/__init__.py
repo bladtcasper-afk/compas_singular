@@ -24,7 +24,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from .coloring import *  # noqa: F401 F403
+from compas_singular.topology.coloring import *  # noqa: F401 F403
 
 import types  # noqa: E402
 

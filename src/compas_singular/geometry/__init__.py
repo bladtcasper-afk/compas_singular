@@ -56,9 +56,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from .array import *  # noqa: F401 F403
-from .polyline import *  # noqa: F401 F403
-from .projection import *  # noqa: F401 F403
+from compas_singular.geometry.array import *  # noqa: F401 F403
+from compas_singular.geometry.polyline import *  # noqa: F401 F403
+from compas_singular.geometry.projection import *  # noqa: F401 F403
 
 import types  # noqa: E402
 
