@@ -14,12 +14,11 @@ joint between two blocks. Those two meshes score **identically** under a
 cross-symmetric metric. So does a mesh whose courses run across the cable instead of
 along it.
 
-WHY THIS IS NOT ``guide_lines.py``'s ``measure``
-------------------------------------------------
+WHY THE EDGES ARE NOT SELECTED BY INCIDENCE
+-------------------------------------------
 
-That one (in the ``__main__`` block of ``src/compas_singular/guide_lines.py``) selects
-its edges by INCIDENCE: vertices within ``on_tol=0.05`` of the guide, i.e. essentially
-exactly on it. ``guide_lines`` may assume that, because it *creates* the incidence by
+Selecting the edges by INCIDENCE -- vertices within ``on_tol=0.05`` of the guide, i.e.
+essentially exactly on it -- only works when something *creates* that incidence by
 snapping a polyedge onto the guide. **The frame-field route never snaps.** The guide is
 a field constraint; no vertex is placed on it on purpose. At ``target_length=1.0`` on a
 10-unit domain, ``on_tol`` is half a percent of an edge, so the incident set is expected
@@ -30,8 +29,7 @@ Loosening ``on_tol`` into a radius is the wrong repair: a radius around a curve 
 a ragged band of vertices from BOTH sides, which is the selection that folded faces when
 it was tried as a smoothing constraint.
 
-So select by FACE instead, the way ``guide_lines``' ``off_centre`` already does -- it
-has no incidence assumption and transfers unchanged. A face counts if the guide passes
+So select by FACE instead, which has no incidence assumption. A face counts if the guide passes
 through it. Then:
 
 * the face's two edge families give **along** (the family nearer the tangent, want 0

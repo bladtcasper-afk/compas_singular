@@ -47,8 +47,7 @@ TWO GUARDS, BOTH LEARNED THE HARD WAY
 past its neighbour, collapsing the edge between them. Unguarded, this pass took the ring
 cable to **min 0.00 / max 180.00 / aspect inf** -- a hard-floor breach, far worse than
 the mesh it started from. So every chain of vertices sharing a curve keeps its original
-order along it, clamped by arc-length parameter with a minimum gap. This is the same
-guard the coarse relaxation in ``guide_lines`` needed, for the same reason.
+order along it, clamped by arc-length parameter with a minimum gap.
 
 **Improvement only, unless there is something to buy.** On an already-good domain this
 pass makes things worse: ``disc+round hole`` starts at 80.63/99.37 and a free relaxation

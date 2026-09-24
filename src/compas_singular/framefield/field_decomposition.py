@@ -12,7 +12,7 @@ becomes
     coarsemesh = decomposition.decomposition_mesh()
 
 Everything after that -- ``collect_strips``, ``set_strips_density_target``,
-``densification``, ``add_strip``, the guide_lines helpers -- is untouched.
+``densification``, ``add_strip`` -- is untouched.
 """
 from __future__ import annotations
 
@@ -1429,7 +1429,6 @@ class FieldDecomposition(object):
                 # Both ends on a wall, but no polyline runs between them: the
                 # edge is a PIECE of a boundary arc, from a quad split, a
                 # fallback patch, or a corner an edit snapped to the wall.
-                # Same idea as guide_lines.boundary_arc_between.
                 for loop, wall_tol in walls:
                     if _on_loop(pa, loop, wall_tol) and _on_loop(pb, loop, wall_tol):
                         # Both ways round, shorter first -- on a hole the

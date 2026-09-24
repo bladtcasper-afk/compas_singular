@@ -2,7 +2,7 @@
 
 Replaces ``SkeletonDecomposition``'s medial-axis front end with a
 frame-field -> separatrix -> coarse-layout one, leaving everything downstream
-(``collect_strips``, ``densification``, ``add_strip``, ``guide_lines``)
+(``collect_strips``, ``densification``, ``add_strip``)
 untouched.
 
 See ``frame-field-front-end-module-layout.md`` in the parent folder for the
