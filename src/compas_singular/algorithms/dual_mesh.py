@@ -62,9 +62,6 @@ max/min on a 5x4 grid: 4.00 raw, 1.00 redistributed.
 One more caveat: **do not dualise a mesh with poles.** A pole is already a face
 rather than a gathering joint, so duality trades it the wrong way and turns it
 into a valence-3 joint. All-quad meshes only.
-
-This module deliberately imports nothing from Rhino, so it can be exercised
-outside the application.
 """
 from __future__ import absolute_import
 from __future__ import division

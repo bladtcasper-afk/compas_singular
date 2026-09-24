@@ -5,16 +5,12 @@ from __future__ import annotations
 
 from math import ceil
 
-from compas.geometry import Polyline
-from compas.geometry import length_vector
-from compas.geometry import cross_vectors
 from compas.geometry import distance_point_point
-from compas.geometry import subtract_vectors
+from compas.geometry import distance_point_point_xy
 from compas.itertools import pairwise
 
 
 __all__ = [
-    'Polyline',
     'bounding_box_diagonal',
     'closest_on_polyline',
     'discretise_boundary',
@@ -86,7 +82,7 @@ def closest_on_polyline(point: list[float], points: list[list[float]], closed: b
 
 
 def project_on_polyline(point: list[float], points: list[list[float]]) -> tuple[float, float, float]:
-    """``(distance, arclength, total length)`` for a point near an OPEN polyline.
+    """``(distance, arclength, total length)`` for a point near an OPEN polyline, in XY.
 
     Open, not closed: joining last to first would invent a segment an arc does
     not have. :func:`distance_to_loop` is the closed version.
@@ -116,7 +112,7 @@ def project_on_polyline(point: list[float], points: list[list[float]]) -> tuple[
         t = ((point[0] - a[0]) * abx + (point[1] - a[1]) * aby) / (length * length)
         t = max(0.0, min(1.0, t))
         q = [a[0] + abx * t, a[1] + aby * t, 0.0]
-        d = distance_point_point(point, q)
+        d = distance_point_point_xy(point, q)
         if d < best[0]:
             best = (d, travelled + t * length)
         travelled += length
@@ -124,7 +120,7 @@ def project_on_polyline(point: list[float], points: list[list[float]]) -> tuple[
 
 
 def distance_to_polyline(point: list[float], points: list[list[float]]) -> float:
-    """Shortest distance from a point to an OPEN polyline."""
+    """Shortest distance from a point to an OPEN polyline, in XY."""
     return project_on_polyline(point, points)[0]
 
 
@@ -159,7 +155,7 @@ def distance_to_loop(p: list[float], loop: list[list[float]]) -> float:
         t = ((p[0] - a[0]) * abx + (p[1] - a[1]) * aby) / length2
         t = max(0.0, min(1.0, t))
         q = [a[0] + abx * t, a[1] + aby * t, 0.0]
-        best = min(best, distance_point_point(p, q))
+        best = min(best, distance_point_point_xy(p, q))
     return best
 
 
@@ -190,7 +186,7 @@ def bounding_box_diagonal(*loops: list[list[float]]) -> float:
 
 
 def _clean_loop(points: list[list[float]]) -> list[list[float]]:
-    """A loop as XY floats, with consecutive duplicates and a closing point dropped."""
+    """A loop as ``[x, y, z]`` floats, with consecutive duplicates and a closing point dropped."""
     pts = [[float(p[0]), float(p[1]), float(p[2]) if len(p) > 2 else 0.0]
            for p in points]
     if not pts:
@@ -235,7 +231,7 @@ def _subdivide_chain(chain: list[list[float]], spacing: float) -> list[list[floa
 
 
 def _clean_chain(points: list[list[float]]) -> list[list[float]]:
-    """An open chain as XY floats, consecutive duplicates dropped, ends kept."""
+    """An open chain as ``[x, y, z]`` floats, consecutive duplicates dropped, ends kept."""
     pts = [[float(p[0]), float(p[1]), float(p[2]) if len(p) > 2 else 0.0]
            for p in points]
     if not pts:
@@ -321,7 +317,7 @@ def discretise_boundary(
     points reads as a CORNER to a cross field.
 
     ``ceil``, not ``round``: ``d_scale`` is an upper integer value, so
-    ``target_length`` is a bound and not an average. Rounding to nearest left
+    ``spacing`` is a bound and not an average. Rounding to nearest left
     segments up to 1.5x the target -- measured 1.12x on a 28-point disc at 0.5.
 
     Parameters
@@ -335,9 +331,9 @@ def discretise_boundary(
         loop by loop: a small hole measured against its own bounding box would
         come back far denser than the wall beside it.
     alpha : float, optional
-        Fraction of ``D`` to use as the target length when ``target_length`` is
-        ``None``. ``None`` for both returns the loops unchanged -- the explicit
-        opt-out, for a caller who has already sampled its walls.
+        Fraction of ``D`` to use as the spacing when ``spacing`` is ``None``.
+        ``None`` for both returns the loops unchanged -- the explicit opt-out,
+        for a caller who has already sampled its walls.
     d_min : int, optional
         Fewest points per loop, whatever the target length says. ``None`` or
         ``0`` disables the floor.
@@ -389,69 +385,10 @@ def discretise_boundary(
 def resample_loop(points: list[list[float]], spacing: float | None = None) -> list[list[float]]:
     """One loop through :func:`discretise_boundary`, with no scale rule.
 
-    Kept for callers outside this repository. ``spacing`` is
-    ``target_length``, and ``None`` returns the loop unchanged. New code should
-    call :func:`discretise_boundary`, which also applies eq. 4.1.
+    ``spacing`` is the maximum segment length, and ``None`` returns the loop
+    unchanged. New code should call :func:`discretise_boundary`, which also
+    applies eq. 4.1.
     """
     loop, _ = discretise_boundary(points, spacing=spacing,
                                   alpha=None, d_min=None)
     return loop
-
-
-class Polyline(Polyline):
-
-    def __init__(self, points: list[list[float]]) -> None:
-        super(Polyline, self).__init__(points)
-
-    def vertex_curvature(self, i: int) -> float | None:
-        """Discrete polyline curvature.
-
-        Parameters
-        ----------
-        i : int
-            Vertex index.
-
-        Returns
-        -------
-        curvature : float, None
-            Curvature at the vertex.
-            None if index out of range
-
-        References
-        ----------
-        .. [1] Lionel Du Peloux. Modeling of bending-torsion couplings in active-bending structures.
-               Application to the design of elastic gridshells. PhD thesis, Universite Paris Est, Ecole des Ponts ParisTech. 2017.
-               Available at: https://tel.archives-ouvertes.fr/tel-01757782/document.
-
-        """
-
-        n = len(self.points)
-
-        if i < 0 or i > n - 1:
-            return None
-
-        if i == 0 or i == n - 1:
-            return 0.0
-
-        a, b, c = self.points[i - 1: i + 2]
-        ab = subtract_vectors(b, a)
-        bc = subtract_vectors(c, b)
-        ac = subtract_vectors(c, a)
-
-        return 2 * length_vector(cross_vectors(ab, bc)) / (length_vector(ac) * length_vector(ab) * length_vector(bc))
-
-
-# ==============================================================================
-# Main
-# ==============================================================================
-
-if __name__ == '__main__':
-    pass
-
-    # import compas
-
-    # points = [[0.0, 0.0, 0.0], [1.0, 5.0, 0.0], [2.0, 0.0, 0.0], [3.0, -5.0, 0.0], [4.0, 0.0, 0.0]]
-    # polyline = Polyline(points)
-
-    # for i in range(len(points)):
-    #     print(polyline.vertex_curvature(i))

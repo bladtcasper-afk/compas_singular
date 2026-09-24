@@ -25,8 +25,7 @@ Three ways an edge finds its curve, best first:
 
 1. **wall arc** -- the edge is on the layout's boundary, so the piece of the
    domain wall between its two corners IS its shape. Re-derived from the input
-   curve rather than looked up, which is the lesson of the ``guide_lines`` work:
-   a corner that snapping, refining or editing moved is still ON the wall, so
+   curve rather than looked up: a corner that snapping, refining or editing moved is still ON the wall, so
    re-deriving works for any boundary edge in the final layout while matching a
    remembered curve only works for the ones nothing touched. It is also the more
    accurate of the two here -- the wall comes from the Rhino curve at whatever
@@ -68,10 +67,6 @@ Nothing in this module touches ``rhinoscriptsyntax`` or ``Rhino``. That is
 deliberate and is the same rule the lower half of ``edit_coarse`` keeps: this is
 the half that can be wrong in ways a user cannot see, so it has to be runnable,
 and testable, without Rhino open.
-
-``compas_singular.rhino.coarse_curves`` re-exports this module's public names
-so the ``CMD_`` commands keep importing from where they always have -- if a
-search for ``coarse_curves.py`` lands you there instead, that file is the shim.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -125,8 +120,7 @@ class BoundaryLoop(object):
 
     The ring is stored DOUBLED rather than indexed modulo. An arc that crosses
     the point where the loop closes is then a plain slice of a longer list, and
-    there is no modular index arithmetic to get wrong -- the same trick
-    ``guide_lines.boundary_arc_between`` uses.
+    there is no modular index arithmetic to get wrong.
 
     Parameters
     ----------
