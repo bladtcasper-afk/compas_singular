@@ -1,3 +1,9 @@
+from __future__ import annotations
+
+from typing import Any
+from typing import Sequence
+from typing import TYPE_CHECKING
+
 import compas
 
 from compas.geometry import is_polygon_in_polygon_xy, is_point_in_polygon_xy, Polygon, Polyline
@@ -9,13 +15,16 @@ import compas_rhino as cr
 from compas_singular.datastructures import CoarsePseudoQuadMesh
 from compas_singular.rhino.project import ROOT
 
+if TYPE_CHECKING:
+    from compas.datastructures import Mesh
+
 if compas.RHINO:
 	import rhinoscriptsyntax as rs
 	import scriptcontext as sc
 	import System
 
 
-def clear_layer(layer, clean_sublayers=False):
+def clear_layer(layer: str, clean_sublayers: bool = False) -> int:
 	if not rs.IsLayer(layer):
 		print(f"No layer named {layer}. Deleted nothing.")
 		return 0
@@ -41,7 +50,7 @@ def clear_layer(layer, clean_sublayers=False):
 	return count
 
 
-def clean_polyline_points(points, tol=None):
+def clean_polyline_points(points: Sequence[Sequence[float]], tol: float | None = None) -> list[list[float]]:
 	"""``points`` with consecutive duplicates dropped, at RHINO's tolerance.
 
 	Rhino rejects a polyline whose consecutive points coincide, and it judges
@@ -67,7 +76,12 @@ def clean_polyline_points(points, tol=None):
 	return out if len(out) >= 2 else []
 
 
-def bake_polylines(polylines, layer, color=None, clear_existing=True):
+def bake_polylines(
+    polylines: Sequence[Sequence[Sequence[float]]],
+    layer: str,
+    color: Any = None,
+    clear_existing: bool = True,
+) -> tuple[list[Any], int]:
 	"""Bake polylines, skipping any Rhino will not take. ``(guids, skipped)``.
 
 	**``rs.AddPolyline`` RAISES** -- ``Unable to add polyline to document`` --
@@ -105,7 +119,7 @@ def bake_polylines(polylines, layer, color=None, clear_existing=True):
 	return guids, skipped
 
 
-def bake_mesh(mesh, layer, color=None, clear_existing=True):
+def bake_mesh(mesh: Mesh, layer: str, color: Any = None, clear_existing: bool = True) -> Any:
 	"""Bake a compas mesh, n-gons included. Returns the guid.
 
 	**Not ``rs.AddMesh``.** That function takes a face of any length and does
@@ -185,7 +199,7 @@ MIN_CLOSED_CURVE_POINTS = 28
 SYMMETRY_SAMPLE_MULTIPLE = 4
 
 
-def curve_points(guid, max_edge):
+def curve_points(guid: Any, max_edge: float) -> list[list[float]]:
 	"""A Rhino curve as a list of points: corners kept, curvature sampled.
 
 	A polyline is taken at its OWN vertices, because sampling it would round the
@@ -232,11 +246,11 @@ def curve_points(guid, max_edge):
 	return points
 
 
-def _distance(a, b):
+def _distance(a: Sequence[float], b: Sequence[float]) -> float:
 	return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
 
 
-def curve_to_polyline(guid, max_edge):
+def curve_to_polyline(guid: Any, max_edge: float) -> Polyline:
 	""":func:`curve_points` as a CLOSED compas :class:`Polyline`.
 
 	Closed in the ``first point repeated at the end`` sense, which is what
@@ -250,7 +264,7 @@ def curve_to_polyline(guid, max_edge):
 	return Polyline(points + points[:1])
 
 
-def read_boundary_loops(max_edge):
+def read_boundary_loops(max_edge: float) -> tuple[list[list[float]], list[list[list[float]]]]:
 	"""``(outer, inners)`` as point lists, sampled from the Rhino curves.
 
 	The loops for :func:`compas_singular.rhino.coarse_curves.coarse_edges_to_curves`.
@@ -271,7 +285,7 @@ def read_boundary_loops(max_edge):
 	return outer, inners
 
 
-def read_polylines(layer):
+def read_polylines(layer: str) -> list[list[list[float]]]:
 	"""Every polyline on a layer as a point list. ``[]`` if the layer is empty.
 
 	Used for the decomposition's branches on ``Skeleton::Polylines``. Unlike the
@@ -289,7 +303,7 @@ def read_polylines(layer):
 	return out
 
 
-def read_boundaries(spacing=None):
+def read_boundaries(spacing: float | None = None) -> tuple[Polyline, list[Polyline], list[Polyline], list[Any]]:
 	"""``(outer, inners, guides, poles)``: polylines closed except the guides.
 
 	``spacing`` is the length a CURVED input is divided by. A polyline input is
@@ -348,7 +362,7 @@ def read_boundaries(spacing=None):
 	return outer, inners, guides, poles
 
 
-def read_coarse():
+def read_coarse() -> tuple[CoarsePseudoQuadMesh, list[Any]]:
 	guids = rs.ObjectsByLayer("Mesh") if rs.IsLayer("Mesh") else None
 	if not guids:
 		raise RuntimeError(
@@ -366,7 +380,7 @@ def read_coarse():
 		vertices, faces, poles)
 	return coarse_mesh, poles
 
-def read_mesh(layer):
+def read_mesh(layer: str) -> Mesh:
 	guids = rs.ObjectsByLayer(layer)
 	if not guids:
 		raise RuntimeError(
@@ -377,7 +391,7 @@ def read_mesh(layer):
 	return mesh
 
 
-def mesh_from_rhino(rhinomesh, cls=None):
+def mesh_from_rhino(rhinomesh: Any, cls: type | None = None) -> Any:
 	"""A Rhino mesh as a compas mesh, with its N-GONS kept as n-gons.
 
 	**Why ``mesh_to_compas`` is not enough.** A Rhino mesh face has four slots,

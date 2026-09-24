@@ -34,17 +34,29 @@ straight chords, which is the exact loss this branch exists to prevent.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from compas.geometry import distance_point_point
 from compas.itertools import pairwise
 
 from compas_singular.editing.rebuild import warp_polyline
 
+if TYPE_CHECKING:
+    from compas_singular.datastructures import CoarseQuadMesh
+
 
 __all__ = ['warp_edge_curve', 'warp_chorded_edges']
 
 
-def warp_edge_curve(polylines, pa, pb, scale, claimed=None):
+def warp_edge_curve(
+    polylines: list[list[list[float]]],
+    pa: list[float],
+    pb: list[float],
+    scale: float,
+    claimed: set[int] | None = None,
+) -> list[list[float]] | None:
     """**The traced separatrix this edge came from, moved onto its endpoints.**
 
     Parameters
@@ -125,7 +137,12 @@ def warp_edge_curve(polylines, pa, pb, scale, claimed=None):
     return curve
 
 
-def warp_chorded_edges(mapping, coarse, polylines, scale):
+def warp_chorded_edges(
+    mapping: dict[tuple[int, int], list[list[float]]],
+    coarse: "CoarseQuadMesh",
+    polylines: list[list[list[float]]],
+    scale: float,
+) -> tuple[dict[tuple[int, int], list[list[float]]], int]:
     """Give every straight-chord edge a warped curve where one fits.
 
     ``mapping`` is what ``coarse_edges_to_curves`` produced: one polyline per

@@ -116,7 +116,10 @@ artefacts of the asymmetric background -- but it is a real change in what the
 layout does, not only in how symmetric it looks. Its minimum angle goes 12.54
 -> 78.54 degrees.
 """
+from __future__ import annotations
+
 from math import ceil
+from typing import Any
 
 from compas.geometry import is_point_in_polygon_xy
 
@@ -177,12 +180,17 @@ class Symmetry(object):
     liability rather than a feature.
     """
 
-    def __init__(self, centre, elements, steps=STEPS):
+    def __init__(
+        self,
+        centre: list[float],
+        elements: list[tuple[int, int, int, int, bool, str]],
+        steps: tuple[str, ...] = STEPS,
+    ) -> None:
         self.centre = [float(centre[0]), float(centre[1]), 0.0]
         self.elements = list(elements)
         self.steps = tuple(steps)
 
-    def enabled(self, step):
+    def enabled(self, step: str) -> bool:
         """Whether ``step`` should be applied. False for a trivial group.
 
         Every call site asks this rather than testing ``symmetry is not None``,
@@ -192,22 +200,22 @@ class Symmetry(object):
         """
         return not self.trivial and step in self.steps
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.elements)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '<Symmetry order {} about ({:.3f}, {:.3f}): {}>'.format(
             len(self.elements), self.centre[0], self.centre[1],
             ', '.join(self.names()))
 
-    def names(self):
+    def names(self) -> list[str]:
         return [g[5] for g in self.elements]
 
     @property
-    def trivial(self):
+    def trivial(self) -> bool:
         return len(self.elements) < 2
 
-    def apply(self, g, point):
+    def apply(self, g: tuple[int, int, int, int, bool, str], point: list[float]) -> list[float]:
         """``g`` applied to a point, about :attr:`centre`."""
         a, b, c, d = g[0], g[1], g[2], g[3]
         x, y = point[0] - self.centre[0], point[1] - self.centre[1]
@@ -215,7 +223,7 @@ class Symmetry(object):
                 c * x + d * y + self.centre[1], 0.0]
 
     @staticmethod
-    def linear(g, vector):
+    def linear(g: tuple[int, int, int, int, bool, str], vector: list[float]) -> list[float]:
         """``g``'s linear part applied to a free vector -- no centre involved."""
         a, b, c, d = g[0], g[1], g[2], g[3]
         return [a * vector[0] + b * vector[1], c * vector[0] + d * vector[1], 0.0]
@@ -225,7 +233,12 @@ class Symmetry(object):
     # ------------------------------------------------------------------
 
     @classmethod
-    def detect(cls, loops, centre=None, tol=1e-6):
+    def detect(
+        cls,
+        loops: list[list[list[float]]],
+        centre: list[float] | None = None,
+        tol: float = 1e-6,
+    ) -> Symmetry:
         """The subgroup that maps every one of ``loops`` onto the union of them.
 
         Parameters
@@ -284,8 +297,14 @@ class Symmetry(object):
 # 1 -- interior points invariant under the group
 # ----------------------------------------------------------------------
 
-def interior_points(symmetry, target_length, outer, inners=(),
-                    margin=0.45, on_axis=True):
+def interior_points(
+    symmetry: Symmetry,
+    target_length: float,
+    outer: list[list[float]],
+    inners: Any = (),
+    margin: float = 0.45,
+    on_axis: bool = True,
+) -> list[list[float]]:
     """Interior points, as a set exactly invariant under ``symmetry``."""
     centre = symmetry.centre
     half = target_length / 2.0
@@ -298,11 +317,11 @@ def interior_points(symmetry, target_length, outer, inners=(),
                          max(ys) - centre[1], centre[1] - min(ys))
                      / target_length)) + 1
 
-    def point_of(u, v, jitter):
+    def point_of(u: int, v: int, jitter: list[float]) -> list[float]:
         return [centre[0] + u * half + jitter[0],
                 centre[1] + v * half + jitter[1], 0.0]
 
-    def act(g, u, v):
+    def act(g: tuple[int, int, int, int, bool, str], u: int, v: int) -> tuple[int, int]:
         """The group acting on DOUBLED lattice indices. Exact -- integers only."""
         return (g[0] * u + g[1] * v, g[2] * u + g[3] * v)
 
@@ -341,7 +360,7 @@ def interior_points(symmetry, target_length, outer, inners=(),
     return out
 
 
-def _inside(p, outer, inners, limit):
+def _inside(p: list[float], outer: list[list[float]], inners: Any, limit: float) -> bool:
     if not is_point_in_polygon_xy(p, outer):
         return False
     if distance_to_loop(p, outer) < limit:
@@ -358,7 +377,7 @@ def _inside(p, outer, inners, limit):
 # 3 -- project the solved field onto the symmetric subspace
 # ----------------------------------------------------------------------
 
-def symmetrise(field, symmetry, tol=1e-9):
+def symmetrise(field: CrossField, symmetry: Symmetry, tol: float = 1e-9) -> CrossField:
     """Group-average ``u``, and return a new :class:`CrossField`.
 
     Cheap, and exact to machine precision: measured ``max|u - rho(g)u|`` of
@@ -439,7 +458,7 @@ def symmetrise(field, symmetry, tol=1e-9):
     return out
 
 
-def _snap(value, tol):
+def _snap(value: float, tol: float) -> int:
     return int(round(value / tol))
 
 
@@ -447,7 +466,10 @@ def _snap(value, tol):
 # 4 -- take the singularity off the arbitrary face it was reported on
 # ----------------------------------------------------------------------
 
-def snap_singularities(field, relative_tol=1e-9):
+def snap_singularities(
+    field: CrossField,
+    relative_tol: float = 1e-9,
+) -> tuple[CrossField, dict[int, list[float]], dict[str, Any]]:
     """Move each singularity onto the field's own ``|u|`` minimum near it.
 
     Returns a new :class:`CrossField` -- the caller's is not touched -- plus a
@@ -547,7 +569,12 @@ def snap_singularities(field, relative_tol=1e-9):
 # 5 -- the end-snapping in repair.build_network
 # ----------------------------------------------------------------------
 
-def project_clusters(points, base, symmetry, tol=1e-6):
+def project_clusters(
+    points: list[list[float]],
+    base: dict[int, list[float]],
+    symmetry: Symmetry,
+    tol: float = 1e-6,
+) -> dict[int, list[float]]:
     """Force ``base`` -- an ``{index: point}`` map -- to commute with the group.
 
     Keyed by POSITION, not by index. The list handed to ``_cluster`` is the two
@@ -562,7 +589,7 @@ def project_clusters(points, base, symmetry, tol=1e-6):
     ``groups`` rule, which exists to stop one trace's two ends merging, and
     overriding it here would undo the thing it protects.
     """
-    def key(p):
+    def key(p: list[float]) -> tuple[int, int]:
         return (_snap(p[0], tol), _snap(p[1], tol))
 
     by_position = {}
@@ -602,7 +629,7 @@ def project_clusters(points, base, symmetry, tol=1e-6):
     return out
 
 
-def _inverse(g):
+def _inverse(g: tuple[int, int, int, int, bool, str]) -> tuple[int, int, int, int, bool, str]:
     """The inverse of a signed permutation -- its transpose, both being orthogonal."""
     for other in ELEMENTS:
         if (other[0] * g[0] + other[1] * g[2] == 1
@@ -617,7 +644,11 @@ def _inverse(g):
 # measurement
 # ----------------------------------------------------------------------
 
-def invariance(points, symmetry, tol=1e-6):
+def invariance(
+    points: list[list[float]],
+    symmetry: Symmetry,
+    tol: float = 1e-6,
+) -> dict[str, tuple[float, float]]:
     """How invariant a point set is, per group element.
 
     Returns
@@ -650,7 +681,7 @@ def invariance(points, symmetry, tol=1e-6):
     return out
 
 
-def field_invariance(field, symmetry, tol=1e-9):
+def field_invariance(field: CrossField, symmetry: Symmetry, tol: float = 1e-9) -> float:
     """``max|u - rho(g)u|`` over vertices, worst over the group.
 
     Zero to machine precision means the field itself is symmetric, whatever the
@@ -676,7 +707,12 @@ def field_invariance(field, symmetry, tol=1e-9):
     return worst
 
 
-def singularity_orbits(field, symmetry, points=None, tol=1e-6):
+def singularity_orbits(
+    field: CrossField,
+    symmetry: Symmetry,
+    points: dict[int, list[float]] | None = None,
+    tol: float = 1e-6,
+) -> list[list[tuple[int, int]]]:
     """Singularities grouped into orbits, to see whether they come in sets.
 
     A layout cannot be symmetric if the singularities are not, and this says so

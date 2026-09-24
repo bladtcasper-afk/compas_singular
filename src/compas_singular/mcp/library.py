@@ -28,9 +28,12 @@ Every loader returns a default and logs nothing to stdout.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 import json
 import os
+from typing import Any
+from typing import Sequence
 
 from compas_singular.mcp.describe import DEFAULT_THRESHOLDS
 
@@ -58,7 +61,7 @@ EXAMPLE_SCHEME = 'example://'
 SESSION_SCHEME = 'session://'
 
 
-def library_root():
+def library_root() -> str:
     """The library directory: the environment override, or the shipped one."""
     override = (os.environ.get(LIBRARY_ENVVAR) or '').strip()
     if override:
@@ -66,11 +69,11 @@ def library_root():
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'library')
 
 
-def _folder(name):
+def _folder(name: str) -> str:
     return os.path.join(library_root(), name)
 
 
-def _read(path):
+def _read(path: str) -> str | None:
     try:
         with open(path, 'r', encoding='utf-8') as stream:
             return stream.read()
@@ -78,7 +81,7 @@ def _read(path):
         return None
 
 
-def _names_in(folder, suffix):
+def _names_in(folder: str, suffix: str) -> list[str]:
     try:
         return sorted(n[:-len(suffix)] for n in os.listdir(folder)
                       if n.endswith(suffix))
@@ -86,7 +89,7 @@ def _names_in(folder, suffix):
         return []
 
 
-def _summarise(text, limit=160):
+def _summarise(text: str | None, limit: int = 160) -> str:
     """The first real sentence of a Markdown file, for a resource listing."""
     for line in (text or '').splitlines():
         line = line.strip()
@@ -97,7 +100,7 @@ def _summarise(text, limit=160):
     return ''
 
 
-def thresholds():
+def thresholds() -> dict[str, Any]:
     """Quality bands, from ``thresholds.json``, over the built-in defaults.
 
     A partial file is merged per metric, so overriding ``min_angle`` alone does
@@ -120,7 +123,7 @@ def thresholds():
     return merged
 
 
-def _unsafe(name):
+def _unsafe(name: str) -> bool:
     """Whether a resource or prompt name would escape the library folder.
 
     The name comes off the wire, so it is not trusted. Built from ``os.sep``
@@ -135,7 +138,7 @@ def _unsafe(name):
 # resources
 # ==============================================================================
 
-def list_resources():
+def list_resources() -> list[dict[str, Any]]:
     """Everything readable, as MCP resource descriptors.
 
     ``session://current`` is NOT listed here -- it is live state, so the server
@@ -157,7 +160,7 @@ def list_resources():
     return out
 
 
-def read_resource(uri):
+def read_resource(uri: str) -> str | None:
     """The body behind a ``guidance://`` or ``example://`` uri. ``None`` if absent."""
     if uri.startswith(GUIDANCE_SCHEME):
         name = uri[len(GUIDANCE_SCHEME):]
@@ -177,7 +180,7 @@ def read_resource(uri):
 # prompts
 # ==============================================================================
 
-def list_prompts():
+def list_prompts() -> list[dict[str, Any]]:
     folder = _folder('prompts')
     out = []
     for name in _names_in(folder, '.md'):
@@ -188,7 +191,7 @@ def list_prompts():
     return out
 
 
-def get_prompt(name, arguments=None):
+def get_prompt(name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """One workflow, as a single user message.
 
     Returns ``None`` when there is no such prompt, which the protocol turns into
@@ -208,7 +211,7 @@ def get_prompt(name, arguments=None):
 # worked examples
 # ==============================================================================
 
-def fingerprint(metrics, walls=0, faces=None):
+def fingerprint(metrics: dict[str, Any] | None, walls: int = 0, faces: int | None = None) -> dict[str, Any]:
     """The shape of a PROBLEM, for matching one session against another.
 
     Deliberately coarse, and deliberately not text. The corpus will be small and
@@ -237,7 +240,7 @@ def fingerprint(metrics, walls=0, faces=None):
             'aspect_max': aspect}
 
 
-def _faces_band(faces):
+def _faces_band(faces: int | None) -> str:
     faces = faces or 0
     for edge, name in ((50, 'tiny'), (300, 'small'), (2000, 'medium')):
         if faces < edge:
@@ -245,7 +248,7 @@ def _faces_band(faces):
     return 'large'
 
 
-def _score(a, b):
+def _score(a: dict[str, Any], b: dict[str, Any]) -> int:
     """How alike two fingerprints are. Higher is closer."""
     score = 0
     if a.get('loops') == b.get('loops'):
@@ -259,7 +262,7 @@ def _score(a, b):
     return score
 
 
-def load_examples():
+def load_examples() -> list[dict[str, Any]]:
     """Every stored session. Malformed files are skipped, not raised on."""
     folder = _folder('sessions')
     out = []
@@ -278,7 +281,7 @@ def load_examples():
     return out
 
 
-def _example_line(record):
+def _example_line(record: dict[str, Any]) -> str:
     """One line describing a stored example, for a listing."""
     before = record.get('before') or {}
     after = record.get('after') or {}
@@ -290,14 +293,14 @@ def _example_line(record):
         record.get('verdict', '?'))
 
 
-def _round(value):
+def _round(value: Any) -> str:
     try:
         return '{:.1f}'.format(float(value))
     except (TypeError, ValueError):
         return '?'
 
 
-def render_example(record):
+def render_example(record: dict[str, Any]) -> str:
     """A stored session as Markdown, which is what a model reads best."""
     lines = ['# {}'.format(record.get('title') or record.get('name')
                             or 'example'), '']
@@ -333,7 +336,7 @@ def render_example(record):
     return '\n'.join(lines)
 
 
-def save_example(record, directory=None):
+def save_example(record: dict[str, Any], directory: str | None = None) -> str:
     """Write a finished session into the corpus. Returns the path.
 
     The name is slugged and collisions get a numeric suffix, so saving twice
@@ -356,7 +359,7 @@ def save_example(record, directory=None):
     return path
 
 
-def _slug(text):
+def _slug(text: Any) -> str:
     out = []
     for character in str(text).strip().lower():
         if character.isalnum():
@@ -366,7 +369,7 @@ def _slug(text):
     return (''.join(out).strip('-') or 'session')[:60]
 
 
-def recall(target, limit=3, verdicts=('good', 'acceptable', 'bad')):
+def recall(target: dict[str, Any], limit: int = 3, verdicts: Sequence[str] = ('good', 'acceptable', 'bad')) -> list[dict[str, Any]]:
     """The stored examples closest to ``target``, best match first.
 
     Parameters

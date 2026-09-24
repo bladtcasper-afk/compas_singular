@@ -1,9 +1,16 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from compas.geometry import centroid_points
 from compas.geometry import distance_point_point
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import Mesh
+    from compas_singular.datastructures import QuadMesh
 
 
 __all__ = [
@@ -14,7 +21,7 @@ __all__ = [
 ]
 
 
-def add_opening(mesh, fkey):
+def add_opening(mesh: Mesh, fkey: int) -> list[int]:
     """Add an opening to a mesh face.
 
     Parameters
@@ -40,7 +47,7 @@ def add_opening(mesh, fkey):
     return new_vertices
 
 
-def add_handle(mesh, fkey_1, fkey_2):
+def add_handle(mesh: QuadMesh, fkey_1: int, fkey_2: int) -> list[int]:
     """Add a handle between two quad mesh faces.
 
     Parameters

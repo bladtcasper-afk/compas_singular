@@ -64,8 +64,16 @@ patch is built.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import Any
+from typing import Sequence
+from typing import TYPE_CHECKING
 
 from compas.itertools import pairwise
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import CoarseQuadMesh
 
 
 __all__ = [
@@ -90,7 +98,7 @@ PATTERNS = [
 ]
 
 
-def create_pattern(type, nu, nw):
+def create_pattern(type: str, nu: int, nw: int) -> tuple[list[tuple[float, float]], list[list[int]]]:
     """Build the template of a pattern at a given number of divisions.
 
     Parameters
@@ -130,7 +138,7 @@ def create_pattern(type, nu, nw):
 # patterns
 # ==============================================================================
 
-def _pattern_ortho(nu, nw):
+def _pattern_ortho(nu: int, nw: int) -> tuple[list[tuple[float, float]], list[list[int]]]:
     """The plain grid: ``nu`` by ``nw`` quads on the unit square.
 
     Vertex order (``u`` major, ``w`` minor) and face winding are copied from
@@ -157,7 +165,7 @@ def _pattern_ortho(nu, nw):
     return uw, faces
 
 
-def _pattern_diagonal(nu, nw):
+def _pattern_diagonal(nu: int, nw: int) -> tuple[list[tuple[float, float]], list[list[int]]]:
     """The grid with both diagonals of the patch drawn through it.
 
     Each diagonal is a chain of cell diagonals -- cells ``(i, i)`` for a->c,
@@ -240,7 +248,7 @@ _FAN_QUADRANTS = [
 _FAN_CENTRE = (0.5, 0.5)
 
 
-def _pattern_fan(nu, nw):
+def _pattern_fan(nu: int, nw: int) -> tuple[list[tuple[float, float]], list[list[int]]]:
     """Four polar fans, one per corner, meeting at the patch centre.
 
     Each quadrant is a polar grid running from its corner (the pole) out to the
@@ -301,7 +309,7 @@ def _pattern_fan(nu, nw):
     uw = []
     index = {}
 
-    def add(p):
+    def add(p: tuple[float, float]) -> int:
         # one vertex per parameter pair, so the four quadrants share their
         # seams, their poles and the centre instead of duplicating them
         key = (round(p[0], 12), round(p[1], 12))
@@ -344,7 +352,7 @@ _FAN_TRIANGLE_REGIONS = [
 _FAN_TRIANGLE_CENTRE = (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)
 
 
-def _pattern_fan_triangle(nu, nw):
+def _pattern_fan_triangle(nu: int, nw: int) -> tuple[list[tuple[float, float, float]], list[list[int]]]:
     """Three polar fans, one per corner, meeting at the centre of a triangle.
 
     The fan of a triangular patch (a pseudo-quad). Each corner owns the
@@ -406,7 +414,7 @@ def _pattern_fan_triangle(nu, nw):
     lam = []
     index = {}
 
-    def add(key, p):
+    def add(key: Any, p: tuple[float, float, float]) -> int:
         # one vertex per key, so the three corners share their seams and the
         # centre -- and V1 and V2 their innermost ring -- instead of
         # duplicating them
@@ -438,7 +446,7 @@ def _pattern_fan_triangle(nu, nw):
     return lam, faces
 
 
-def _lerp(p, q, k, n):
+def _lerp(p: Sequence[float], q: Sequence[float], k: int, n: int) -> list[float]:
     """Point ``k/n`` of the way from ``p`` to ``q``.
 
     Written as a weighted average of the two ends -- ``(p(n-k) + qk)/n`` --
@@ -475,7 +483,7 @@ def _lerp(p, q, k, n):
 # morph
 # ==============================================================================
 
-def pattern_morph(uw, faces, sides):
+def pattern_morph(uw: list[tuple[float, float]], faces: list[list[int]], sides: list[list[list[float]] | None]) -> tuple[list[list[float]], list[list[int]]]:
     """Map a template onto a coarse face through its four side polylines.
 
     Parameters
@@ -544,7 +552,7 @@ def pattern_morph(uw, faces, sides):
     return vertices, faces
 
 
-def pattern_morph_triangle(lam, faces, sides):
+def pattern_morph_triangle(lam: list[tuple[float, float, float]], faces: list[list[int]], sides: list[list[list[float]] | None]) -> tuple[list[list[float]], list[list[int]]]:
     """Map a barycentric template onto a triangular patch through its three sides.
 
     The side-vertex interpolant (Nielson, 1979). From each corner ``Vi`` a
@@ -619,7 +627,7 @@ def pattern_morph_triangle(lam, faces, sides):
     return vertices, faces
 
 
-def _polyline_point_at(points, t):
+def _polyline_point_at(points: list[list[float]], t: float) -> list[float]:
     """Evaluate a polyline at ``t`` in [0, 1], parametrised by point *index*.
 
     Index parametrisation -- not arc length -- is what ``discrete_coons_patch``
@@ -661,7 +669,7 @@ def _polyline_point_at(points, t):
 # divisions
 # ==============================================================================
 
-def patch_divisions(sides):
+def patch_divisions(sides: list[list[list[float]] | None]) -> tuple[int, int]:
     """The number of divisions a set of side polylines asks for.
 
     Parameters
@@ -683,7 +691,7 @@ def patch_divisions(sides):
 _SQUARE_EVEN = ('diagonal', 'fan')
 
 
-def reconcile_strip_densities(coarse, patterns):
+def reconcile_strip_densities(coarse: "CoarseQuadMesh", patterns: "str | dict[int, str]") -> dict[int, tuple[int, int]]:
     """Force the strip densities of a layout to something its patterns can tile.
 
     Densities live on strips, not on faces, because two patches sharing a
@@ -727,7 +735,7 @@ def reconcile_strip_densities(coarse, patterns):
     # union-find over the strips; a square patch merges the two crossing it
     parent = {skey: skey for skey in coarse.strips()}
 
-    def find(skey):
+    def find(skey: int) -> int:
         while parent[skey] != skey:
             parent[skey] = parent[parent[skey]]
             skey = parent[skey]

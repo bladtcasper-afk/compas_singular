@@ -57,6 +57,7 @@ Functions
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 # The shared base. Imported first: the editors below are its subclasses.
 from compas_singular.editing.editor import MeshEditor  # noqa: F401

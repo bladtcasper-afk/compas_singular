@@ -1,4 +1,8 @@
 from __future__ import absolute_import, division, print_function
+from __future__ import annotations
+
+from typing import Any
+from typing import TYPE_CHECKING
 
 from compas.datastructures.mesh.mesh import Mesh
 from compas.geometry import discrete_coons_patch
@@ -24,12 +28,15 @@ from compas_singular.datastructures.mesh_quad_coarse.patterns import (
     reconcile_strip_densities,
 )
 
+if TYPE_CHECKING:
+    from compas_singular.datastructures import QuadMesh
+
 __all__ = [	'CoarsePseudoQuadMesh']
 
 
 class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super(CoarsePseudoQuadMesh, self).__init__(*args, **kwargs)
 
     # --------------------------------------------------------------------------
@@ -37,8 +44,8 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
     # --------------------------------------------------------------------------
 
     @classmethod
-    def from_coarse_polylines(cls, polylines, poles=None, holes=None,
-                              precision=None, tol=None, collect_strips=True):
+    def from_coarse_polylines(cls, polylines: list[list[list[float]]], poles: list[list[float]] | None = None, holes: list[list[float]] | None = None,
+                              precision: int | None = None, tol: float | None = None, collect_strips: bool = True) -> "CoarsePseudoQuadMesh":
         """**A coarse quad layout from a drawn network of edge-curves.**
 
         One polyline is one coarse EDGE: its two ENDS are corners of the layout, and
@@ -143,8 +150,8 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
     # densification
     # --------------------------------------------------------------------------
 
-    def quad_mesh(self, boundary_curvature=True, skeleton_curvature=True,
-                 overwrite_edges_to_curves=None, field=None, pattern_overwrite=None):
+    def quad_mesh(self, boundary_curvature: bool = True, skeleton_curvature: bool = True,
+                 overwrite_edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None, field: Any = None, pattern_overwrite: "str | dict[int, str] | None" = None) -> "QuadMesh":
         """Generate a dense quad mesh from this layout, in a chosen pattern.
 
         Parameters
@@ -194,8 +201,8 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
                             skeleton_curvature=skeleton_curvature,
                             overwrite_edges_to_curves=overwrite_edges_to_curves, field=field)
 
-    def densify(self, pattern_overwrite=None, boundary_curvature=True, skeleton_curvature=True,
-               overwrite_edges_to_curves=None, field=None):
+    def densify(self, pattern_overwrite: "str | dict[int, str] | None" = None, boundary_curvature: bool = True, skeleton_curvature: bool = True,
+               overwrite_edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None, field: Any = None) -> "QuadMesh":
         """Build one dense patch per coarse face and weld them together.
 
         The loop is the whole of it: take a face's four sides, ask the pattern
@@ -229,6 +236,14 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
         else:
             edges_to_curves = self._filtered_edges_to_curves(boundary_curvature, skeleton_curvature)
 
+        if pattern_overwrite is None:
+            pattern_dict = self.dense_patterns()
+        else:
+            if isinstance(pattern_overwrite, dict):
+                pattern_dict = pattern_overwrite
+            elif isinstance(pattern_overwrite, str):
+                pattern_dict = {fkey: pattern_overwrite for fkey in self.faces()}
+
         if field is not None:
             # The field owns this: it carries its own background and builds its
             # own point locator, so a layout from ANY source -- a skeleton
@@ -239,28 +254,22 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
             #
             # Nothing about ``field`` is type-checked, so any object offering
             # ``densify(coarse, edges_to_curves=...)`` works.
-            if pattern_overwrite != 'ortho':
-                raise ValueError(
+
+            patterns = list(pattern_dict.values())
+            if patterns.count('ortho') != len(patterns):
+                print(
                     'a field integrates the patch interiors itself, so it cannot '
-                    'be combined with the {!r} pattern'.format(pattern_overwrite)
-                )
+                    'be combined with the patterns other than ortho. Turn the field off to use the patterns.'
+                    )
             dense, _stats = field.densify(self, edges_to_curves=edges_to_curves)
             self.set_quad_mesh(dense)
             return self.get_quad_mesh()
             
-        if pattern_overwrite is None:
-            pattern_dict = self.dense_patterns()
-        else:
-            if isinstance(pattern_overwrite, dict):
-                pattern_dict = pattern_overwrite
-            elif isinstance(pattern_overwrite, str):
-                pattern_dict = {fkey: pattern_overwrite for fkey in self.faces()}
         # a pattern may constrain the layout -- fan to tile at all, diagonal to
         # stay continuous -- and since a density is shared along a whole strip,
         # it has to do so before any patch is built
         # Modifies the densities in place; what it RETURNS is {skey: (old, new)},
         # not a pattern map, so it must not be assigned back to pattern_dict.
-        
         reconcile_strip_densities(self, pattern_dict)
         
         edge_strip = {}
@@ -320,7 +329,7 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
         dense.attributes['face_pole'] = face_pole
         return dense
 
-    def _patch_sides(self, fkey, edge_strip, edges_to_curves=None):
+    def _patch_sides(self, fkey: int, edge_strip: dict[tuple[int, int], int], edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None) -> list[list[list[float]] | None]:
         """The four side polylines of one coarse face.
 
         Each side is densified to its own strip's density, along the curve
@@ -360,8 +369,8 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
         return [ab, bc, cd[::-1] if cd else None, da[::-1] if da else None]
 
     # NOTE old densification has to be phased out
-    def densification(self, boundary_curvature=True, skeleton_curvature=True,
-                      overwrite_edges_to_curves=None, field=None):
+    def densification(self, boundary_curvature: bool = True, skeleton_curvature: bool = True,
+                      overwrite_edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None, field: Any = None) -> "QuadMesh":
         """Generate a denser quad mesh from the coarse quad mesh and its strip densities.
 
         Parameters

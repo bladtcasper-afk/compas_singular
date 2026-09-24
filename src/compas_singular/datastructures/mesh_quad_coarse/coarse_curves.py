@@ -76,12 +76,19 @@ search for ``coarse_curves.py`` lands you there instead, that file is the shim.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from compas_singular.geometry.polyline import project_on_polyline
 from compas.geometry import distance_point_point
 from compas.itertools import pairwise
 
 from compas.tolerance import TOL
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import CoarseQuadMesh
+    from compas_singular.datastructures import CoarsePseudoQuadMesh
 
 
 __all__ = [
@@ -92,7 +99,7 @@ __all__ = [
 ]
 
 
-def mean_edge_length(coarse):
+def mean_edge_length(coarse: "CoarseQuadMesh | CoarsePseudoQuadMesh") -> float:
     """Average coarse edge length -- the scale every tolerance here is in.
 
     Tolerances are relative to the layout rather than absolute because the same
@@ -104,7 +111,7 @@ def mean_edge_length(coarse):
     return sum(lengths) / len(lengths) if lengths else 1.0
 
 
-def _clean(points, tol=1e-9):
+def _clean(points: list[list[float]], tol: float = 1e-9) -> list[list[float]]:
     """Drop consecutive duplicates -- ``Polyline.point_at`` divides by them."""
     out = [list(points[0])]
     for point in points[1:]:
@@ -129,7 +136,7 @@ class BoundaryLoop(object):
         zero-length segment in the middle of every arc that crosses the seam.
     """
 
-    def __init__(self, points):
+    def __init__(self, points: list[list[float]]) -> None:
         pts = [[float(p[0]), float(p[1]), 0.0] for p in points]
         while len(pts) > 1 and distance_point_point(pts[0], pts[-1]) < 1e-9:
             pts = pts[:-1]
@@ -142,7 +149,7 @@ class BoundaryLoop(object):
         self.cum = cum
         self.total = cum[len(pts)]
 
-    def project(self, point):
+    def project(self, point: list[float]) -> tuple[float, float, list[float] | None]:
         """``(distance, arclength, closest point)`` for a point near the loop.
 
         Searched over ONE turn -- the second turn is the same loop and would
@@ -163,7 +170,7 @@ class BoundaryLoop(object):
                 best = (d, self.cum[i] + t * (self.cum[i + 1] - self.cum[i]), q)
         return best
 
-    def _point_at(self, s):
+    def _point_at(self, s: float) -> list[float]:
         """The loop point at arclength ``s`` along the doubled ring."""
         for i in range(len(self.cum) - 1):
             if self.cum[i] <= s <= self.cum[i + 1]:
@@ -173,7 +180,7 @@ class BoundaryLoop(object):
                 return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, 0.0]
         return list(self.ring[-1])
 
-    def _span(self, s0, s1, flip, pa, pb):
+    def _span(self, s0: float, s1: float, flip: bool, pa: list[float], pb: list[float]) -> list[list[float]] | None:
         """One way round, as a point list running ``pa`` -> ``pb``.
 
         **The loop's own points are kept, not resampled.** They are the input
@@ -209,7 +216,7 @@ class BoundaryLoop(object):
         arc[0], arc[-1] = [pa[0], pa[1], 0.0], [pb[0], pb[1], 0.0]
         return arc
 
-    def arcs(self, pa, pb):
+    def arcs(self, pa: list[float], pb: list[float]) -> list[list[list[float]]]:
         """BOTH ways round the loop from ``pa`` to ``pb``, shorter first.
 
         Two, not one, because **length does not decide which way round is the
@@ -246,13 +253,13 @@ class BoundaryLoop(object):
         return [arc for arc in (self._span(s0, s1, flip, pa, pb)
                                 for s0, s1, flip in order) if arc is not None]
 
-    def arc(self, pa, pb):
+    def arc(self, pa: list[float], pb: list[float]) -> list[list[float]] | None:
         """The shorter way round the loop from ``pa`` to ``pb``, or ``None``."""
         found = self.arcs(pa, pb)
         return found[0] if found else None
 
 
-def _arc_is_one_edge(arc, pa, pb, corners, tol):
+def _arc_is_one_edge(arc: list[list[float]] | None, pa: list[float], pb: list[float], corners: list[list[float]], tol: float) -> bool:
     """Is this arc ONE edge of the layout, or several?
 
     Branch 1 assumes an edge with both ends on a wall IS the piece of wall
@@ -317,7 +324,7 @@ def _arc_is_one_edge(arc, pa, pb, corners, tol):
     return True
 
 
-def _wall_arc(loops, pa, pb, corners, wall_tol, arc_tol):
+def _wall_arc(loops: list[BoundaryLoop], pa: list[float], pb: list[float], corners: list[list[float]], wall_tol: float, arc_tol: float) -> list[list[float]] | None:
     """The piece of wall between two corners, if they really are on one.
 
     Every loop the two corners could be on is tried, nearest first, and both
@@ -349,7 +356,7 @@ def _wall_arc(loops, pa, pb, corners, wall_tol, arc_tol):
     return None
 
 
-def snap_corners_to_walls(coarse, loops=(), wall_tol=None):
+def snap_corners_to_walls(coarse: "CoarseQuadMesh | CoarsePseudoQuadMesh", loops: "list[list[list[float]]] | tuple[list[list[float]], ...]" = (), wall_tol: float | None = None) -> tuple[int, float]:
     """Put the layout's boundary corners ON the wall. Returns ``(moved, worst)``.
 
     **This MUTATES ``coarse``**, which is why it is a separate call and not part
@@ -419,8 +426,9 @@ def snap_corners_to_walls(coarse, loops=(), wall_tol=None):
     return moved, worst
 
 
-def coarse_edges_to_curves(coarse, loops=(), polylines=(), wall_tol=None,
-                           precision=None):
+def coarse_edges_to_curves(coarse: "CoarseQuadMesh | CoarsePseudoQuadMesh", loops: "list[list[list[float]]] | tuple[list[list[float]], ...]" = (),
+                           polylines: "list[list[list[float]]] | tuple[list[list[float]], ...]" = (), wall_tol: float | None = None,
+                           precision: int | None = None) -> tuple[dict[tuple[int, int], list[list[float]]], dict[str, int]]:
     """``({(u, v): polyline}, tally)`` -- the shape of every coarse edge.
 
     Hand the dict straight to ``densification(edges_to_curves=...)``.
@@ -498,7 +506,7 @@ def coarse_edges_to_curves(coarse, loops=(), polylines=(), wall_tol=None,
                 lookup[key] = curve
         traced.append(points)
 
-    def _nearest_branch(pa, pb):
+    def _nearest_branch(pa: list[float], pb: list[float]) -> list[list[float]] | None:
         """The branch whose ends are these ends, allowing for a MOVED corner.
 
         The geometric key above is exact, and exact stops being right the moment

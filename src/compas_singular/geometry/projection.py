@@ -1,6 +1,7 @@
 from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
+from __future__ import annotations
 
 from math import pi
 from math import cos
@@ -25,7 +26,7 @@ __all__ = [
 ]
 
 
-def closest_point_on_circle(x0, y0, r):
+def closest_point_on_circle(x0: float, y0: float, r: float) -> list[float]:
     """Project point (x0, y0) onto circle with centre at (0, 0) and radius r.
 
     Parameters
@@ -61,7 +62,7 @@ def closest_point_on_circle(x0, y0, r):
     return [x, y]
 
 
-def closest_point_on_line(a, b, c):
+def closest_point_on_line(a: list[float], b: list[float], c: list[float]) -> tuple[list[float], float]:
     """Closest point on line.
     Same as projection.
 
@@ -91,7 +92,7 @@ def closest_point_on_line(a, b, c):
     return p, distance
 
 
-def closest_point_on_segment(a, b, c):
+def closest_point_on_segment(a: list[float], b: list[float], c: list[float]) -> tuple[list[float], float]:
     """Closest point on segment.
     Different from projection because an extremity is yielded if the projection is on the line but outside the segment.
 
@@ -123,7 +124,7 @@ def closest_point_on_segment(a, b, c):
         return p, distance
 
 
-def closest_point_on_polyline(polyline, c):
+def closest_point_on_polyline(polyline: list[list[float]], c: list[float]) -> tuple[list[float] | None, float | None]:
     """Closest point on polyline.
     If there are multiple closest points, the one from the first polyline segment is yielded.
 
@@ -150,7 +151,7 @@ def closest_point_on_polyline(polyline, c):
     return proj_p, min_distance
 
 
-def closest_point_on_polylines(polylines, c):
+def closest_point_on_polylines(polylines: list[list[list[float]]], c: list[float]) -> tuple[list[float] | None, float | None]:
     """Closest point on polylines.
     If there are multiple closest points, the one from the first polyline segment is yielded.
 

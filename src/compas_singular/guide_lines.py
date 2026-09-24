@@ -194,6 +194,14 @@ Run this file directly for a worked example on the pentagon floor plate:
     python guide_lines.py --view     # opens the compas_viewer scene
 """
 
+from __future__ import annotations
+
+from typing import Any
+from typing import Callable
+from typing import Sequence
+from typing import TYPE_CHECKING
+from typing import Union
+
 from compas.geometry import add_vectors
 from compas.geometry import distance_point_point
 from compas.geometry import dot_vectors
@@ -206,6 +214,15 @@ from compas.itertools import pairwise
 from compas_singular.datastructures import CoarseQuadMesh
 from compas_singular.datastructures.mesh_quad.grammar.add_strip import add_strip
 
+if TYPE_CHECKING:
+    from compas.geometry import Polyline
+    from compas_singular.datastructures import CoarsePseudoQuadMesh
+    from compas_singular.datastructures import QuadMesh
+
+    #: A guide curve as this module accepts it everywhere: a
+    #: ``compas.geometry.Polyline``, a list of ``Point``, or a list of ``[x, y, z]``.
+    CurveLike = Union[Polyline, Sequence[Sequence[float]]]
+
 
 __all__ = ['guide_line_mesh', 'guide_band_mesh', 'guide_feature_mesh']
 
@@ -214,9 +231,18 @@ __all__ = ['guide_line_mesh', 'guide_band_mesh', 'guide_feature_mesh']
 # GUIDE F -- snap existing polyedges onto the guides
 # =============================================================================
 
-def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=None,
-                    min_rail_vertices=9, max_refine=3, relax=50, swing=2,
-                    edges_to_curves=None):
+def guide_line_mesh(
+    coarse: CoarseQuadMesh,
+    guides: CurveLike | Sequence[CurveLike],
+    target_length: float = 0.6,
+    refine: int | None = None,
+    boundary: list[list[float]] | None = None,
+    min_rail_vertices: int = 9,
+    max_refine: int = 3,
+    relax: int = 50,
+    swing: int = 2,
+    edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None,
+) -> tuple[QuadMesh, dict[str, Any]]:
     """Densify ``coarse`` with one of its polyedges snapped onto each guide.
 
     Reuses polyedges the decomposition already contains, so there is no topology
@@ -309,7 +335,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
 
     # -- input -----------------------------------------------------------------
 
-    def as_curve_list(obj):
+    def as_curve_list(obj: CurveLike | Sequence[CurveLike]) -> list[CurveLike]:
         """One curve or several -> list of curves, without guessing wrongly.
 
         A ``Polyline`` has ``.points``; a bare list whose first item is a number
@@ -329,7 +355,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
             pass
         return seq
 
-    def as_points(curve):
+    def as_points(curve: CurveLike) -> list[list[float]]:
         """Polyline | list[Point] | list[[x, y, z]]  ->  list of [x, y, 0.0]."""
         raw = getattr(curve, 'points', curve)
         pts = [[float(p[0]), float(p[1]), 0.0] for p in raw]
@@ -343,7 +369,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
 
     # -- geometry helpers ------------------------------------------------------
 
-    def closest(p, poly):
+    def closest(p: list[float], poly: list[list[float]]) -> tuple[float, list[float] | None, list[float] | None]:
         """(distance, unit tangent, foot) of the closest point on a polyline."""
         best = (float('inf'), None, None)
         for a, b in pairwise(poly):
@@ -358,7 +384,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
                 best = (d, normalize_vector(ab), q)
         return best
 
-    def curve_intersection(poly_a, poly_b, near):
+    def curve_intersection(poly_a: list[list[float]], poly_b: list[list[float]], near: list[float]) -> list[float] | None:
         """Where two guide polylines cross, taking the crossing closest to ``near``."""
         best, best_d = None, float('inf')
         for a, b in pairwise(poly_a):
@@ -376,7 +402,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
                     best, best_d = x, d
         return best
 
-    def boundary_polygon(mesh):
+    def boundary_polygon(mesh: CoarseQuadMesh) -> list[list[float]]:
         """The mesh's outer boundary as an ordered closed list of points."""
         loops = mesh.boundaries()
         if not loops:
@@ -384,7 +410,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
         loop = max(loops, key=len)                      # outer, if there are holes
         return [mesh.vertex_coordinates(v) for v in loop]
 
-    def clip_to_boundary(pts, poly):
+    def clip_to_boundary(pts: list[list[float]], poly: list[list[float]]) -> list[list[float]]:
         """Extend the guide along its end tangents to the boundary, or trim it.
 
         The crossings taken are the ones BRACKETING the middle of the guide, not
@@ -432,7 +458,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
             raise ValueError('a guide clips to a degenerate segment')
         return clean
 
-    def chord_parametrise(pts):
+    def chord_parametrise(pts: list[list[float]]) -> tuple[list[float], list[float], Callable[[float], list[float]]]:
         """(start, end, point_at) with t = the CHORD PROJECTION, not arc length.
 
         This is what makes snapping a minimal move: a vertex keeps its position
@@ -451,7 +477,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
                 raise ValueError('a guide doubles back on its own chord; a single '
                                  'polyedge cannot carry it')
 
-        def point_at(t):
+        def point_at(t: float) -> list[float]:
             t = min(1.0, max(0.0, t))
             for i in range(len(us) - 1):
                 if us[i] <= t <= us[i + 1]:
@@ -462,7 +488,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
 
         return start, end, point_at
 
-    def is_curved(pts):
+    def is_curved(pts: list[list[float]]) -> bool:
         """Whether the guide bows off its chord enough to need rail vertices."""
         start, end = pts[0], pts[-1]
         length = distance_point_point(start, end)
@@ -475,7 +501,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
 
     # -- coarse-mesh helpers ---------------------------------------------------
 
-    def split_curve_at_half(curve):
+    def split_curve_at_half(curve: list[list[float]]) -> tuple[list[list[float]], list[list[float]]]:
         """Arc-length midpoint of a polyline, and the two halves either side of
         it (both include the split point, so rejoining reproduces the input)."""
         seglens = [distance_point_point(curve[i], curve[i + 1]) for i in range(len(curve) - 1)]
@@ -495,7 +521,11 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
         i = len(curve) // 2
         return curve[: i + 1], curve[i:]
 
-    def quad_split(vertices, faces, edges_to_curves=None):
+    def quad_split(
+        vertices: list[list[float]],
+        faces: list[list[int]],
+        edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None,
+    ) -> tuple[list[list[float]], list[list[int]], dict[tuple[int, int], list[list[float]]]]:
         """Catmull-Clark TOPOLOGICAL split: every n-gon becomes n quads.
 
         Original vertices keep their position -- no smoothing. On an all-quad
@@ -520,14 +550,14 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
         edge_mid = {}
         new_curves = {}
 
-        def curve_for(u, v):
+        def curve_for(u: int, v: int) -> list[list[float]] | None:
             if (u, v) in edges_to_curves:
                 return edges_to_curves[u, v]
             if (v, u) in edges_to_curves:
                 return list(reversed(edges_to_curves[v, u]))
             return None
 
-        def mid(u, v):
+        def mid(u: int, v: int) -> int:
             key = (min(u, v), max(u, v))
             if key not in edge_mid:
                 idx = len(new_vertices)
@@ -553,7 +583,9 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
                 new_faces.append([fv[i], mids[i], centre, mids[i - 1]])
         return new_vertices, new_faces, new_curves
 
-    def prepared(times, edges_to_curves=None):
+    def prepared(
+        times: int, edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None
+    ) -> tuple[CoarseQuadMesh, dict[tuple[int, int], list[list[float]]]]:
         """A quad-split copy of the input mesh, with strips collected, plus
         ``edges_to_curves`` carried through the splits and re-keyed to the
         output mesh's own vertex indices (see ``quad_split``).
@@ -574,7 +606,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
         mesh.collect_strips()
         return mesh, curves
 
-    def all_slots(mesh):
+    def all_slots(mesh: CoarseQuadMesh) -> list[tuple[int, list[int]]]:
         """Every polyedge that can carry a guide: open, interior, wall to wall.
 
         Interior AND wall-to-wall: both ends on the boundary but not the whole
@@ -594,7 +626,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
             out.append((pkey, polyedge))
         return out
 
-    def score(mesh, polyedge, pts):
+    def score(mesh: CoarseQuadMesh, polyedge: list[int], pts: list[list[float]]) -> tuple[float, float]:
         """(alignment, score) of a slot against a guide.
 
         Alignment is |cos| between the two chords, 1 == parallel; it is returned
@@ -609,7 +641,15 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
         offset = sum(closest(p, pts)[0] for p in cps) / len(cps)
         return align, align - 1.5 * offset / length
 
-    def snap_rail(mesh, rail, pts, start, end, point_at, pinned):
+    def snap_rail(
+        mesh: CoarseQuadMesh,
+        rail: list[int],
+        pts: list[list[float]],
+        start: list[float],
+        end: list[float],
+        point_at: Callable[[float], list[float]],
+        pinned: dict[int, list[list[float]]],
+    ) -> None:
         """Move a chain of coarse vertices onto a guide.
 
         Each vertex keeps its projection parameter on the straight chord and
@@ -644,7 +684,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
             mesh.vertex[vkey]['x'], mesh.vertex[vkey]['y'], mesh.vertex[vkey]['z'] = q
             pinned[vkey] = pts
 
-    def walk_column(mesh, source, first, steps):
+    def walk_column(mesh: CoarseQuadMesh, source: int, first: int, steps: int) -> list[int]:
         """The quad polyedge leaving ``source`` through ``first``, ``steps`` long.
 
         Continues straight across each four-valent vertex -- of the neighbours of
@@ -668,7 +708,13 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
             out.append(current)
         return out
 
-    def swing_columns(mesh, chains, steps, poly, protected):
+    def swing_columns(
+        mesh: CoarseQuadMesh,
+        chains: list[tuple[list[int], list[list[float]]]],
+        steps: int,
+        poly: list[list[float]],
+        protected: set[int],
+    ) -> None:
         """Turn the coarse courses leaving each rail onto the guide's normal.
 
         Snapping bends the row the guide sits on and NOTHING else. It moves each
@@ -696,7 +742,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
         """
         ring = list(poly) + [poly[0]]
 
-        def project(p):
+        def project(p: list[float]) -> list[float]:
             """Back onto the domain outline, so a wall vertex stays on the wall."""
             best, best_d = p, float('inf')
             for a, b in pairwise(ring):
@@ -741,7 +787,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
             p = [sum(c[i] for c in candidates) / len(candidates) for i in range(3)]
             mesh.vertex[vkey]['x'], mesh.vertex[vkey]['y'], mesh.vertex[vkey]['z'] = p
 
-    def folded_faces(mesh):
+    def folded_faces(mesh: CoarseQuadMesh) -> list[int]:
         """Faces with non-positive signed area in XY -- a folded coarse outline.
         Densifying one produces a self-overlapping slab, silently."""
         bad = []
@@ -752,7 +798,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
                 bad.append(fkey)
         return bad
 
-    def relaxed(mesh, fixed, poly, iterations):
+    def relaxed(mesh: CoarseQuadMesh, fixed: set[int], poly: list[list[float]], iterations: int) -> None:
         """Centroid-relax the coarse interior, guides and boundary held fixed.
 
         Snapping moves a slot but leaves its neighbouring rows where they were,
@@ -769,7 +815,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
         """
         ring = list(poly) + [poly[0]]
 
-        def project(p):
+        def project(p: list[float]) -> list[float]:
             """Back onto the domain outline, so a sliding vertex stays on it."""
             best, best_d = p, float('inf')
             for a, b in pairwise(ring):
@@ -816,7 +862,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
             for v, p in moved.items():
                 mesh.vertex[v]['x'], mesh.vertex[v]['y'], mesh.vertex[v]['z'] = p
 
-    def boundary_scrambled(mesh, poly):
+    def boundary_scrambled(mesh: CoarseQuadMesh, poly: list[list[float]]) -> bool:
         """True if snapping has slid a boundary vertex past its neighbour.
 
         The fold guard cannot catch this once the interior has been relaxed:
@@ -831,7 +877,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
         for a, b in pairwise(ring):
             cum.append(cum[-1] + distance_point_point(a, b))
 
-        def arc(p):
+        def arc(p: list[float]) -> float:
             best, best_d = 0.0, float('inf')
             for i, (a, b) in enumerate(pairwise(ring)):
                 ab = subtract_vectors(b, a)
@@ -869,7 +915,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
     curved = [is_curved(p) for p in pts_list]
     n = len(pts_list)
 
-    def place(k):
+    def place(k: int) -> tuple[tuple[CoarseQuadMesh, dict, dict] | None, str | None]:
         """Seat every guide on a slot at refinement level ``k``.
 
         Candidates are tried in score order and a placement that folds the
@@ -973,7 +1019,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
         else:
             swung = '; swung x{}'.format(swing)
 
-    def boundary_arc_between(pa, pb, poly):
+    def boundary_arc_between(pa: list[float], pb: list[float], poly: list[list[float]]) -> list[list[float]] | None:
         """Arc of the closed boundary polygon `poly` between the points on it
         closest to `pa` and `pb`, oriented pa -> pb. `poly` need not already be
         closed (both `boundary_polygon`'s open loop and a caller-supplied
@@ -999,7 +1045,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
             cum.append(cum[-1] + distance_point_point(a, b))
         total = cum[n]                               # length of exactly one lap
 
-        def project(p):
+        def project(p: list[float]) -> tuple[float, float | None]:
             best_d, best_s = float('inf'), None
             for (a, b), s0 in zip(segs[:n], cum[:n]):
                 L = distance_point_point(a, b)
@@ -1024,7 +1070,7 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
         s0, length = (sb, bwd) if reverse else (sa, fwd)
         s1 = s0 + length                             # <= s0 + total < 2 * total: safe, no wrap
 
-        def point_at(s):
+        def point_at(s: float) -> list[float]:
             for i, (c0, c1) in enumerate(zip(cum, cum[1:])):
                 if c0 - 1e-9 <= s <= c1 + 1e-9:
                     a, b = segs[i]
@@ -1042,7 +1088,9 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
             arc.reverse()
         return arc
 
-    def curves_for_densification(mesh, given):
+    def curves_for_densification(
+        mesh: CoarseQuadMesh, given: dict[tuple[int, int], list[list[float]]] | None
+    ) -> dict[tuple[int, int], list[list[float]]]:
         """For a boundary edge, prefer re-deriving the curve from `poly`
         between the endpoints' CURRENT positions (see `boundary_arc_between`)
         -- this is what makes the boundary densify along the true curve even
@@ -1094,9 +1142,20 @@ def guide_line_mesh(coarse, guides, target_length=0.6, refine=None, boundary=Non
 # GUIDE B -- inflate polyedges into bands and snap their rails
 # =============================================================================
 
-def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=None,
-                    boundary=None, min_rail_vertices=9, max_refine=3, relax=50,
-                    swing=2, block_rows=1, edges_to_curves=None):
+def guide_band_mesh(
+    coarse: CoarseQuadMesh,
+    guides: CurveLike | Sequence[CurveLike],
+    target_length: float = 0.6,
+    half_width: float | list[float] | None = None,
+    refine: int | None = None,
+    boundary: list[list[float]] | None = None,
+    min_rail_vertices: int = 9,
+    max_refine: int = 3,
+    relax: int = 50,
+    swing: int = 2,
+    block_rows: int | None = 1,
+    edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None,
+) -> tuple[QuadMesh, dict[str, Any]]:
     """Densify ``coarse`` with an ``add_strip`` band snapped onto each guide.
 
     With the default ``block_rows=1`` the band densifies to a SINGLE row of
@@ -1204,7 +1263,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
 
     # -- input -----------------------------------------------------------------
 
-    def as_curve_list(obj):
+    def as_curve_list(obj: CurveLike | Sequence[CurveLike]) -> list[CurveLike]:
         """One curve or several -> list of curves, without guessing wrongly.
 
         A ``Polyline`` has ``.points``; a bare list whose first item is a number
@@ -1224,7 +1283,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
             pass
         return seq
 
-    def as_points(curve):
+    def as_points(curve: CurveLike) -> list[list[float]]:
         """Polyline | list[Point] | list[[x, y, z]]  ->  list of [x, y, 0.0]."""
         raw = getattr(curve, 'points', curve)
         pts = [[float(p[0]), float(p[1]), 0.0] for p in raw]
@@ -1238,7 +1297,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
 
     # -- geometry helpers ------------------------------------------------------
 
-    def closest(p, poly):
+    def closest(p: list[float], poly: list[list[float]]) -> tuple[float, list[float] | None, list[float] | None]:
         """(distance, unit tangent, foot) of the closest point on a polyline."""
         best = (float('inf'), None, None)
         for a, b in pairwise(poly):
@@ -1253,7 +1312,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
                 best = (d, normalize_vector(ab), q)
         return best
 
-    def boundary_polygon(mesh):
+    def boundary_polygon(mesh: CoarseQuadMesh) -> list[list[float]]:
         """The mesh's outer boundary as an ordered closed list of points."""
         loops = mesh.boundaries()
         if not loops:
@@ -1261,7 +1320,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
         loop = max(loops, key=len)                      # outer, if there are holes
         return [mesh.vertex_coordinates(v) for v in loop]
 
-    def clip_to_boundary(pts, poly):
+    def clip_to_boundary(pts: list[list[float]], poly: list[list[float]]) -> list[list[float]]:
         """Extend the guide along its end tangents to the boundary, or trim it.
 
         The crossings taken are the ones BRACKETING the middle of the guide, not
@@ -1309,7 +1368,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
             raise ValueError('a guide clips to a degenerate segment')
         return clean
 
-    def offset_curve(pts, distance):
+    def offset_curve(pts: list[list[float]], distance: float) -> list[list[float]]:
         """A true parallel offset of the guide, in XY.
 
         Each sample moves along the normal of its LOCAL tangent (the average of
@@ -1338,7 +1397,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
             out.append([p[0] + normal[0] * distance, p[1] + normal[1] * distance, 0.0])
         return out
 
-    def chord_parametrise(pts):
+    def chord_parametrise(pts: list[list[float]]) -> tuple[list[float], list[float], Callable[[float], list[float]]]:
         """(start, end, point_at) with t = the CHORD PROJECTION, not arc length.
 
         This is what makes snapping a minimal move: a vertex keeps its position
@@ -1357,7 +1416,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
                 raise ValueError('a guide doubles back on its own chord; a single '
                                  'polyedge cannot carry it')
 
-        def point_at(t):
+        def point_at(t: float) -> list[float]:
             t = min(1.0, max(0.0, t))
             for i in range(len(us) - 1):
                 if us[i] <= t <= us[i + 1]:
@@ -1368,7 +1427,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
 
         return start, end, point_at
 
-    def is_curved(pts):
+    def is_curved(pts: list[list[float]]) -> bool:
         """Whether the guide bows off its chord enough to need rail vertices."""
         start, end = pts[0], pts[-1]
         length = distance_point_point(start, end)
@@ -1381,7 +1440,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
 
     # -- coarse-mesh helpers ---------------------------------------------------
 
-    def split_curve_at_half(curve):
+    def split_curve_at_half(curve: list[list[float]]) -> tuple[list[list[float]], list[list[float]]]:
         """Arc-length midpoint of a polyline, and the two halves either side of
         it (both include the split point, so rejoining reproduces the input)."""
         seglens = [distance_point_point(curve[i], curve[i + 1]) for i in range(len(curve) - 1)]
@@ -1401,7 +1460,11 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
         i = len(curve) // 2
         return curve[: i + 1], curve[i:]
 
-    def quad_split(vertices, faces, edges_to_curves=None):
+    def quad_split(
+        vertices: list[list[float]],
+        faces: list[list[int]],
+        edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None,
+    ) -> tuple[list[list[float]], list[list[int]], dict[tuple[int, int], list[list[float]]]]:
         """Catmull-Clark TOPOLOGICAL split: every n-gon becomes n quads.
 
         Original vertices keep their position -- no smoothing. On an all-quad
@@ -1426,14 +1489,14 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
         edge_mid = {}
         new_curves = {}
 
-        def curve_for(u, v):
+        def curve_for(u: int, v: int) -> list[list[float]] | None:
             if (u, v) in edges_to_curves:
                 return edges_to_curves[u, v]
             if (v, u) in edges_to_curves:
                 return list(reversed(edges_to_curves[v, u]))
             return None
 
-        def mid(u, v):
+        def mid(u: int, v: int) -> int:
             key = (min(u, v), max(u, v))
             if key not in edge_mid:
                 idx = len(new_vertices)
@@ -1459,7 +1522,9 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
                 new_faces.append([fv[i], mids[i], centre, mids[i - 1]])
         return new_vertices, new_faces, new_curves
 
-    def prepared(times, edges_to_curves=None):
+    def prepared(
+        times: int, edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None
+    ) -> tuple[CoarseQuadMesh, dict[tuple[int, int], list[list[float]]]]:
         """A quad-split copy of the input mesh, with strips collected, plus
         ``edges_to_curves`` carried through the splits and re-keyed to the
         output mesh's own vertex indices (see ``quad_split``).
@@ -1480,7 +1545,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
         mesh.collect_strips()
         return mesh, curves
 
-    def all_slots(mesh, blocked):
+    def all_slots(mesh: CoarseQuadMesh, blocked: set[int]) -> list[tuple[int, list[int]]]:
         """Every polyedge that can carry a guide: open, interior, wall to wall,
         and not touching a rail an earlier guide already claimed.
 
@@ -1508,7 +1573,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
             out.append((pkey, polyedge))
         return out
 
-    def score(mesh, polyedge, pts):
+    def score(mesh: CoarseQuadMesh, polyedge: list[int], pts: list[list[float]]) -> tuple[float, float]:
         """(alignment, score) of a slot against a guide.
 
         Alignment is |cos| between the two chords, 1 == parallel; it is returned
@@ -1523,7 +1588,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
         offset = sum(closest(p, pts)[0] for p in cps) / len(cps)
         return align, align - 1.5 * offset / length
 
-    def rail_side(mesh, chain, pts, exclude):
+    def rail_side(mesh: CoarseQuadMesh, chain: list[int], pts: list[list[float]], exclude: set[int]) -> float:
         """Which side of the guide a rail's own faces sit on.
 
         add_strip's (left, right) convention is topological -- it says nothing
@@ -1544,7 +1609,13 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
                 total += dot_vectors(subtract_vectors(q, foot), normal)
         return total
 
-    def snap_rail(mesh, rail, start, end, point_at):
+    def snap_rail(
+        mesh: CoarseQuadMesh,
+        rail: list[int],
+        start: list[float],
+        end: list[float],
+        point_at: Callable[[float], list[float]],
+    ) -> None:
         """Move a chain of coarse vertices onto a rail curve.
 
         Each vertex keeps its projection parameter on the straight chord and
@@ -1565,7 +1636,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
             q = point_at(t)
             mesh.vertex[vkey]['x'], mesh.vertex[vkey]['y'], mesh.vertex[vkey]['z'] = q
 
-    def walk_column(mesh, source, first, steps):
+    def walk_column(mesh: CoarseQuadMesh, source: int, first: int, steps: int) -> list[int]:
         """The quad polyedge leaving ``source`` through ``first``, ``steps`` long.
 
         Continues straight across each four-valent vertex -- of the neighbours of
@@ -1589,7 +1660,13 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
             out.append(current)
         return out
 
-    def swing_columns(mesh, chains, steps, poly, protected):
+    def swing_columns(
+        mesh: CoarseQuadMesh,
+        chains: list[tuple[list[int], list[list[float]]]],
+        steps: int,
+        poly: list[list[float]],
+        protected: set[int],
+    ) -> None:
         """Turn the coarse courses leaving each rail onto that rail's normal.
 
         This is the OUTSIDE of the band. Between the rails, ``place`` already
@@ -1609,7 +1686,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
         """
         ring = list(poly) + [poly[0]]
 
-        def project(p):
+        def project(p: list[float]) -> list[float]:
             """Back onto the domain outline, so a wall vertex stays on the wall."""
             best, best_d = p, float('inf')
             for a, b in pairwise(ring):
@@ -1656,7 +1733,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
             p = [sum(c[i] for c in candidates) / len(candidates) for i in range(3)]
             mesh.vertex[vkey]['x'], mesh.vertex[vkey]['y'], mesh.vertex[vkey]['z'] = p
 
-    def folded_faces(mesh):
+    def folded_faces(mesh: CoarseQuadMesh) -> list[int]:
         """Faces with non-positive signed area in XY -- a folded coarse outline.
         Densifying one produces a self-overlapping slab, silently."""
         bad = []
@@ -1667,7 +1744,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
                 bad.append(fkey)
         return bad
 
-    def relaxed(mesh, fixed, poly, iterations):
+    def relaxed(mesh: CoarseQuadMesh, fixed: set[int], poly: list[list[float]], iterations: int) -> None:
         """Centroid-relax the coarse interior, bands and boundary held fixed.
 
         Snapping moves a rail but leaves its neighbouring rows where they were,
@@ -1683,7 +1760,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
         """
         ring = list(poly) + [poly[0]]
 
-        def project(p):
+        def project(p: list[float]) -> list[float]:
             """Back onto the domain outline, so a sliding vertex stays on it."""
             best, best_d = p, float('inf')
             for a, b in pairwise(ring):
@@ -1730,7 +1807,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
             for v, p in moved.items():
                 mesh.vertex[v]['x'], mesh.vertex[v]['y'], mesh.vertex[v]['z'] = p
 
-    def boundary_scrambled(mesh, poly):
+    def boundary_scrambled(mesh: CoarseQuadMesh, poly: list[list[float]]) -> bool:
         """True if snapping has slid a boundary vertex past its neighbour.
 
         The fold guard cannot catch this once the interior has been relaxed:
@@ -1745,7 +1822,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
         for a, b in pairwise(ring):
             cum.append(cum[-1] + distance_point_point(a, b))
 
-        def arc(p):
+        def arc(p: list[float]) -> float:
             best, best_d = 0.0, float('inf')
             for i, (a, b) in enumerate(pairwise(ring)):
                 ab = subtract_vectors(b, a)
@@ -1793,7 +1870,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
     if len(widths) != n:
         raise ValueError('half_width has {} values for {} guides'.format(len(widths), n))
 
-    def place(k):
+    def place(k: int) -> tuple[tuple[CoarseQuadMesh, dict, list, list, list] | None, str | None]:
         """Seat a band on every guide at refinement level ``k``.
 
         Each guide is tried against its aligned slots in score order, on a COPY
@@ -1829,7 +1906,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
                 trial.collect_strips()
                 try:
                     # add_strip pops from the list it is given, so hand it a copy
-                    skey, old_to_new = add_strip(trial, list(slot))
+                    skey, old_to_new = add_strip(trial, list(slot), open_strip=False)
                     left = [old_to_new[v][0] for v in slot]
                     right = [old_to_new[v][1] for v in slot]
 
@@ -1953,7 +2030,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
         else:
             blocks = '; {} row(s)/band'.format(block_rows)
 
-    def boundary_arc_between(pa, pb, poly):
+    def boundary_arc_between(pa: list[float], pb: list[float], poly: list[list[float]]) -> list[list[float]] | None:
         """Arc of the closed boundary polygon `poly` between the points on it
         closest to `pa` and `pb`, oriented pa -> pb. `poly` need not already be
         closed (both `boundary_polygon`'s open loop and a caller-supplied
@@ -1979,7 +2056,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
             cum.append(cum[-1] + distance_point_point(a, b))
         total = cum[n]                               # length of exactly one lap
 
-        def project(p):
+        def project(p: list[float]) -> tuple[float, float | None]:
             best_d, best_s = float('inf'), None
             for (a, b), s0 in zip(segs[:n], cum[:n]):
                 L = distance_point_point(a, b)
@@ -2004,7 +2081,7 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
         s0, length = (sb, bwd) if reverse else (sa, fwd)
         s1 = s0 + length                             # <= s0 + total < 2 * total: safe, no wrap
 
-        def point_at(s):
+        def point_at(s: float) -> list[float]:
             for i, (c0, c1) in enumerate(zip(cum, cum[1:])):
                 if c0 - 1e-9 <= s <= c1 + 1e-9:
                     a, b = segs[i]
@@ -2022,7 +2099,9 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
             arc.reverse()
         return arc
 
-    def curves_for_densification(mesh, given):
+    def curves_for_densification(
+        mesh: CoarseQuadMesh, given: dict[tuple[int, int], list[list[float]]] | None
+    ) -> dict[tuple[int, int], list[list[float]]]:
         """For a boundary edge, prefer re-deriving the curve from `poly`
         between the endpoints' CURRENT positions (see `boundary_arc_between`)
         -- this is what makes the boundary densify along the true curve even
@@ -2072,8 +2151,14 @@ def guide_band_mesh(coarse, guides, target_length=0.6, half_width=None, refine=N
 # GUIDE C -- let the guide shape the layout, as a curve feature
 # =============================================================================
 
-def guide_feature_mesh(outer_boundary, guides, inner_boundaries=(), point_features=(),
-                       target_length=0.6, edges_to_curves=None):
+def guide_feature_mesh(
+    outer_boundary: list[list[float]],
+    guides: CurveLike | Sequence[CurveLike],
+    inner_boundaries: Sequence[list[list[float]]] = (),
+    point_features: Sequence[list[float]] = (),
+    target_length: float = 0.6,
+    edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None,
+) -> tuple[QuadMesh, dict[str, Any]]:
     """Build the coarse layout AROUND the guides, by passing them as curve features.
 
     The other two functions in this module take a coarse mesh that already
@@ -2133,12 +2218,12 @@ def guide_feature_mesh(outer_boundary, guides, inner_boundaries=(), point_featur
     from compas_singular.algorithms import boundary_triangulation
     from compas_singular.algorithms import SkeletonDecomposition
 
-    def spacing_of(boundary):
+    def spacing_of(boundary: list[list[float]]) -> float:
         """The domain's own discretisation, as the median boundary segment."""
         lengths = sorted(distance_point_point(a, b) for a, b in pairwise(boundary + boundary[:1]))
         return lengths[len(lengths) // 2] if lengths else 1.0
 
-    def resample(curve, spacing):
+    def resample(curve: list[list[float]], spacing: float) -> list[list[float]]:
         """Walk the curve and emit a point every `spacing`, keeping both ends.
 
         A curve feature has to be sampled at the density of everything else, or
@@ -2156,7 +2241,7 @@ def guide_feature_mesh(outer_boundary, guides, inner_boundaries=(), point_featur
                 out.append([a[k] + t * (b[k] - a[k]) for k in range(3)])
         return out
 
-    def clip(curve, boundary):
+    def clip(curve: list[list[float]], boundary: list[list[float]]) -> tuple[list[list[float]], bool]:
         """Keep the longest run of the curve that lies inside the domain.
 
         A guide drawn past the wall -- the usual way to say "all the way across"
@@ -2260,10 +2345,10 @@ if __name__ == '__main__':
     class PlainDecomposition(SkeletonDecomposition):
         """No point features are used here, so there are no poles to record."""
 
-        def store_pole_data(self, poles):
+        def store_pole_data(self, poles: list[list[float]]) -> None:
             self.mesh.attributes['face_pole'] = {}
 
-    def baseline():
+    def baseline() -> CoarsePseudoQuadMesh:
         trimesh = boundary_triangulation(outer_boundary=outer, inner_boundaries=[],
                                          polyline_features=[], point_features=[])
         mesh = PlainDecomposition.from_mesh(trimesh).decomposition_mesh([])
@@ -2272,7 +2357,7 @@ if __name__ == '__main__':
 
     # -- guide curves, as plain input curves ----------------------------------
 
-    def bow(start, end, bulge, samples=48):
+    def bow(start: list[float], end: list[float], bulge: float, samples: int = 48) -> Polyline:
         """A half-sine bow off the chord -- flat in curvature where it meets the
         boundary rather than kinking into it. bulge=0 gives the straight chord."""
         chord = subtract_vectors(end, start)
@@ -2281,7 +2366,7 @@ if __name__ == '__main__':
                                  + normal[i] * bulge * sin(pi * k / samples)
                                  for i in range(3)]) for k in range(samples + 1)])
 
-    def line(a, b):
+    def line(a: list[float], b: list[float]) -> Polyline:
         return Polyline([Point(*a), Point(*b)])
 
     # half_width is left at its default throughout -- target_length / 2, so each
@@ -2303,7 +2388,7 @@ if __name__ == '__main__':
 
     # -- measurement ----------------------------------------------------------
 
-    def off_centre(mesh, guide_polylines):
+    def off_centre(mesh: QuadMesh, guide_polylines: list[list[list[float]]]) -> str:
         """How far each guide runs from the middle of the faces it passes through.
 
         In units of half the face width across the guide, so 0 is dead centre
@@ -2311,7 +2396,7 @@ if __name__ == '__main__':
         two readings: a guide on an edge scores ~1, a guide down the middle of a
         row of blocks scores ~0.
         """
-        def median(values):
+        def median(values: list[float]) -> float:
             s = sorted(values)
             k = len(s)
             return s[k // 2] if k % 2 else 0.5 * (s[k // 2 - 1] + s[k // 2])
@@ -2348,7 +2433,13 @@ if __name__ == '__main__':
             return ''
         return ' | off-centre {:4.2f} med, {:4.2f} worst'.format(median(all_ratios), worst)
 
-    def measure(mesh, guide_polylines, on_tol=0.05, margin=0.0, steep=12.0):
+    def measure(
+        mesh: QuadMesh,
+        guide_polylines: list[list[list[float]]],
+        on_tol: float = 0.05,
+        margin: float = 0.0,
+        steep: float = 12.0,
+    ) -> str:
         """Courses ALONG a guide want 0 deg to the tangent; interfaces ACROSS it
         want 90.
 
@@ -2365,7 +2456,7 @@ if __name__ == '__main__':
         2.0 -> 80.6 / 88%. None of those three numbers is about the boundary.
         """
 
-        def near(p, poly):
+        def near(p: list[float], poly: list[list[float]]) -> tuple[float, list[float] | None]:
             best = (float('inf'), None)
             for a, b in pairwise(poly):
                 ab = subtract_vectors(b, a)
@@ -2379,10 +2470,10 @@ if __name__ == '__main__':
                     best = (d, normalize_vector(ab))
             return best
 
-        def acute(u, v):
+        def acute(u: list[float], v: list[float]) -> float:
             return degrees(acos(max(-1.0, min(1.0, abs(dot_vectors(u, v))))))
 
-        def median(values):
+        def median(values: list[float]) -> float:
             s = sorted(values)
             k = len(s)
             return s[k // 2] if k % 2 else 0.5 * (s[k // 2 - 1] + s[k // 2])

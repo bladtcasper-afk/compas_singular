@@ -84,7 +84,7 @@ from compas_singular.datastructures import split_at_corners
 from compas_singular.datastructures import split_at_junctions
 from compas_singular.rhino.helpers import curve_points
 
-from compas_singular.rhino.project import get_settings
+from compas_singular.rhino.project import get_settings, resolve_spacing
 from compas_singular.rhino.session import RhinoSession
 
 #How finely a CURVED input curve is sampled, as a multiple of the background
@@ -440,7 +440,7 @@ def show_refusal(error, source):
 
 def main():
     settings = get_settings()
-    sampling = settings["triangulation_spacing"] * CURVE_SAMPLING_FACTOR
+    sampling = resolve_spacing(settings) * CURVE_SAMPLING_FACTOR
 
     # Everything is read BEFORE anything is written: the poles are read from the
     # layer this command rewrites.

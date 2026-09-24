@@ -117,6 +117,11 @@ performs the deletion on a copy and looks -- see :meth:`~CoarseEditor._gate`.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import Any
+from typing import Sequence
+from typing import TYPE_CHECKING
 
 from compas.geometry import closest_point_on_segment_xy
 from compas.geometry import distance_point_point
@@ -133,6 +138,9 @@ from compas_singular.editing.editor import MeshEditor
 from compas_singular.editing.rebuild import coarse_from_skeleton
 from compas_singular.editing.rebuild import snap_to_loops
 from compas_singular.editing.repair import densifiable
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import CoarsePseudoQuadMesh
 
 
 __all__ = ['CoarseEditor', 'PRECISION']
@@ -195,8 +203,15 @@ class CoarseEditor(MeshEditor):
     #: A coarse layout is planar by construction; a moved corner is flattened.
     PLANAR = True
 
-    def __init__(self, coarse, field=None, loops=None, polylines=(),
-                 poles=None, snap_tol=None):
+    def __init__(
+        self,
+        coarse: "CoarsePseudoQuadMesh",
+        field: Any = None,
+        loops: list[list[list[float]]] | None = None,
+        polylines: Sequence[list[list[float]]] = (),
+        poles: list[list[float]] | None = None,
+        snap_tol: float | None = None,
+    ) -> None:
         if coarse is None:
             raise ValueError('no coarse layout to edit -- pass the mesh to edit')
         loops = self._resolve_loops(coarse, field, loops)
@@ -237,7 +252,11 @@ class CoarseEditor(MeshEditor):
         self.last_pole = {}
 
     @staticmethod
-    def _resolve_loops(coarse, field, loops):
+    def _resolve_loops(
+        coarse: "CoarsePseudoQuadMesh",
+        field: Any,
+        loops: list[list[list[float]]] | None,
+    ) -> list[list[list[float]]]:
         """The domain walls, from the caller, the field, or the layout itself."""
         if loops:
             return [[list(point) for point in loop] for loop in loops]
@@ -253,12 +272,12 @@ class CoarseEditor(MeshEditor):
         return [[coarse.vertex_coordinates(vkey) for vkey in ring]
                 for ring in coarse.boundaries()]
 
-    def _default_warp_scale(self, field):
+    def _default_warp_scale(self, field: Any) -> float:
         background = getattr(field, 'background', None)
         target = getattr(background, 'target_length', None)
         return target if target else 0.25 * self.mean_edge()
 
-    def _default_snap_tol(self, field):
+    def _default_snap_tol(self, field: Any) -> float:
         background = getattr(field, 'background', None)
         target = getattr(background, 'target_length', None)
         if target:
@@ -266,7 +285,7 @@ class CoarseEditor(MeshEditor):
         return 0.5 * self.mean_edge()
 
 
-    def corner_tol(self):
+    def corner_tol(self) -> float:
         """How close to a corner a point is TAKEN AS that corner.
 
         Not politeness: splitting an edge a hair from its end makes a coarse
@@ -278,7 +297,7 @@ class CoarseEditor(MeshEditor):
         """
         return 0.05 * self.mean_edge()
 
-    def on_tol(self):
+    def on_tol(self) -> float:
         """How far off an edge a point may be and still count as on it.
 
         Tight, because a point that reaches here was picked with the cursor
@@ -290,7 +309,7 @@ class CoarseEditor(MeshEditor):
     # queries a front end needs
     # ------------------------------------------------------------------
 
-    def locate(self, point):
+    def locate(self, point: list[float]) -> tuple[str, int] | tuple[str, tuple[int, int], list[float]] | None:
         """Where a point sits on the layout: on a corner, on an edge, or not.
 
         Returns ``('vertex', vkey)``, ``('edge', (u, v), xyz)``, or ``None``.
@@ -321,7 +340,7 @@ class CoarseEditor(MeshEditor):
             return ('edge', best[1], best[2])
         return None
 
-    def project(self, xyz, boundary):
+    def project(self, xyz: list[float], boundary: bool) -> list[float]:
         """A boundary corner goes onto the nearest wall; an interior one does not.
 
         Eligibility is TOPOLOGICAL, exactly as in ``rebuild.snap_to_loops``, and
@@ -337,7 +356,7 @@ class CoarseEditor(MeshEditor):
         return self.project_to_wall(xyz)
 
 
-    def edge_shape(self, u, v):
+    def edge_shape(self, u: int, v: int) -> list[list[float]] | None:
         """The drawn SHAPE this edge carries, or ``None`` if it is a chord.
 
         For display: an edge that carries an inserted arc should be drawn as
@@ -351,12 +370,12 @@ class CoarseEditor(MeshEditor):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _curve_key(pa, pb):
+    def _curve_key(pa: list[float], pb: list[float]) -> tuple[float, float, float, float]:
         """Geometric key for the curve map. 3 decimals, as everything else."""
         return (round(pa[0], PRECISION), round(pa[1], PRECISION),
                 round(pb[0], PRECISION), round(pb[1], PRECISION))
 
-    def _own_curve(self, pa, pb):
+    def _own_curve(self, pa: list[float], pb: list[float]) -> list[list[float]] | None:
         """The shape registered for this edge, either way round, or ``None``."""
         curve = self.curves.get(self._curve_key(pa, pb))
         if curve is not None:
@@ -366,7 +385,7 @@ class CoarseEditor(MeshEditor):
             return [list(p) for p in reversed(curve)]
         return None
 
-    def _edge_curve(self, pa, pb):
+    def _edge_curve(self, pa: list[float], pb: list[float]) -> list[list[float]] | None:
         """The shape this coarse edge follows: drawn, or traced.
 
         The traced half matters as much as the drawn one. Cutting across an
@@ -395,7 +414,7 @@ class CoarseEditor(MeshEditor):
         return None
 
     @staticmethod
-    def _clean(points):
+    def _clean(points: list[list[float]]) -> list[list[float]]:
         """Drop consecutive duplicates -- ``Polyline.point_at`` divides by them."""
         out = [list(points[0])]
         for point in points[1:]:
@@ -403,7 +422,9 @@ class CoarseEditor(MeshEditor):
                 out.append(list(point))
         return out
 
-    def _split_curve(self, curve, point):
+    def _split_curve(
+        self, curve: list[list[float]], point: list[float]
+    ) -> tuple[list[float] | None, list[list[float]] | None, list[list[float]] | None]:
         """``(point ON the curve, head, tail)`` for the curve cut at ``point``.
 
         The returned point is the one to put the new corner at, and it is not
@@ -431,14 +452,14 @@ class CoarseEditor(MeshEditor):
     # planning a cut
     # ------------------------------------------------------------------
 
-    def _node_point(self, node):
+    def _node_point(self, node: Any) -> list[float]:
         """The xyz a plan node sits at."""
         if node[0] == 'vertex':
             return self.mesh.vertex_coordinates(node[1])
         return node[2]
 
     @staticmethod
-    def _direction(points, index, start):
+    def _direction(points: list[list[float]], index: int, start: list[float]) -> list[float] | None:
         """Curve direction leaving ``start`` on segment ``index``."""
         for i in range(index, len(points) - 1):
             dx = points[i + 1][0] - start[0]
@@ -448,7 +469,7 @@ class CoarseEditor(MeshEditor):
             start = points[i + 1]
         return None
 
-    def _face_across(self, edge, direction):
+    def _face_across(self, edge: tuple[int, int], direction: list[float]) -> int | None:
         """The face on the side of ``edge`` the curve is heading into.
 
         Decided by which side of the edge the candidate's own CENTROID is on,
@@ -473,7 +494,7 @@ class CoarseEditor(MeshEditor):
                 return fkey
         return None
 
-    def _face_around(self, vkey, points, index, start):
+    def _face_around(self, vkey: int, points: list[list[float]], index: int, start: list[float]) -> int | None:
         """The face at a corner the curve heads into -- containment of a probe."""
         direction = self._direction(points, index, start)
         if direction is None:
@@ -488,7 +509,9 @@ class CoarseEditor(MeshEditor):
                 return fkey
         return None
 
-    def _exit_of(self, fkey, points, index, start, end):
+    def _exit_of(
+        self, fkey: int, points: list[list[float]], index: int, start: list[float], end: Any
+    ) -> tuple[Any, int, list[list[float]] | None, str]:
         """Where the curve leaves patch ``fkey``, entering it at ``start``.
 
         Returns ``(node, index, subcurve, reason)``. ``node`` is ``None`` on a
@@ -540,14 +563,14 @@ class CoarseEditor(MeshEditor):
             'the line stops inside a patch. It has to reach a patch edge -- and '
             'to leave the layout all-quad, a boundary')
 
-    def _node_at(self, fkey, edge, point):
+    def _node_at(self, fkey: int, edge: tuple[int, int], point: list[float]) -> tuple[str, int] | tuple[str, tuple[int, int], list[float]]:
         """An exit node, collapsed onto a corner when it lands on one."""
         for vkey in self.mesh.face_vertices(fkey):
             if distance_point_point(point, self.mesh.vertex_coordinates(vkey)) <= self.corner_tol():
                 return ('vertex', vkey)
         return ('edge', tuple(edge), point)
 
-    def _plan_cut(self, points):
+    def _plan_cut(self, points: list[list[float]]) -> tuple[dict[str, Any] | None, str]:
         """**Walk the drawn curve across the layout, without touching it.**
 
         Produces ``{'nodes': [...], 'faces': [(fkey, i, j, subcurve), ...]}``:
@@ -609,7 +632,7 @@ class CoarseEditor(MeshEditor):
 
         return {'nodes': nodes, 'faces': faces}, ''
 
-    def _open_ends(self, plan):
+    def _open_ends(self, plan: dict[str, Any]) -> list[tuple[int, int]]:
         """The ends of a planned cut that stop on an INTERIOR edge.
 
         Each one is a patch left with five sides, and they are the only reason
@@ -629,7 +652,7 @@ class CoarseEditor(MeshEditor):
                 out.append((index, fkey))
         return out
 
-    def _extend_plan(self, plan, index, fkey):
+    def _extend_plan(self, plan: dict[str, Any], index: int, fkey: int) -> tuple[bool, str]:
         """**Carry a cut on to the boundary, patch by patch.**
 
         A cut that stops on an interior edge is not wrong, it is unfinished:
@@ -696,7 +719,7 @@ class CoarseEditor(MeshEditor):
     # applying a cut
     # ------------------------------------------------------------------
 
-    def _current_edge(self, work, u, v, point):
+    def _current_edge(self, work: "CoarsePseudoQuadMesh", u: int, v: int, point: list[float]) -> tuple[int, int] | None:
         """The piece of edge ``(u, v)`` that ``point`` is on, after any splits."""
         if work.has_edge((u, v)):
             return (u, v)
@@ -713,7 +736,13 @@ class CoarseEditor(MeshEditor):
                 return (a, b)
         return None
 
-    def _split_edge_at(self, work, edge, point, pending):
+    def _split_edge_at(
+        self,
+        work: "CoarsePseudoQuadMesh",
+        edge: tuple[int, int],
+        point: list[float],
+        pending: dict[tuple[float, float, float, float], list[list[float]]],
+    ) -> int | None:
         """Split one coarse edge, putting the new corner where it belongs.
 
         Three things happen that a bare ``split_edge`` does not do:
@@ -758,7 +787,9 @@ class CoarseEditor(MeshEditor):
             pending[self._curve_key(exact, pv)] = tail
         return w
 
-    def _apply_cut(self, work, plan):
+    def _apply_cut(
+        self, work: "CoarsePseudoQuadMesh", plan: dict[str, Any]
+    ) -> tuple[bool, str, dict[tuple[float, float, float, float], list[list[float]]]]:
         """Perform a planned cut on ``work``. ``(ok, reason, curves)``."""
         pending = {}
         vertex_of = {}
@@ -798,7 +829,7 @@ class CoarseEditor(MeshEditor):
                 pending[self._curve_key(pa, pb)] = curve
         return True, '', pending
 
-    def _check_quads(self, work):
+    def _check_quads(self, work: "CoarsePseudoQuadMesh") -> tuple[bool, str]:
         """**The gate: the edit has to leave every patch four-sided.**
 
         Run on the copy, before it is adopted. A pseudo-quad that was already
@@ -830,7 +861,13 @@ class CoarseEditor(MeshEditor):
     # cutting the layout with a drawn curve
     # ------------------------------------------------------------------
 
-    def divide(self, points=None, skey=None, t=None, extend=None):
+    def divide(
+        self,
+        points: list[list[float]] | None = None,
+        skey: int | None = None,
+        t: float | None = None,
+        extend: bool | Any | None = None,
+    ) -> tuple[bool, dict[str, Any]]:
         """**Subdivide a strip of the layout.** ``(ok, notes)``.
 
         Two ways in, and they are the same operation:
@@ -863,7 +900,7 @@ class CoarseEditor(MeshEditor):
             return self._divide_by_curve(points, extend=extend)
         return self._divide_by_strip(skey, 0.5 if t is None else t)
 
-    def _divide_by_strip(self, skey, t=0.5):
+    def _divide_by_strip(self, skey: int, t: float = 0.5) -> tuple[bool, dict[str, Any]]:
         """**Split every rung of a strip at the same parameter.** ``(ok, notes)``.
 
         The strip-traced case in its plainest form: no drawn geometry, so nothing
@@ -937,7 +974,7 @@ class CoarseEditor(MeshEditor):
                          'faces_out': work.number_of_faces()}
         return self._accept(**self.last_cut)
 
-    def strip_of_cut(self, points):
+    def strip_of_cut(self, points: list[list[float]]) -> int | None:
         """The strip a drawn curve would divide, or ``None``.
 
         Resolved from the first coarse edge the curve crosses. A front end can
@@ -948,7 +985,7 @@ class CoarseEditor(MeshEditor):
             return None
         return self.strip_through(start[1])
 
-    def _divide_by_curve(self, points, extend=None):
+    def _divide_by_curve(self, points: list[list[float]], extend: bool | Any | None = None) -> tuple[bool, dict[str, Any]]:
         """**Cut the layout with a drawn curve.** ``(ok, notes)``.
 
         Plan against the untouched layout, apply to a copy, adopt the copy only
@@ -1021,7 +1058,7 @@ class CoarseEditor(MeshEditor):
         }
         return self._accept(**self.last_cut)
 
-    def _cut_strip(self, plan):
+    def _cut_strip(self, plan: dict[str, Any]) -> int | None:
         """The strip a planned cut runs along, or ``None`` if it runs along none.
 
         The plan's patches have to be exactly one strip's patches. Anything else
@@ -1048,7 +1085,7 @@ class CoarseEditor(MeshEditor):
     # deleting a strip -- the base's walk, this layout's gate
     # ------------------------------------------------------------------
 
-    def _gate(self, work):
+    def _gate(self, work: "CoarsePseudoQuadMesh") -> tuple[bool, str]:
         """All-quad, **and manifold**. The second half is the one that decides.
 
         Welding a strip's two sides together can put three patches on one edge,
@@ -1069,7 +1106,7 @@ class CoarseEditor(MeshEditor):
         return True, ''
 
     @staticmethod
-    def _as_coarse_plan(info):
+    def _as_coarse_plan(info: dict[str, Any]) -> dict[str, Any]:
         """The base's canonical info in this class's published shape.
 
         The base returns the collateral strips and the collapsed boundaries
@@ -1081,7 +1118,12 @@ class CoarseEditor(MeshEditor):
         plan['boundaries_lost'] = len(info['boundaries_lost'])
         return plan
 
-    def plan_strip_deletion(self, edge=None, preserve_boundaries=False, skey=None):
+    def plan_strip_deletion(
+        self,
+        edge: tuple[int, int] | None = None,
+        preserve_boundaries: bool = False,
+        skey: int | None = None,
+    ) -> dict[str, Any]:
         """**What deleting the strip would cost.** No mutation.
 
         Returns ``skey``, ``faces``, ``collateral`` and ``boundaries_lost`` as
@@ -1093,7 +1135,12 @@ class CoarseEditor(MeshEditor):
             edge=edge, preserve_boundaries=preserve_boundaries, skey=skey)
         return self._as_coarse_plan(info)
 
-    def remove_strip(self, edge=None, preserve_boundaries=False, skey=None):
+    def remove_strip(
+        self,
+        edge: tuple[int, int] | None = None,
+        preserve_boundaries: bool = False,
+        skey: int | None = None,
+    ) -> tuple[bool, dict[str, Any]]:
         """**Delete the strip through** ``edge`` (or ``skey``). ``(ok, notes)``."""
         faces_in = self.mesh.number_of_faces()
         ok, notes = super(CoarseEditor, self).remove_strip(
@@ -1111,7 +1158,7 @@ class CoarseEditor(MeshEditor):
     # adding a strip -- Robin's rule, and the opening it needs
     # ------------------------------------------------------------------
 
-    def add_strip(self, polyedge):
+    def add_strip(self, polyedge: list[int]) -> tuple[bool, dict[str, Any]]:
         """**Unzip a polyedge of existing corners into a strip.** ``(ok, notes)``.
 
         The grammar's own rule (thesis 5.3.1): each corner ``Vi`` of the polyedge
@@ -1134,8 +1181,11 @@ class CoarseEditor(MeshEditor):
         Notes
         -----
         The grammar creates both copies ON TOP of the corner they replace, so the
-        strip has zero width until it is opened. :meth:`_open_strip` does that
-        with an exact rule rather than by smoothing -- see there.
+        strip has zero width until it is opened. The grammar's ``open_strip``
+        does that with an exact rule rather than by smoothing -- see
+        :func:`~compas_singular.datastructures.mesh_quad.grammar.add_strip.open_added_strip`.
+        This editor passes :meth:`project_to_wall`, so a pair opened on the
+        layout boundary lands back on the wall.
         """
         polyedge = list(polyedge)
         if len(polyedge) < 3:
@@ -1172,24 +1222,21 @@ class CoarseEditor(MeshEditor):
                 'width of the layout -- wall to wall, or all the way '
                 'round'.format(len(polyedge)))
 
-        # Measured BEFORE the grammar runs: it deletes every corner of the
-        # polyedge, so the neighbours that define each side have to be read off
-        # the layout as it still is.
-        sides = self._polyedge_sides(polyedge)
-        on_boundary = set(vkey for vkey in polyedge
-                          if self.is_vertex_on_boundary(vkey))
-
         work = self.mesh.copy()
         # A PRECONDITION, not housekeeping: ``update_strip_data`` does
         # ``max(attributes['strips']) + 1`` and raises ValueError on an empty dict.
         work.collect_strips()
         try:
-            skey, old_to_new = _grammar_add_strip(work, list(polyedge))
+            skey, old_to_new = _grammar_add_strip(work, list(polyedge), open_strip=True,
+                                                  project=self.project_to_wall)
         except Exception as exc:
             return self._refuse('the grammar could not add that strip ({}: {})'.format(
                 type(exc).__name__, exc))
 
-        opened = self._open_strip(work, old_to_new, sides, on_boundary)
+        # The grammar opens every pair it can; one it could not stays coincident.
+        opened = sum(1 for a, b in old_to_new.values()
+                     if distance_point_point(work.vertex_coordinates(a),
+                                             work.vertex_coordinates(b)) > 1e-12)
 
         ok, reason = self._gate(work)
         if not ok:
@@ -1201,55 +1248,18 @@ class CoarseEditor(MeshEditor):
                          'faces_out': work.number_of_faces()}
         return self._accept(**self.last_cut)
 
-    def _polyedge_sides(self, polyedge, mesh=None):
-        """``{corner: (left neighbours, right neighbours)}`` across the polyedge.
-
-        Which side a neighbour is on is the sign of the cross product of the
-        polyedge's direction AT the corner with the direction to the neighbour.
-        The direction is taken ACROSS the corner -- from the one before to the one
-        after -- rather than along a single edge, so one kinked edge does not
-        decide it.
-        """
-        mesh = self.mesh if mesh is None else mesh
-        closed = polyedge[0] == polyedge[-1]
-        seq = polyedge[:-1] if closed else polyedge
-        count = len(seq)
-        out = {}
-        for i, vkey in enumerate(seq):
-            if closed:
-                prev, nxt = seq[(i - 1) % count], seq[(i + 1) % count]
-            else:
-                prev = seq[i - 1] if i > 0 else None
-                nxt = seq[i + 1] if i < count - 1 else None
-            point = mesh.vertex_coordinates(vkey)
-            a = mesh.vertex_coordinates(prev) if prev is not None else point
-            b = mesh.vertex_coordinates(nxt) if nxt is not None else point
-            dx, dy = b[0] - a[0], b[1] - a[1]
-            if dx * dx + dy * dy < 1e-18:
-                out[vkey] = None
-                continue
-            left, right = [], []
-            for nbr in mesh.vertex_neighbors(vkey):
-                if nbr == prev or nbr == nxt:
-                    continue
-                q = mesh.vertex_coordinates(nbr)
-                side = dx * (q[1] - point[1]) - dy * (q[0] - point[0])
-                (left if side > 0.0 else right).append(nbr)
-            out[vkey] = (left, right)
-        return out
-
-    def _split_strips(self, work, to_split):
+    def _split_strips(self, work: "CoarsePseudoQuadMesh", to_split: dict[int, int]) -> dict[int, list[int]]:
         """**Refine strips, opening each one by the exact rule.**
 
-        The base's ``split_strips`` is topology only, so the strips it adds have
-        zero width and something has to give them one. On a coarse layout that
-        must not be smoothing: relaxation slides corners along the CHORDED
-        boundary and clusters them, measured as gaps of
-        0.096 / 0.071 / 0.130 ... 2.782 on a 4.389 loop and a minimum face angle
-        of 0.28 degrees. That is what made ``preserve_boundaries`` unusable here.
+        The base's ``split_strips`` leaves the strips it adds with zero width,
+        and something has to give them one. On a coarse layout that must not be
+        smoothing: relaxation slides corners along the CHORDED boundary and
+        clusters them, measured as gaps of 0.096 / 0.071 / 0.130 ... 2.782 on a
+        4.389 loop and a minimum face angle of 0.28 degrees. That is what made
+        ``preserve_boundaries`` unusable here.
 
-        So each new strip is opened by :meth:`_open_strip`'s exact division, the
-        same way :meth:`add_strip` opens its own. Nothing here moves a corner that
+        So each new strip is opened by the grammar's exact division, the same
+        way :meth:`add_strip` opens its own. Nothing here moves a corner that
         was not just created.
         """
         out = {}
@@ -1259,99 +1269,18 @@ class CoarseEditor(MeshEditor):
                 sides = work.strip_side_polyedges(skey)
                 if not sides:
                     break
-                polyedge = list(sides[0])
-                geometry = self._polyedge_sides(polyedge, mesh=work)
-                on_boundary = set(vkey for vkey in polyedge
-                                  if self.is_vertex_on_boundary(vkey, mesh=work))
-                new_skey, old_to_new = _grammar_add_strip(work, list(polyedge))
-                self._open_strip(work, old_to_new, geometry, on_boundary)
+                new_skey, _old_to_new = _grammar_add_strip(
+                    work, list(sides[0]), open_strip=True,
+                    project=self.project_to_wall)
                 keys.append(new_skey)
             out[skey] = keys
         return out
-
-    def _open_strip(self, work, old_to_new, sides, on_boundary):
-        """**Give the new strip its width: redivide the two quads into three.**
-
-        ``add_strip`` creates both copies of a corner at the corner's own
-        position, so the strip is degenerate until something separates them. The
-        span across the polyedge at a corner ran from its left neighbour ``L``,
-        through the corner, to its right neighbour ``R`` -- two quad widths. After
-        the insertion that same span carries three edges, so the two new corners
-        belong at one third and two thirds of it.
-
-        This is an exact rule, and it replaces the 20-iteration constrained smooth
-        the pattern grammar runs (``func_1``). That smooth is what slid coarse
-        corners along a chorded boundary -- measured gaps of 0.096 / 0.071 /
-        0.130 ... 2.782 on a 4.389 loop, minimum angle 0.28 degrees -- so nothing
-        here is allowed to depend on it.
-
-        Two cases need care and both are handled:
-
-        * **a corner on the layout boundary.** ``L`` and ``R`` run along the wall,
-          so thirds of that span are still on the wall only if the wall is
-          straight. Both new corners are projected back onto it, which is the same
-          rule that stops :meth:`move_vertex` eating the outline.
-        * **a singularity on the polyedge.** A corner of valence other than four
-          has more than one neighbour on a side, so each side contributes its
-          centroid rather than its single point. A side with NO neighbour at all
-          -- a valence-2 layout corner, say -- falls back to the corner's own
-          position, which keeps the pair separated and inside the layout instead
-          of leaving them coincident.
-
-        Returns the number of corners actually repositioned.
-        """
-        opened = 0
-        for old, pair in old_to_new.items():
-            info = sides.get(old)
-            if info is None or len(pair) != 2:
-                continue
-            left_keys, right_keys = info
-            first, second = pair
-
-            # Which copy took which side is MEASURED on the result rather than
-            # assumed from the grammar's left/right convention: the copy adjacent
-            # to a left-hand neighbour is the left one.
-            if any(k in work.halfedge.get(first, {}) for k in left_keys):
-                low, high = first, second
-            elif any(k in work.halfedge.get(second, {}) for k in left_keys):
-                low, high = second, first
-            elif any(k in work.halfedge.get(first, {}) for k in right_keys):
-                low, high = second, first
-            elif any(k in work.halfedge.get(second, {}) for k in right_keys):
-                low, high = first, second
-            else:
-                continue
-
-            here = work.vertex_coordinates(low)
-            a = self._centroid([work.vertex_coordinates(k) for k in left_keys], here)
-            b = self._centroid([work.vertex_coordinates(k) for k in right_keys], here)
-            if distance_point_point(a, b) <= 1e-12:
-                continue
-
-            one = [a[0] + (b[0] - a[0]) / 3.0, a[1] + (b[1] - a[1]) / 3.0, 0.0]
-            two = [a[0] + 2.0 * (b[0] - a[0]) / 3.0,
-                   a[1] + 2.0 * (b[1] - a[1]) / 3.0, 0.0]
-            if old in on_boundary:
-                one, two = self.project_to_wall(one), self.project_to_wall(two)
-
-            work.vertex_attributes(low, 'xyz', [one[0], one[1], 0.0])
-            work.vertex_attributes(high, 'xyz', [two[0], two[1], 0.0])
-            opened += 1
-        return opened
-
-    @staticmethod
-    def _centroid(points, fallback):
-        """The average of ``points``, or ``fallback`` when there are none."""
-        if not points:
-            return list(fallback)
-        n = float(len(points))
-        return [sum(p[0] for p in points) / n, sum(p[1] for p in points) / n, 0.0]
 
     # ------------------------------------------------------------------
     # moving a pole -- a relabel of the collapsed corner, nothing else
     # ------------------------------------------------------------------
 
-    def pole_targets(self, pkey):
+    def pole_targets(self, pkey: int) -> list[int]:
         """The corners the pole at ``pkey`` may move to. Empty if none.
 
         A pseudo-quad is a triangle with one corner registered as collapsed, and
@@ -1369,7 +1298,7 @@ class CoarseEditor(MeshEditor):
         shared.discard(pkey)
         return sorted(shared)
 
-    def move_pole(self, pkey, vkey):
+    def move_pole(self, pkey: int, vkey: int) -> tuple[bool, dict[str, Any]]:
         """**Move the pole at** ``pkey`` **to corner** ``vkey``. ``(ok, notes)``.
 
         A RELABEL: every pseudo-quad collapsed at ``pkey`` is registered as
@@ -1436,7 +1365,7 @@ class CoarseEditor(MeshEditor):
     # undo
     # ------------------------------------------------------------------
 
-    def reset(self):
+    def reset(self) -> tuple[bool, dict[str, Any]]:
         """Back to the layout this round of edits started from, curves included."""
         ok, notes = super(CoarseEditor, self).reset()
         self.curves = dict(self._snapshot_curves)
@@ -1446,7 +1375,7 @@ class CoarseEditor(MeshEditor):
         self.last_pole = {}
         return ok, notes
 
-    def _state(self):
+    def _state(self) -> dict[str, Any]:
         """The base's mesh snapshot, plus the curve map and the dirty flag --
         both change under :meth:`divide` as surely as the mesh does, and
         restoring one without the other would leave an undone cut's curve
@@ -1461,7 +1390,7 @@ class CoarseEditor(MeshEditor):
         state['poles'] = None if self.poles is None else [list(p) for p in self.poles]
         return state
 
-    def _restore(self, state):
+    def _restore(self, state: dict[str, Any]) -> None:
         super(CoarseEditor, self)._restore(state)
         self.curves = state['curves']
         self._topology_dirty = state['topology_dirty']
@@ -1471,7 +1400,7 @@ class CoarseEditor(MeshEditor):
         self.poles = state['poles']
 
 
-    def _rekey_curves(self, mesh):
+    def _rekey_curves(self, mesh: "CoarsePseudoQuadMesh") -> int:
         """Re-key the curve map onto a layout whose vertex keys were renumbered.
 
         ``edit_coarse`` welds and repairs, so it returns a mesh with different
@@ -1511,7 +1440,7 @@ class CoarseEditor(MeshEditor):
     # ------------------------------------------------------------------
 
     @property
-    def all_polylines(self):
+    def all_polylines(self) -> list[list[list[float]]]:
         """Traced separatrices plus the curves the user drew.
 
         This is what a caller bakes as the layout's ribs and what
@@ -1522,7 +1451,9 @@ class CoarseEditor(MeshEditor):
         return ([[list(p) for p in polyline] for polyline in self.polylines]
                 + [[list(p) for p in curve] for curve in self.curves.values()])
 
-    def edge_curves(self, loops=None, warp=None):
+    def edge_curves(
+        self, loops: list[list[list[float]]] | None = None, warp: bool | None = None
+    ) -> tuple[dict[tuple[int, int], list[list[float]]], dict[str, Any]]:
         """``(mapping, tally)`` -- one polyline per coarse edge, for densification.
 
         A coarse edge is a straight chord and the layout has to keep it that way,
@@ -1558,7 +1489,7 @@ class CoarseEditor(MeshEditor):
     # commit
     # ------------------------------------------------------------------
 
-    def commit(self):
+    def commit(self) -> tuple["CoarsePseudoQuadMesh | None", dict[str, Any]]:
         """**Write the edited layout back into the mesh this editor was given.**
 
         Returns ``(layout, notes)`` -- and ``layout`` **is** the object passed to

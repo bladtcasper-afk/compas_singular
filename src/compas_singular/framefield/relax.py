@@ -58,12 +58,20 @@ minimum angle, the maximum angle or the aspect ratio -- exactly the rule
 ``densify._accepts`` applies to an unguided patch. A domain with nothing to gain is left
 untouched rather than nudged.
 """
+from __future__ import annotations
+
 from math import cos
 from math import radians
+from typing import Any
+from typing import Sequence
+from typing import TYPE_CHECKING
 
 from compas.tolerance import TOL
 
 from compas_singular.geometry.polyline import closest_on_polyline
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import Mesh
 
 
 __all__ = ['relax_mesh', 'relaxation_constraints']
@@ -85,7 +93,7 @@ MIN_GAP = 0.25
 class _Curve(object):
     """A polyline that reports arc-length parameters as well as closest points."""
 
-    def __init__(self, points, closed=False):
+    def __init__(self, points: list[list[float]], closed: bool = False) -> None:
         self.points = [list(p)[:3] for p in points]
         self.closed = closed
         self.cumulative = [0.0]
@@ -93,7 +101,7 @@ class _Curve(object):
             self.cumulative.append(self.cumulative[-1] + _distance(a, b))
         self.length = self.cumulative[-1]
 
-    def project(self, xyz):
+    def project(self, xyz: list[float]) -> tuple[list[float] | None, float]:
         """``(point, parameter)`` of the closest point, parameter as arc length.
 
         The arc length is an O(1) lookup rather than a second pass: the search
@@ -111,7 +119,7 @@ class _Curve(object):
         span = (abx * abx + aby * aby + abz * abz) ** 0.5
         return q, self.cumulative[index] + t * span
 
-    def point_at(self, parameter):
+    def point_at(self, parameter: float) -> list[float]:
         """The point at an arc-length parameter, clamped to the curve."""
         parameter = max(0.0, min(self.length, parameter))
         for i, (lo, hi) in enumerate(zip(self.cumulative, self.cumulative[1:])):
@@ -123,7 +131,7 @@ class _Curve(object):
         return list(self.points[-1])
 
 
-def _distance(a, b):
+def _distance(a: list[float], b: list[float]) -> float:
     return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
 
 
@@ -131,7 +139,7 @@ def _distance(a, b):
 # constraints
 # ------------------------------------------------------------------
 
-def _singularities(mesh):
+def _singularities(mesh: Mesh) -> set[int]:
     """Interior vertices whose valency is not 4, plus every pole.
 
     A pole is a collapsed side, so it is a singularity a valency count cannot see --
@@ -156,7 +164,7 @@ def _singularities(mesh):
     return out
 
 
-def _boundary_curves(mesh):
+def _boundary_curves(mesh: Mesh) -> list[tuple[list[int], _Curve]]:
     """The mesh's own boundary loops, as closed :class:`_Curve` objects."""
     curves = []
     for loop in mesh.vertices_on_boundaries():
@@ -170,8 +178,14 @@ def _boundary_curves(mesh):
     return curves
 
 
-def relaxation_constraints(mesh, seam_edge=None, edges_to_curves=None, corner_angle=30.0,
-                           seams='free', pin_singularities=False):
+def relaxation_constraints(
+    mesh: Mesh,
+    seam_edge: dict[str, tuple[int, int, int]] | None = None,
+    edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None,
+    corner_angle: float = 30.0,
+    seams: str = 'free',
+    pin_singularities: bool = False,
+) -> tuple[dict[_Curve, list[int]], set[int]]:
     """Work out what each vertex may do.
 
     Returns
@@ -236,23 +250,23 @@ def relaxation_constraints(mesh, seam_edge=None, edges_to_curves=None, corner_an
 # the pass
 # ------------------------------------------------------------------
 
-def _quality(mesh):
+def _quality(mesh: Mesh) -> tuple[float, float, float]:
     """``(min angle, max angle, max aspect)`` -- the three the gate compares."""
     from compas_singular.framefield.quality import mesh_quality
     q = mesh_quality(mesh)
     return q['min_angle'], q['max_angle'], q['aspect_max']
 
 
-def _positions(mesh):
+def _positions(mesh: Mesh) -> dict[int, list[float]]:
     return {v: mesh.vertex_coordinates(v) for v in mesh.vertices()}
 
 
-def _restore(mesh, positions):
+def _restore(mesh: Mesh, positions: dict[int, list[float]]) -> None:
     for vertex, xyz in positions.items():
         mesh.vertex_attributes(vertex, 'xyz', xyz)
 
 
-def _reproject(mesh, chains):
+def _reproject(mesh: Mesh, chains: dict[_Curve, list[int]]) -> None:
     """Put every sliding vertex back on its curve, keeping its order along it."""
     for curve, ordered in chains.items():
         if not ordered:
@@ -278,7 +292,13 @@ def _reproject(mesh, chains):
             mesh.vertex_attributes(vertex, 'xyz', curve.point_at(parameter))
 
 
-def _smooth(mesh, chains, pinned, kmax, damping):
+def _smooth(
+    mesh: Mesh,
+    chains: dict[_Curve, list[int]],
+    pinned: set[int],
+    kmax: int,
+    damping: float,
+) -> None:
     """Area-weighted smoothing, with the sliding vertices reprojected every round."""
     fixed = set(pinned)
     for k in range(kmax):
@@ -306,8 +326,15 @@ def _smooth(mesh, chains, pinned, kmax, damping):
         _reproject(mesh, chains)
 
 
-def relax_mesh(mesh, seam_edge=None, edges_to_curves=None, corner_angle=30.0,
-               schedule=SCHEDULE, seams='free', pin_singularities=False):
+def relax_mesh(
+    mesh: Mesh,
+    seam_edge: dict[str, tuple[int, int, int]] | None = None,
+    edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None,
+    corner_angle: float = 30.0,
+    schedule: Sequence[tuple[int, float]] = SCHEDULE,
+    seams: str = 'free',
+    pin_singularities: bool = False,
+) -> dict[str, Any]:
     """**Relax a dense mesh globally**, seams and outline sliding, singularities pinned.
 
     Modifies ``mesh`` in place, and only if the result is an improvement -- see the

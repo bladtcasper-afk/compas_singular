@@ -39,10 +39,14 @@ See ``19_field_accuracy.py``, which is the check, and
 ``relax`` DEFAULTS TO FALSE. Turning it on moves the layout on every curved
 domain, so it is opt-in until ``baseline.json`` says which way those rows went.
 """
+from __future__ import annotations
+
 from cmath import phase
 from math import cos
 from math import sin
 from numbers import Number
+from typing import Any
+from typing import TYPE_CHECKING
 
 from compas.data import Data
 import numpy as np
@@ -50,9 +54,15 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import factorized
 from scipy.sparse.linalg import spsolve
 
+from compas_singular.framefield.constraints import Constraint
 from compas_singular.framefield.constraints import PERIOD
 from compas_singular.framefield.constraints import from_boundary
 from compas_singular.framefield.constraints import representation
+
+if TYPE_CHECKING:
+    from compas_singular.framefield.background import BackgroundMesh
+    from compas_singular.framefield.symmetry import Symmetry
+    from compas_singular.framefield.trace import Tracer
 
 
 __all__ = ['CrossField', 'field_provenance', 'wrap_to_period']
@@ -74,7 +84,7 @@ JSON_TYPE = 'compas_singular.framefield.CrossField'
 COORDINATE_DIGITS = 9
 
 
-def _canonical_curve(curve):
+def _canonical_curve(curve: Any) -> list[list[float]]:
     """One curve as a plain, rounded list of ``[x, y, z]``.
 
     Accepts what ``from_boundary`` accepts -- lists, tuples, compas ``Point``s,
@@ -90,7 +100,7 @@ def _canonical_curve(curve):
     return points
 
 
-def _plain(value):
+def _plain(value: Any) -> Any:
     """A solve parameter as something JSON can hold and a human can read."""
     if value is None or isinstance(value, bool) or isinstance(value, str):
         return value
@@ -111,7 +121,7 @@ def _plain(value):
     return repr(value)
 
 
-def _describe_difference(before, after):
+def _describe_difference(before: dict[str, Any] | None, after: dict[str, Any] | None) -> str:
     """The first differing entry of two readable dicts, as ``'name a -> b'``."""
     before = before or {}
     after = after or {}
@@ -123,9 +133,18 @@ def _describe_difference(before, after):
     return 'no visible difference'
 
 
-def field_provenance(outer_boundary, inner_boundaries=None, guides=None,
-                     mode='perpendicular', target_length=None, guide_weight=1.0,
-                     guide_band=None, relax=False, tau=None, symmetry='auto'):
+def field_provenance(
+    outer_boundary: Any,
+    inner_boundaries: Any = None,
+    guides: Any = None,
+    mode: str = 'perpendicular',
+    target_length: float | None = None,
+    guide_weight: float = 1.0,
+    guide_band: float | None = None,
+    relax: bool = False,
+    tau: float | None = None,
+    symmetry: Symmetry | str | None = 'auto',
+) -> dict[str, Any]:
     """**Everything that determines a field, canonicalised for comparison.**
 
     The signature is :meth:`CrossField.from_boundary`'s, defaults included, and
@@ -170,7 +189,7 @@ def field_provenance(outer_boundary, inner_boundaries=None, guides=None,
     }
 
 
-def wrap_to_period(delta):
+def wrap_to_period(delta: float) -> float:
     """Fold an angle difference into (-pi/4, +pi/4], the cross's half-period.
 
     Two crosses can never differ by more than 45 degrees -- past that they are
@@ -200,7 +219,14 @@ class CrossField(Data):
         steps rather than converging.
     """
 
-    def __init__(self, background, u, relaxed=False, iterations=None, residual=None):
+    def __init__(
+        self,
+        background: BackgroundMesh,
+        u: dict[int, complex],
+        relaxed: bool = False,
+        iterations: int | None = None,
+        residual: float | None = None,
+    ) -> None:
         super(CrossField, self).__init__()
         self.background = background
         self.u = u
@@ -233,7 +259,7 @@ class CrossField(Data):
         #: Lazily built by :meth:`locator`, and deliberately not pickled.
         self._locator = None
 
-    def __getstate__(self):
+    def __getstate__(self) -> dict[str, Any]:
         """Everything but the locator.
 
         Applies to ``pickle`` and ``copy.deepcopy`` alike. The locator holds a
@@ -245,7 +271,7 @@ class CrossField(Data):
         state['_locator'] = None
         return state
 
-    def __setstate__(self, state):
+    def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__.update(state)
         self._locator = None
 
@@ -254,8 +280,15 @@ class CrossField(Data):
     # ------------------------------------------------------------------
 
     @classmethod
-    def solve(cls, background, constraints=None, relax=False, tau=None,
-              tol=1e-9, max_iterations=20000):
+    def solve(
+        cls,
+        background: BackgroundMesh,
+        constraints: list[Constraint] | None = None,
+        relax: bool = False,
+        tau: float | None = None,
+        tol: float = 1e-9,
+        max_iterations: int = 20000,
+    ) -> CrossField:
         """Smoothest cross field satisfying ``constraints``.
 
         Minimises the Dirichlet energy of ``u`` over triangulation edges, subject
@@ -349,8 +382,18 @@ class CrossField(Data):
                    relaxed=bool(relax), iterations=iterations, residual=residual)
 
     @staticmethod
-    def _relax(A, b, free, fixed, x_fixed, x_start, background, tau, tol,
-               max_iterations):
+    def _relax(
+        A: Any,
+        b: np.ndarray,
+        free: list[int],
+        fixed: list[int],
+        x_fixed: np.ndarray,
+        x_start: np.ndarray,
+        background: BackgroundMesh,
+        tau: float | None,
+        tol: float,
+        max_iterations: int,
+    ) -> tuple[np.ndarray, int, float]:
         """Diffusion + normalisation to steady state -- Dai/Qiao/Wang Algorithm 4.1.
 
         One step is implicit Euler on the gradient flow of the same energy ``A``
@@ -413,16 +456,21 @@ class CrossField(Data):
     # sampling
     # ------------------------------------------------------------------
 
-    def directions(self, vkey):
+    def directions(self, vkey: int) -> list[list[float]]:
         """The four arms of the cross at a vertex, as unit vectors."""
         t = self.theta[vkey]
         return [[cos(t + k * PERIOD), sin(t + k * PERIOD), 0.0] for k in range(4)]
 
-    def magnitude(self, vkey):
+    def magnitude(self, vkey: int) -> float:
         """``|u|``. Near 0 means the vertex is close to a singularity."""
         return abs(self.u[vkey])
 
-    def angle_in_face(self, fkey, bary, reference=None):
+    def angle_in_face(
+        self,
+        fkey: int,
+        bary: tuple[float, float, float],
+        reference: float | None = None,
+    ) -> float:
         """Interpolate the cross angle inside a triangle.
 
         Interpolates ``u`` -- the complex representation -- and takes the angle
@@ -471,7 +519,7 @@ class CrossField(Data):
     # singularities
     # ------------------------------------------------------------------
 
-    def singularities(self):
+    def singularities(self) -> list[tuple[int, int]]:
         """Singular faces and their indices, in quarter-turns.
 
         The index of a face is the winding of the cross angle around its three
@@ -503,7 +551,7 @@ class CrossField(Data):
     # validation
     # ------------------------------------------------------------------
 
-    def _oriented_boundary_loops(self):
+    def _oriented_boundary_loops(self) -> list[list[int]]:
         """Boundary loops with the domain on the left: outer CCW, holes CW."""
         mesh = self.background.mesh
         loops = []
@@ -520,7 +568,7 @@ class CrossField(Data):
             out.append(loop if is_ccw == want_ccw else list(reversed(loop)))
         return out
 
-    def poincare_hopf(self):
+    def poincare_hopf(self) -> dict[str, Any]:
         """Check the interior indices against the boundary winding.
 
         The discrete argument principle: the sum of the interior singularity
@@ -557,7 +605,7 @@ class CrossField(Data):
             'ok': interior == expected,
         }
 
-    def report(self):
+    def report(self) -> dict[str, Any]:
         """One-line summary plus the Poincare-Hopf result.
 
         ``min_magnitude`` and ``mean_magnitude`` are only informative when
@@ -580,9 +628,19 @@ class CrossField(Data):
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_boundary(cls, outer_boundary, inner_boundaries=None, guides=None,
-                      mode='perpendicular', target_length=None, guide_weight=1.0,
-                      guide_band=None, relax=False, tau=None, symmetry='auto'):
+    def from_boundary(
+        cls,
+        outer_boundary: Any,
+        inner_boundaries: Any = None,
+        guides: Any = None,
+        mode: str = 'perpendicular',
+        target_length: float | None = None,
+        guide_weight: float = 1.0,
+        guide_band: float | None = None,
+        relax: bool = False,
+        tau: float | None = None,
+        symmetry: Symmetry | str | None = 'auto',
+    ) -> CrossField:
         """**A field over a domain, with no decomposition around it.**
 
         Everything :meth:`FieldDecomposition.from_boundary` does up to and
@@ -667,9 +725,19 @@ class CrossField(Data):
     # provenance -- has the domain moved under this field?
     # ------------------------------------------------------------------
 
-    def mismatch(self, outer_boundary, inner_boundaries=None, guides=None,
-                 mode='perpendicular', target_length=None, guide_weight=1.0,
-                 guide_band=None, relax=False, tau=None, symmetry='auto'):
+    def mismatch(
+        self,
+        outer_boundary: Any,
+        inner_boundaries: Any = None,
+        guides: Any = None,
+        mode: str = 'perpendicular',
+        target_length: float | None = None,
+        guide_weight: float = 1.0,
+        guide_band: float | None = None,
+        relax: bool = False,
+        tau: float | None = None,
+        symmetry: Symmetry | str | None = 'auto',
+    ) -> str | None:
         """**Why this field does not belong to these inputs.** ``None`` if it does.
 
         Takes what :meth:`from_boundary` takes. Use it on a field read back off
@@ -717,7 +785,7 @@ class CrossField(Data):
                 _describe_difference(self.inputs.get('params'), other['params']))
         return None
 
-    def matches(self, *args, **kwargs):
+    def matches(self, *args: Any, **kwargs: Any) -> bool:
         """Whether this field was solved from these inputs. See :meth:`mismatch`.
 
         ``False`` when the field carries no provenance at all -- unknown is not
@@ -729,7 +797,7 @@ class CrossField(Data):
     # serialisation
     # ------------------------------------------------------------------
 
-    def save_to_json(self, filepath, pretty=False):
+    def save_to_json(self, filepath: str, pretty: bool = False) -> str:
         """**Write this field to a JSON file.**
 
         The coarse layout has been serialisable all along
@@ -784,17 +852,17 @@ class CrossField(Data):
         return filepath
 
     @property
-    def __data__(self):
+    def __data__(self) -> dict[str, Any]:
         """compas ``Data``: the same payload as :meth:`save_to_json`, so a field
         can travel inside a larger JSON document (a session) and come back
         exactly."""
         return self.__jsondata__()
 
     @classmethod
-    def __from_data__(cls, data):
+    def __from_data__(cls, data: dict[str, Any]) -> CrossField:
         return cls.__from_jsondata__(data)
 
-    def __jsondata__(self):
+    def __jsondata__(self) -> dict[str, Any]:
         """The payload :meth:`save_to_json` writes: plain types plus one Mesh."""
         symmetry = None
         if self.symmetry is not None:
@@ -835,7 +903,7 @@ class CrossField(Data):
         }
 
     @classmethod
-    def load_from_json(cls, filepath, default=None):
+    def load_from_json(cls, filepath: str, default: Any = None) -> CrossField | Any:
         """**Read a field back.** The inverse of :meth:`save_to_json`.
 
         Mirrors ``Mesh.load_from_json``, ``default`` included, so a caller
@@ -877,7 +945,7 @@ class CrossField(Data):
         return cls.__from_jsondata__(compas.json_load(filepath))
 
     @classmethod
-    def __from_jsondata__(cls, data):
+    def __from_jsondata__(cls, data: dict[str, Any]) -> CrossField:
         """Rebuild from :meth:`__jsondata__`'s payload."""
         from compas_singular.framefield.background import BackgroundMesh
         from compas_singular.framefield.symmetry import ELEMENTS
@@ -931,7 +999,7 @@ class CrossField(Data):
                 symmetry['steps'])
         return field
 
-    def locator(self):
+    def locator(self) -> Tracer:
         """**Point location on this field's background.** Built once, cached.
 
         A ``Tracer`` has two jobs and this is the second one. Its headline job is
@@ -953,7 +1021,13 @@ class CrossField(Data):
             self._locator = Tracer(self, singularity_points=self.singularity_points)
         return self._locator
 
-    def densify(self, coarse, edges_to_curves=None, spend=None, **kwargs):
+    def densify(
+        self,
+        coarse: Any,
+        edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None,
+        spend: bool | None = None,
+        **kwargs: Any,
+    ) -> tuple[Any, dict[str, Any]]:
         """**Densify a coarse layout with this field steering patch interiors.**
 
         Reached as ``coarse.densification(field=field)``; call it directly to get

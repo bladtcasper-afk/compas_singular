@@ -20,7 +20,7 @@ from compas_singular.datastructures import CoarseQuadMesh, QuadMesh
 from compas_singular.algorithms import boundary_triangulation, SkeletonDecomposition
 from compas_singular.datastructures import CoarsePseudoQuadMesh
 from compas_singular.rhino.helpers import clear_layer, read_boundaries
-from compas_singular.rhino.project import get_settings, set_settings
+from compas_singular.rhino.project import get_settings, set_settings, resolve_spacing
 from compas_singular.rhino.project import ROOT, layer_path
 
 settings = get_settings()
@@ -211,10 +211,11 @@ while True:
             settings["relax"] = "auto" if answer == "auto" else (answer == "on")
             set_settings(settings)
     elif section=="Background_Triangulation".lower():
-        value = rs.GetReal("Background spacing (NOT the quad size)",
-                           settings["triangulation_spacing"], 1e-3)
-        if value:
-            settings["triangulation_spacing"] = value
+        # 0 goes back to the thesis value (eq. 4.1, from the domain's size).
+        value = rs.GetReal("Background spacing (NOT the quad size), 0 = thesis value",
+                           settings["triangulation_spacing"] or 0.0, 0.0)
+        if value is not None:
+            settings["triangulation_spacing"] = value or None
             set_settings(settings)
     elif section=="Point_Features".lower():
         edit_point_features()
@@ -225,7 +226,7 @@ while True:
     else:
         print("Unrecognised option '{}'".format(section))
 
-outer, inner, guides, point_features = read_boundaries(spacing=settings["triangulation_spacing"])
+outer, inner, guides, point_features = read_boundaries(spacing=resolve_spacing(settings))
 
 print("Boundary selection completed.")
 print("1 outer boundary curve")

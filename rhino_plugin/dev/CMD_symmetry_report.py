@@ -14,10 +14,10 @@ sampler -- so the numbers describe the real solve and not an idealisation.
 
 from compas_singular.rhino.helpers import read_boundaries
 from compas_singular.framefield.symmetry import ELEMENTS, Symmetry
-from compas_singular.rhino.project import get_settings
+from compas_singular.rhino.project import get_settings, resolve_spacing
 
 settings = get_settings()
-SPACING = settings["triangulation_spacing"]
+SPACING = resolve_spacing(settings)
 
 outer, inners, guides, point_features = read_boundaries(spacing=SPACING)
 

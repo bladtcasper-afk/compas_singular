@@ -6,16 +6,25 @@ the orbit labels an expansion records. That is what makes them a check.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 from math import hypot
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import Sequence
 
 from compas_singular.symmetry._geometry import SegmentHash
+
+if TYPE_CHECKING:
+    from compas.datastructures import Mesh
+
+    from compas_singular.symmetry.group import SymmetryGroup
 
 
 __all__ = ['point_invariance', 'mesh_invariance']
 
 
-def point_invariance(points, group, tol=None):
+def point_invariance(points: Sequence[Sequence[float]], group: SymmetryGroup, tol: float | None = None) -> dict[str, Any]:
     """How symmetric a point set is under every element of ``group``.
 
     Returns
@@ -51,6 +60,6 @@ def point_invariance(points, group, tol=None):
             'by_element': by_element}
 
 
-def mesh_invariance(mesh, group, tol=None):
+def mesh_invariance(mesh: Mesh, group: SymmetryGroup, tol: float | None = None) -> dict[str, Any]:
     """:func:`point_invariance` of a mesh's vertices."""
     return point_invariance([mesh.vertex_coordinates(v) for v in mesh.vertices()], group, tol)

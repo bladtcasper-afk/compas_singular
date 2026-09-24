@@ -2,6 +2,10 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import Any
+from typing import Sequence
 
 from compas.data import Data
 
@@ -28,7 +32,13 @@ class Domain(Data):
     A compas ``Data`` object, so a domain travels inside a session file.
     """
 
-    def __init__(self, outer=None, inners=None, guides=None, poles=None):
+    def __init__(
+        self,
+        outer: Sequence[Any] | None = None,
+        inners: Sequence[Sequence[Any]] | None = None,
+        guides: Sequence[Sequence[Any]] | None = None,
+        poles: Sequence[Sequence[float]] | None = None,
+    ) -> None:
         super(Domain, self).__init__()
         self.outer = open_loop(as_points(outer)) if outer is not None else []
         self.inners = [open_loop(as_points(loop)) for loop in (inners or [])]
@@ -37,10 +47,10 @@ class Domain(Data):
         self.poles = [[float(p[0]), float(p[1]), 0.0] for p in (poles or [])]
 
     @property
-    def diagonal(self):
+    def diagonal(self) -> float:
         return bbox_diagonal([self.outer] + self.inners + self.guides + [self.poles])
 
-    def area_centroid(self):
+    def area_centroid(self) -> list[float] | None:
         """The centroid of the REGION: outer minus holes. ``None`` with no outer."""
         if len(self.outer) < 3:
             return None
@@ -58,23 +68,23 @@ class Domain(Data):
             return [centre[0], centre[1], 0.0]
         return [cx / total, cy / total, 0.0]
 
-    def contains(self, point):
+    def contains(self, point: Sequence[float]) -> bool:
         if len(self.outer) < 3 or not point_in_polygon(point[0], point[1], self.outer):
             return False
         return not any(point_in_polygon(point[0], point[1], loop) for loop in self.inners if len(loop) >= 3)
 
     @property
-    def __data__(self):
+    def __data__(self) -> dict[str, Any]:
         return self.to_data()
 
     @classmethod
-    def __from_data__(cls, data):
+    def __from_data__(cls, data: dict[str, Any]) -> Domain:
         return cls.from_data(data)
 
-    def to_data(self):
+    def to_data(self) -> dict[str, Any]:
         return {'outer': self.outer, 'inners': self.inners,
                 'guides': self.guides, 'poles': self.poles}
 
     @classmethod
-    def from_data(cls, data):
+    def from_data(cls, data: dict[str, Any]) -> Domain:
         return cls(data.get('outer'), data.get('inners'), data.get('guides'), data.get('poles'))

@@ -2,6 +2,9 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import Any
 
 from compas_singular.rhino.scene.meshobject import RhinoSingularMeshObject
 
@@ -17,7 +20,7 @@ class RhinoDenseObject(RhinoSingularMeshObject):
     points and lines are what is picked.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         kwargs.setdefault('show_faces', False)
         kwargs.setdefault('show_vertices', True)
         kwargs.setdefault('show_edges', True)

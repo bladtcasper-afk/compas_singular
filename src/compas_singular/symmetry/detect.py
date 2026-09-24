@@ -43,14 +43,20 @@ Nothing is enforced here. See :mod:`.unit` for that.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 from math import atan2
 from math import hypot
 from math import pi
+from typing import Any
+from typing import Iterable
+from typing import Iterator
+from typing import Sequence
 
 from compas_singular.symmetry._geometry import SegmentHash
 from compas_singular.symmetry._geometry import chord_sags
 from compas_singular.symmetry.domain import Domain
+from compas_singular.symmetry.group import Element
 from compas_singular.symmetry.group import SymmetryGroup
 from compas_singular.symmetry.group import _mirror
 from compas_singular.symmetry.group import _rotation
@@ -68,7 +74,7 @@ _KIND = {'walls': 'outer', 'holes': 'hole', 'guides': 'guide', 'poles': 'pole'}
 class Matcher(object):
     """Samples and per-kind segment hashes for one domain, about one centre."""
 
-    def __init__(self, domain, centre, include, near):
+    def __init__(self, domain: Domain, centre: Sequence[float], include: Iterable[str], near: float) -> None:
         self.centre = centre
         self.near = near
         self.samples = []
@@ -76,7 +82,7 @@ class Matcher(object):
         cell = max(near, 1e-9)
         self.hashes = {}
 
-        def add_curve(points, closed, kind, tag):
+        def add_curve(points: Sequence[Sequence[float]], closed: bool, kind: str, tag: str) -> None:
             h = self.hashes.setdefault(kind, SegmentHash(cell))
             sags = chord_sags(points, closed)
             h.add_polyline(points, closed, tag, sags)
@@ -104,7 +110,9 @@ class Matcher(object):
                 h.add_point(p, tag)
                 self.samples.append((p[0], p[1], 'pole', tag, 0.0))
 
-    def deviation(self, element, limit=None, subset=None):
+    def deviation(
+        self, element: Element, limit: float | None = None, subset: int | None = None
+    ) -> tuple[float, tuple[str, list[float]] | None]:
         """``(worst distance, (tag, point))`` for one element.
 
         Stops as soon as the worst exceeds ``limit`` (default: the near-miss
@@ -128,8 +136,18 @@ class Matcher(object):
         return worst, where
 
 
-def find_symmetry(outer=None, inners=None, guides=None, poles=None, tol=None,
-                  include=INCLUDE, max_order=12, near=None, centre=None, domain=None):
+def find_symmetry(
+    outer: Sequence[Any] | None = None,
+    inners: Sequence[Sequence[Any]] | None = None,
+    guides: Sequence[Sequence[Any]] | None = None,
+    poles: Sequence[Sequence[float]] | None = None,
+    tol: float | None = None,
+    include: Sequence[str] = INCLUDE,
+    max_order: int = 12,
+    near: float | None = None,
+    centre: Sequence[float] | None = None,
+    domain: Domain | None = None,
+) -> SymmetryReport:
     """Detect the rotations and mirrors that map the input onto itself.
 
     Parameters
@@ -177,7 +195,7 @@ def find_symmetry(outer=None, inners=None, guides=None, poles=None, tol=None,
     subset = max(1, len(matcher.samples) // 64)
     tested = {}
 
-    def test(element):
+    def test(element: Element) -> tuple[float, Any]:
         if element.key in tested:
             return tested[element.key]
         quick, where = matcher.deviation(element, limit=near, subset=subset)
@@ -236,7 +254,7 @@ def find_symmetry(outer=None, inners=None, guides=None, poles=None, tol=None,
                           max_order=max_order)
 
 
-def _included_points(domain, include):
+def _included_points(domain: Domain, include: Sequence[str]) -> Iterator[list[float]]:
     if 'walls' in include:
         for p in domain.outer:
             yield p
@@ -253,12 +271,14 @@ def _included_points(domain, include):
             yield p
 
 
-def _mirror_candidates(domain, include, centre, tol, period):
+def _mirror_candidates(
+    domain: Domain, include: Sequence[str], centre: Sequence[float], tol: float, period: float
+) -> list[float]:
     """Axis angles worth testing, reduced modulo ``period`` and de-duplicated."""
     cx, cy = centre[0], centre[1]
     angles = []
 
-    def extremes(loop, closed):
+    def extremes(loop: Sequence[Sequence[float]], closed: bool) -> None:
         n = len(loop)
         if n == 0:
             return

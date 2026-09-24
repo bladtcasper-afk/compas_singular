@@ -3,15 +3,19 @@ everything here must run in Rhino 8's interpreter as well."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 from math import acos
 from math import ceil
 from math import floor
 from math import hypot
 from math import pi
+from typing import Any
+from typing import Iterable
+from typing import Sequence
 
 
-def open_loop(points, tol=1e-12):
+def open_loop(points: Iterable[Sequence[float]], tol: float = 1e-12) -> list[list[float]]:
     """A closed point list with its repeated closing point dropped."""
     pts = [[float(p[0]), float(p[1]), 0.0] for p in points]
     while len(pts) > 1 and abs(pts[0][0] - pts[-1][0]) <= tol and abs(pts[0][1] - pts[-1][1]) <= tol:
@@ -19,12 +23,12 @@ def open_loop(points, tol=1e-12):
     return pts
 
 
-def as_points(curve):
+def as_points(curve: Any) -> list[list[float]]:
     pts = getattr(curve, 'points', curve)
     return [[float(p[0]), float(p[1]), 0.0] for p in pts]
 
 
-def signed_area(loop):
+def signed_area(loop: Sequence[Sequence[float]]) -> float:
     a = 0.0
     n = len(loop)
     for i in range(n):
@@ -34,7 +38,7 @@ def signed_area(loop):
     return 0.5 * a
 
 
-def area_centroid(loop):
+def area_centroid(loop: Sequence[Sequence[float]]) -> tuple[float, list[float]]:
     """``(area, [cx, cy])`` of a simple polygon, area absolute."""
     a = 0.0
     cx = cy = 0.0
@@ -54,11 +58,11 @@ def area_centroid(loop):
     return abs(a), [cx / (6.0 * a), cy / (6.0 * a)]
 
 
-def oriented(loop, ccw=True):
+def oriented(loop: Sequence[Sequence[float]], ccw: bool = True) -> list[Sequence[float]]:
     return list(loop) if (signed_area(loop) > 0) == ccw else list(reversed(loop))
 
 
-def bbox_diagonal(point_lists):
+def bbox_diagonal(point_lists: Sequence[Sequence[Sequence[float]]]) -> float:
     xs = [p[0] for pts in point_lists for p in pts]
     ys = [p[1] for pts in point_lists for p in pts]
     if not xs:
@@ -66,7 +70,7 @@ def bbox_diagonal(point_lists):
     return hypot(max(xs) - min(xs), max(ys) - min(ys))
 
 
-def point_segment_distance(px, py, ax, ay, bx, by):
+def point_segment_distance(px: float, py: float, ax: float, ay: float, bx: float, by: float) -> float:
     dx, dy = bx - ax, by - ay
     ll = dx * dx + dy * dy
     if ll <= 0.0:
@@ -87,7 +91,7 @@ def point_segment_distance(px, py, ax, ay, bx, by):
 CORNER_TURN = pi / 8.0
 
 
-def chord_sags(points, closed):
+def chord_sags(points: Sequence[Sequence[float]], closed: bool) -> list[float]:
     """Per segment: how far the segment may lie from the smooth curve it samples.
 
     A segment of length ``L`` sampling an arc that turns by ``phi`` per vertex
@@ -122,7 +126,7 @@ def chord_sags(points, closed):
     return out
 
 
-def point_in_polygon(x, y, loop):
+def point_in_polygon(x: float, y: float, loop: Sequence[Sequence[float]]) -> bool:
     inside = False
     n = len(loop)
     j = n - 1
@@ -137,7 +141,7 @@ def point_in_polygon(x, y, loop):
     return inside
 
 
-def distance_to_loop(x, y, loop, closed=True):
+def distance_to_loop(x: float, y: float, loop: Sequence[Sequence[float]], closed: bool = True) -> float:
     n = len(loop)
     best = float('inf')
     last = n if closed else n - 1
@@ -157,15 +161,15 @@ class SegmentHash(object):
     points a hair apart never fall on either side of a cell edge and disagree.
     """
 
-    def __init__(self, cell):
+    def __init__(self, cell: float) -> None:
         self.cell = float(cell)
-        self.grid = {}
-        self.items = []
+        self.grid: dict[tuple[int, int], list[int]] = {}
+        self.items: list[tuple[float, float, float, float, Any, float]] = []
 
-    def _key(self, x, y):
+    def _key(self, x: float, y: float) -> tuple[int, int]:
         return (int(floor(x / self.cell)), int(floor(y / self.cell)))
 
-    def _insert(self, index, ax, ay, bx, by):
+    def _insert(self, index: int, ax: float, ay: float, bx: float, by: float) -> None:
         length = hypot(bx - ax, by - ay)
         steps = max(1, int(ceil(length / (0.5 * self.cell))))
         seen = set()
@@ -176,7 +180,13 @@ class SegmentHash(object):
                 seen.add(k)
                 self.grid.setdefault(k, []).append(index)
 
-    def add_polyline(self, points, closed, tag, slacks=None):
+    def add_polyline(
+        self,
+        points: Sequence[Sequence[float]],
+        closed: bool,
+        tag: Any,
+        slacks: Sequence[float] | None = None,
+    ) -> None:
         """Add each segment; ``slacks[i]`` is how far segment ``i`` may lie from
         the curve it samples (see :func:`chord_sags`)."""
         n = len(points)
@@ -191,12 +201,12 @@ class SegmentHash(object):
             self.items.append((a[0], a[1], b[0], b[1], tag, slack))
             self._insert(index, a[0], a[1], b[0], b[1])
 
-    def add_point(self, point, tag):
+    def add_point(self, point: Sequence[float], tag: Any) -> None:
         index = len(self.items)
         self.items.append((point[0], point[1], point[0], point[1], tag, 0.0))
         self._insert(index, point[0], point[1], point[0], point[1])
 
-    def nearest(self, x, y, limit):
+    def nearest(self, x: float, y: float, limit: float) -> tuple[float, Any]:
         """``(excess, tag)`` of the best item within ``limit``, else ``(inf, None)``.
 
         ``excess`` is the distance MINUS the segment's slack, floored at 0: a

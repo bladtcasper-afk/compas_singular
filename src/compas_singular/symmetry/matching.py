@@ -30,18 +30,25 @@ when they are close sent layouts with equal counts into needless splits.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 from copy import deepcopy
 from math import hypot
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import Sequence
 
 from compas_singular.symmetry._geometry import signed_area
 from compas_singular.symmetry.replicate import seam_membership
+
+if TYPE_CHECKING:
+    from compas_singular.symmetry.unit import SymmetricUnit
 
 
 __all__ = ['match_rotation_seams']
 
 
-def _move(unit, vkey, point):
+def _move(unit: SymmetricUnit, vkey: int, point: Sequence[float]) -> None:
     """Move a corner and bring the shapes of its edges with it.
 
     An edge lying along a seam is re-made straight between its new ends. Moving
@@ -74,11 +81,18 @@ def _move(unit, vkey, point):
         unit.set_edges_to_curves(curves)
 
 
-def _is_junction(unit, p, tol):
+def _is_junction(unit: SymmetricUnit, p: Sequence[float], tol: float) -> bool:
     return any(abs(p[0] - q[0]) <= tol and abs(p[1] - q[1]) <= tol for q in unit.symmetry.get('junctions', []))
 
 
-def _move_junction(unit, old, new, old_t, seam_name, tol=None):
+def _move_junction(
+    unit: SymmetricUnit,
+    old: Sequence[float],
+    new: Sequence[float],
+    old_t: float,
+    seam_name: str,
+    tol: float | None = None,
+) -> None:
     """Update ``junctions`` and ``seam_runs`` for a junction moved from ``old`` to ``new``."""
     tol = max(10 * unit.eps, 1e-9) if tol is None else tol
     data = unit.symmetry
@@ -95,7 +109,13 @@ def _move_junction(unit, old, new, old_t, seam_name, tol=None):
                 run[k] = new_t
 
 
-def _align(on_a, on_b, junction, forbidden, big):
+def _align(
+    on_a: list[tuple[float, int]],
+    on_b: list[tuple[float, int]],
+    junction: dict[int, bool],
+    forbidden: set[tuple[str, int]],
+    big: float,
+) -> tuple[list[tuple[tuple[float, int], tuple[float, int]]], list[tuple[float, int]], list[tuple[float, int]]] | None:
     """Order-preserving alignment of two sorted ``(t, vkey)`` lists.
 
     Returns ``(pairs, unpaired_a, unpaired_b)``, or ``None`` if no alignment
@@ -139,7 +159,7 @@ def _align(on_a, on_b, junction, forbidden, big):
     return pairs[::-1], unpaired_a[::-1], unpaired_b[::-1]
 
 
-def _face_signs(unit):
+def _face_signs(unit: SymmetricUnit) -> dict[int, bool]:
     signs = {}
     for f in unit.faces():
         pts = [unit.vertex_coordinates(v) for v in unit.face_vertices(f)]
@@ -147,7 +167,7 @@ def _face_signs(unit):
     return signs
 
 
-def match_rotation_seams(unit, max_splits=8):
+def match_rotation_seams(unit: SymmetricUnit, max_splits: int = 8) -> dict[str, int]:
     """Make the two rotation seams of ``unit`` agree. In place.
 
     Returns
@@ -229,7 +249,7 @@ def match_rotation_seams(unit, max_splits=8):
     return stats
 
 
-def _split_across(unit, name, t):
+def _split_across(unit: SymmetricUnit, name: str, t: float) -> None:
     """Give seam ``name`` a corner at distance ``t`` by splitting the strip there."""
     from compas_singular.editing import CoarseEditor
 
@@ -275,7 +295,7 @@ def _split_across(unit, name, t):
     unit.field, unit.decomposition = field, decomposition
 
 
-def _walls(unit):
+def _walls(unit: SymmetricUnit) -> list[list[Any]]:
     """The unit's walls as loops, read back off its own boundary."""
     curves = unit.edges_to_curves()
     loops = []

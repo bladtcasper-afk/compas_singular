@@ -27,14 +27,20 @@ the document -- and it is how :meth:`~RhinoSession.draw` knows what changed.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 import uuid
+from typing import Any
+from typing import TYPE_CHECKING
 
 import compas
 
 from compas_singular.session import SingularSession
 
 from compas_singular.rhino import document
+
+if TYPE_CHECKING:
+    from compas.scene import Scene
 
 try:
     import scriptcontext as sc
@@ -50,7 +56,7 @@ except ImportError:
 __all__ = ['RhinoSession']
 
 
-def display_options():
+def display_options() -> dict[str, dict[str, Any]]:
     """How the permanent display draws each item, by item name.
 
     The same layers the commands always baked to. The layout's parts -- poles,
@@ -87,7 +93,7 @@ class RhinoSession(SingularSession):
     #: The items that have a permanent display.
     DISPLAYED = ('coarse', 'dense')
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super(RhinoSession, self).__init__(*args, **kwargs)
         self.doc = None
         self.revision = None
@@ -95,7 +101,7 @@ class RhinoSession(SingularSession):
         self._drawn = {}                # item name -> the object the display shows
 
     @property
-    def scene(self):
+    def scene(self) -> Scene:
         """The compas ``Scene`` that draws this session's items. Never saved: it
         is rebuilt from the items (see :mod:`compas_singular.session`)."""
         if self._scene is None:
@@ -108,7 +114,7 @@ class RhinoSession(SingularSession):
         return self._scene
 
     @classmethod
-    def current(cls, doc=None):
+    def current(cls, doc: Any = None) -> RhinoSession:
         """The session of ``doc`` (default: the active document).
 
         Reloaded from the document when it holds a different revision than the
@@ -124,7 +130,7 @@ class RhinoSession(SingularSession):
         return session
 
     @classmethod
-    def _load(cls, doc, revision):
+    def _load(cls, doc: Any, revision: str | None) -> RhinoSession:
         session = cls()
         session.doc = doc
         session.revision = revision
@@ -140,7 +146,7 @@ class RhinoSession(SingularSession):
         session._drawn = {name: getattr(session, name) for name in cls.DISPLAYED}
         return session
 
-    def record(self, name):
+    def record(self, name: str) -> None:
         """Bring the display up to date and write this session into its document,
         both as part of the running command.
 
@@ -160,7 +166,7 @@ class RhinoSession(SingularSession):
     # the permanent display
     # --------------------------------------------------------------------------
 
-    def draw(self):
+    def draw(self) -> None:
         """Redraw every displayed item that is not the object drawn last time.
 
         By the copy rule a changed item is always a NEW object, so an identity
@@ -175,7 +181,7 @@ class RhinoSession(SingularSession):
             self._draw_item(item, options[name])
             self._drawn[name] = item
 
-    def _draw_item(self, item, options):
+    def _draw_item(self, item: Any, options: dict[str, Any]) -> None:
         """Clear the item's layers and draw it there; with ``None``, only clear."""
         from compas_singular.rhino.project import ensure_layers
 

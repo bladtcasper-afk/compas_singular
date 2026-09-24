@@ -31,11 +31,18 @@ mesh is kept -- so it compares NUMBERS, which every dense step records.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 from math import hypot
+from typing import Any
+from typing import Sequence
+from typing import TYPE_CHECKING
 
 from compas_singular.mcp.handle import vertex_handle
 from compas_singular.mcp.registry import tool
+
+if TYPE_CHECKING:
+    from compas_singular.mcp.session import MeshSession
 
 
 __all__ = []
@@ -46,34 +53,34 @@ __all__ = []
 ALPHA = 0.04
 
 
-def _points(curve):
+def _points(curve: Any) -> list[list[float]]:
     return [list(p) for p in getattr(curve, 'points', curve)]
 
 
-def _open(loop):
+def _open(loop: Any) -> list[list[float]]:
     loop = _points(loop)
     if len(loop) > 1 and loop[0][:2] == loop[-1][:2]:
         loop = loop[:-1]
     return loop
 
 
-def _segment_distance(p, a, b):
+def _segment_distance(p: Sequence[float], a: Sequence[float], b: Sequence[float]) -> float:
     dx, dy = b[0] - a[0], b[1] - a[1]
     span = dx * dx + dy * dy
     t = 0.0 if span == 0 else max(0.0, min(1.0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / span))
     return hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy)
 
 
-def _loop_distance(p, loop):
+def _loop_distance(p: Sequence[float], loop: Sequence[Sequence[float]]) -> float:
     return min(_segment_distance(p, loop[i - 1], loop[i]) for i in range(len(loop)))
 
 
-def _loop_gap(a, b):
+def _loop_gap(a: Sequence[Sequence[float]], b: Sequence[Sequence[float]]) -> float:
     """Nearest approach of two loops, measured vertex to segment both ways."""
     return min(min(_loop_distance(p, b) for p in a), min(_loop_distance(p, a) for p in b))
 
 
-def _inside(p, loop):
+def _inside(p: Sequence[float], loop: Sequence[Sequence[float]]) -> bool:
     inside = False
     for i in range(len(loop)):
         (x0, y0), (x1, y1) = loop[i - 1][:2], loop[i][:2]
@@ -82,7 +89,7 @@ def _inside(p, loop):
     return inside
 
 
-def _in_domain(p, outer, holes):
+def _in_domain(p: Sequence[float], outer: Sequence[Sequence[float]], holes: Sequence[Sequence[Sequence[float]]]) -> bool:
     return _inside(p, outer) and not any(_inside(p, h) for h in holes)
 
 
@@ -108,7 +115,7 @@ def _in_domain(p, outer, holes):
                            'own default.'},
     },
     read_only=True, idempotent=True, title='Check the inputs')
-def _t_check_inputs(session, target_length=None):
+def _t_check_inputs(session: MeshSession, target_length: float | None = None) -> dict[str, Any]:
     if not session.walls:
         return {'ok': False,
                 'reason': 'no boundary is loaded -- rhino_pull (or load_mesh '
@@ -121,9 +128,9 @@ def _t_check_inputs(session, target_length=None):
     T = float(target_length) if target_length else ALPHA * diagonal
     walls = [outer] + holes
 
-    issues = []
+    issues: list[dict[str, Any]] = []
 
-    def issue(severity, kind, at, message, **extra):
+    def issue(severity: str, kind: str, at: Sequence[float], message: str, **extra: Any) -> None:
         entry = {'severity': severity, 'kind': kind, 'at': vertex_handle(at),
                  'message': message}
         entry.update(extra)
@@ -204,7 +211,7 @@ _COMPARED = ('min_angle', 'max_angle', 'aspect_max', 'share_below', 'faces',
 _BETTER = {'min_angle': 1, 'max_angle': -1, 'aspect_max': -1, 'share_below': -1}
 
 
-def _metrics_at(session, step):
+def _metrics_at(session: MeshSession, step: Any) -> tuple[dict[str, Any] | None, str | None, str | None]:
     """``(metrics, label, None)`` after ``step``, 'now', or ``(None, None, reason)``."""
     if step in (None, 'now'):
         metrics = session.quality()
@@ -242,7 +249,7 @@ def _metrics_at(session, step):
                    'description': 'A history step, or "now". Default "now".'},
     },
     read_only=True, idempotent=True, title='Compare two steps')
-def _t_compare(session, step_a=None, step_b='now'):
+def _t_compare(session: MeshSession, step_a: Any = None, step_b: Any = 'now') -> dict[str, Any]:
     if step_a is None:
         step_a = next((e['step'] for e in session.history if e.get('after')), None)
         if step_a is None:

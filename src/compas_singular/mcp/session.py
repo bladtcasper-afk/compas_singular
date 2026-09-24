@@ -33,10 +33,20 @@ because a number without the reason it was accepted is not much of a record.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 import time
+from typing import Any
+from typing import Iterable
+from typing import TYPE_CHECKING
 
 from compas_singular.framefield.quality import mesh_quality
+
+if TYPE_CHECKING:
+    from compas.datastructures import Mesh
+    from compas.geometry import Polyline
+    from compas_singular.algorithms.skeleton_decomposition import SkeletonDecomposition
+    from compas_singular.datastructures import CoarsePseudoQuadMesh
 
 
 __all__ = ['MeshSession', 'UNDO_DEPTH']
@@ -59,36 +69,36 @@ COARSE_ACTIONS = frozenset(('create_coarse_mesh', 'coarse_set_density',
 class MeshSession(object):
     """The mesh in hand, the geometry constraining it, and what has been done."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         #: The authoritative mesh, in double precision. Rhino only gets a copy.
-        self.mesh = None
+        self.mesh: Mesh | None = None
         #: Outer and inner boundaries as compas polylines. What the boundary
         #: vertices are allowed to slide along.
-        self.walls = []
+        self.walls: list[Polyline] = []
         #: Drawn guide curves, kept for reporting and for a later guide tool.
-        self.guides = []
+        self.guides: list[Polyline] = []
         #: Input point features, as [x, y, z]. Each one is a place the mesh is
         #: supposed to carry a pole; whether it does is a thing you see rather
         #: than measure, which is why they are drawn.
-        self.points = []
+        self.points: list[list[float]] = []
         #: Where the mesh came from: ``{'kind': 'rhino'|'file', ...}``.
-        self.source = None
+        self.source: dict[str, Any] | None = None
         #: The coarse layout, once ``create_coarse_mesh`` has built one --
         #: a ``CoarsePseudoQuadMesh``, or ``None``. Independent of :attr:`mesh`:
         #: pulling a new dense mesh does not clear this, because
         #: ``coarse_densify`` adopts ITS OWN output through the same path and
         #: clearing the layout that just produced it would be wrong.
-        self.coarse = None
+        self.coarse: CoarsePseudoQuadMesh | None = None
         #: The ``SkeletonDecomposition`` that built :attr:`coarse`, kept so
         #: ``coarse_densify`` can ask it for curved-boundary edge shapes.
-        self.decomposition = None
-        self.history = []
-        self.remarks = []
+        self.decomposition: SkeletonDecomposition | None = None
+        self.history: list[dict[str, Any]] = []
+        self.remarks: list[dict[str, Any]] = []
         self.started = time.time()
-        self._undo = []
+        self._undo: list[dict[str, Any]] = []
         #: The coarse layout's own undo stack -- whole-mesh copies, not
         #: positions. See the module docstring for why the two are different.
-        self._coarse_undo = []
+        self._coarse_undo: list[dict[str, Any]] = []
         #: Monotonic counters behind :attr:`visually_current`. Numbers rather
         #: than a bool because "seen since the last change" is the question, and
         #: a bool would need resetting in every tool that moves a vertex.
@@ -103,7 +113,8 @@ class MeshSession(object):
     # loading
     # --------------------------------------------------------------------
 
-    def adopt(self, mesh, walls=None, guides=None, points=None, source=None):
+    def adopt(self, mesh: Mesh, walls: Iterable[Any] | None = None, guides: Iterable[Any] | None = None,
+              points: Iterable[Any] | None = None, source: dict[str, Any] | None = None) -> MeshSession:
         """Take a new mesh, discarding whatever was held before.
 
         Clears the undo stack: a snapshot of the previous mesh's positions
@@ -135,22 +146,22 @@ class MeshSession(object):
         self._seen_at = 0
         return self
 
-    def _domain(self):
+    def _domain(self) -> tuple[Any, Any, list[list[float]]]:
         """Walls, guides and points as plain nested lists, for comparison."""
-        def curves(items):
+        def curves(items: Iterable[Any]) -> list[list[list[float]]]:
             return [[list(p) for p in getattr(c, 'points', c)] for c in items]
         return (curves(self.walls), curves(self.guides),
                 [list(p) for p in self.points])
 
     @property
-    def loaded(self):
+    def loaded(self) -> bool:
         return self.mesh is not None
 
     # --------------------------------------------------------------------
     # measuring
     # --------------------------------------------------------------------
 
-    def quality(self, low_angle=None):
+    def quality(self, low_angle: float | None = None) -> dict[str, Any] | None:
         """``mesh_quality`` of the mesh in hand, or ``None`` if there is none."""
         if self.mesh is None:
             return None
@@ -158,7 +169,7 @@ class MeshSession(object):
             return mesh_quality(self.mesh)
         return mesh_quality(self.mesh, low_angle=low_angle)
 
-    def triple(self):
+    def triple(self) -> tuple[Any, Any, Any] | None:
         """``(min angle, max angle, max aspect)`` -- the three a step is judged on.
 
         The same three ``framefield.relax`` gates on, deliberately: a step that
@@ -174,16 +185,16 @@ class MeshSession(object):
     # has anybody actually looked at it
     # --------------------------------------------------------------------
 
-    def mark_changed(self):
+    def mark_changed(self) -> None:
         """Record that the mesh moved. Every tool that moves a vertex calls this."""
         self._changed_at += 1
 
-    def mark_seen(self):
+    def mark_seen(self) -> None:
         """Record that the mesh has been rendered and looked at."""
         self._seen_at = self._changed_at
 
     @property
-    def visually_current(self):
+    def visually_current(self) -> bool:
         """Whether the mesh has been LOOKED at since it last changed.
 
         The numbers can say a mesh improved while it is visibly wrong -- off its
@@ -194,12 +205,12 @@ class MeshSession(object):
         """
         return self._seen_at >= self._changed_at
 
-    def mark_coarse_seen(self):
+    def mark_coarse_seen(self) -> None:
         """Record that the coarse layout has been drawn and looked at."""
         self._coarse_seen_at = self._coarse_changed_at
 
     @property
-    def coarse_visually_current(self):
+    def coarse_visually_current(self) -> bool:
         """Whether the coarse LAYOUT has been looked at since it last changed.
 
         Bumped by every recorded coarse step and by ``undo_coarse``, so an edit
@@ -211,11 +222,11 @@ class MeshSession(object):
     # undo
     # --------------------------------------------------------------------
 
-    def positions(self):
+    def positions(self) -> dict[Any, list[float]]:
         return dict((key, list(self.mesh.vertex_coordinates(key)))
                     for key in self.mesh.vertices())
 
-    def snapshot(self, label='', whole=False):
+    def snapshot(self, label: str = '', whole: bool = False) -> str | None:
         """Remember where every vertex is, so a step can be taken back.
 
         ``whole=True`` keeps a COPY of the mesh instead of its positions -- what
@@ -241,10 +252,10 @@ class MeshSession(object):
             self._undo.pop(0)
         return label
 
-    def can_undo(self):
+    def can_undo(self) -> bool:
         return bool(self._undo)
 
-    def undo(self):
+    def undo(self) -> tuple[bool, str]:
         """Restore the most recent snapshot.
 
         Returns
@@ -284,7 +295,7 @@ class MeshSession(object):
     # topology and a position map cannot restore that
     # --------------------------------------------------------------------
 
-    def snapshot_coarse(self, label=''):
+    def snapshot_coarse(self, label: str = '') -> str | None:
         """Remember the coarse layout whole, so a strip edit can be undone."""
         if self.coarse is None:
             return None
@@ -294,10 +305,10 @@ class MeshSession(object):
             self._coarse_undo.pop(0)
         return label
 
-    def can_undo_coarse(self):
+    def can_undo_coarse(self) -> bool:
         return bool(self._coarse_undo)
 
-    def undo_coarse(self):
+    def undo_coarse(self) -> tuple[bool, str]:
         """Restore the coarse layout to its most recent snapshot.
 
         Returns
@@ -315,7 +326,7 @@ class MeshSession(object):
         self._mark_undone(entry['step'], 'coarse')
         return True, entry['label'] or 'the last coarse snapshot'
 
-    def _mark_undone(self, step, layer):
+    def _mark_undone(self, step: int, layer: str) -> None:
         """Flag the steps an undo took back -- of ITS layer only.
 
         Flagged, not deleted. The two undo stacks interleave in one history, so
@@ -328,7 +339,7 @@ class MeshSession(object):
             if entry.get('layer') == layer:
                 entry['undone'] = True
 
-    def live_steps(self):
+    def live_steps(self) -> list[dict[str, Any]]:
         """The history minus every step an undo took back."""
         return [entry for entry in self.history if not entry.get('undone')]
 
@@ -336,7 +347,7 @@ class MeshSession(object):
     # the record
     # --------------------------------------------------------------------
 
-    def record(self, action, before=None, after=None, **detail):
+    def record(self, action: str, before: Any = None, after: Any = None, **detail: Any) -> dict[str, Any]:
         """Append a step. Returns the entry, so a tool can report it back."""
         entry = {'step': len(self.history), 'action': action,
                  'layer': 'coarse' if action in COARSE_ACTIONS else 'dense',
@@ -347,16 +358,16 @@ class MeshSession(object):
             self._coarse_changed_at += 1
         return entry
 
-    def add_remark(self, text, about=None):
+    def add_remark(self, text: str, about: Any = None) -> dict[str, Any]:
         remark = {'step': len(self.history), 'text': text, 'about': about,
                   'at': time.time()}
         self.remarks.append(remark)
         return remark
 
-    def remarks_for(self, step):
+    def remarks_for(self, step: int) -> list[str]:
         return [r['text'] for r in self.remarks if r['step'] == step]
 
-    def state(self):
+    def state(self) -> dict[str, Any]:
         """A small summary. The reading in prose is ``describe``'s job."""
         mesh = self.mesh
         coarse = self.coarse
@@ -380,13 +391,13 @@ class MeshSession(object):
             'coarse_visually_current': self.coarse_visually_current,
         }
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         state = self.state()
         return '<MeshSession {} faces, {} step(s)>'.format(
             state['faces'], state['steps'])
 
 
-def _as_polylines(curves):
+def _as_polylines(curves: Iterable[Any] | None) -> list[Polyline]:
     """Point lists as compas polylines, which is what the smoothers want.
 
     ``automated_boundary_constraints`` accepts either, but a ``Polyline`` gives

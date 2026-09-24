@@ -29,6 +29,10 @@ was -- no link attached, or attached and busy -- because the fix is different.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import Any
+from typing import TYPE_CHECKING
 
 from compas_singular.mcp.bridge import spool
 from compas_singular.mcp.bridge import wire
@@ -36,6 +40,10 @@ from compas_singular.mcp.describe import describe
 from compas_singular.mcp.handle import vertex_handle
 from compas_singular.mcp.library import thresholds
 from compas_singular.mcp.registry import tool
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import CoarsePseudoQuadMesh
+    from compas_singular.mcp.session import MeshSession
 
 
 __all__ = []
@@ -45,7 +53,7 @@ __all__ = []
 DEFAULT_LAYER = 'QuadMesh'
 
 
-def _ask(verb, args=None, timeout=30.0):
+def _ask(verb: str, args: dict[str, Any] | None = None, timeout: float = 30.0) -> dict[str, Any]:
     """One request to Rhino, and its answer. Never raises, never hangs."""
     try:
         request_id = spool.post(verb, args or {}, ttl=float(timeout))
@@ -56,7 +64,7 @@ def _ask(verb, args=None, timeout=30.0):
     return spool.wait(request_id, timeout=float(timeout))
 
 
-def unseen_refusal(session):
+def unseen_refusal(session: MeshSession) -> dict[str, Any] | None:
     """A refusal if the current mesh has not been rendered since it changed.
 
     The quality numbers cannot see a mesh that has left its boundary, ignored a
@@ -93,7 +101,7 @@ def unseen_refusal(session):
                     'description': 'Seconds to wait for the ping. Default 5.'},
     },
     read_only=True, idempotent=True, open_world=True, title='Rhino link status')
-def _t_rhino_status(session, timeout=5.0):
+def _t_rhino_status(session: MeshSession, timeout: float = 5.0) -> dict[str, Any]:
     state = spool.link_state()
     queued = len(spool.pending())
     if state is None:
@@ -157,8 +165,8 @@ def _t_rhino_status(session, timeout=5.0):
                     'description': 'Seconds to wait for Rhino. Default 30.'},
     },
     read_only=True, open_world=True, title='Pull from Rhino')
-def _t_rhino_pull(session, layer=DEFAULT_LAYER, selection=False, spacing=0.125,
-                  timeout=30.0):
+def _t_rhino_pull(session: MeshSession, layer: str = DEFAULT_LAYER, selection: bool = False, spacing: float = 0.125,
+                  timeout: float = 30.0) -> dict[str, Any]:
     reply = _ask('pull', {'layer': layer, 'spacing': float(spacing),
                           'selection': bool(selection)},
                  timeout=timeout)
@@ -254,7 +262,7 @@ def _t_rhino_pull(session, layer=DEFAULT_LAYER, selection=False, spacing=0.125,
                     'description': 'Seconds to wait for Rhino. Default 30.'},
     },
     destructive=True, open_world=True, title='Push to Rhino')
-def _t_rhino_push(session, layer=DEFAULT_LAYER, timeout=30.0):
+def _t_rhino_push(session: MeshSession, layer: str = DEFAULT_LAYER, timeout: float = 30.0) -> dict[str, Any]:
     if not session.loaded:
         return {'ok': False, 'reason': 'no mesh is loaded, so there is nothing '
                                        'to push'}
@@ -285,7 +293,7 @@ def _t_rhino_push(session, layer=DEFAULT_LAYER, timeout=30.0):
 # the coarse layout
 # ==============================================================================
 
-def _float32_collapsed(mesh):
+def _float32_collapsed(mesh: CoarsePseudoQuadMesh) -> list[str]:
     """Faces Rhino would refuse, as handles: two corners equal at single precision.
 
     ``rs.AddMesh`` stores ``Point3f``, and ONE face with two coincident corners
@@ -296,7 +304,7 @@ def _float32_collapsed(mesh):
     """
     import struct
 
-    def f32(point):
+    def f32(point: Any) -> tuple[float, ...]:
         return tuple(struct.unpack('3f', struct.pack('3f', *[float(c) for c in point[:3]])))
 
     bad = []
@@ -308,7 +316,7 @@ def _float32_collapsed(mesh):
     return bad
 
 
-def unseen_coarse_refusal(session):
+def unseen_coarse_refusal(session: MeshSession) -> dict[str, Any] | None:
     """A refusal if the coarse layout has changed since it was last drawn."""
     if session.coarse_visually_current:
         return None
@@ -338,7 +346,7 @@ def unseen_coarse_refusal(session):
                     'description': 'Seconds to wait for Rhino. Default 30.'},
     },
     destructive=True, open_world=True, title='Push the coarse layout to Rhino')
-def _t_rhino_push_coarse(session, timeout=30.0):
+def _t_rhino_push_coarse(session: MeshSession, timeout: float = 30.0) -> dict[str, Any]:
     from compas_singular.mcp import tools_coarse
     import compas
 
@@ -426,7 +434,7 @@ def _t_rhino_push_coarse(session, timeout=30.0):
 # pulling a coarse layout back
 # ==============================================================================
 
-def _layout_from_pull(result):
+def _layout_from_pull(result: dict[str, Any]) -> tuple[CoarsePseudoQuadMesh, str, dict[str, Any]]:
     """``(layout, source, notes)`` from what ``pull_coarse`` sent back.
 
     The same decision ``CMD_start.read_layout`` makes, taken here rather than in
@@ -445,7 +453,7 @@ def _layout_from_pull(result):
     baked = CoarsePseudoQuadMesh.from_vertices_and_faces_with_poles(
         payload['vertices'], payload['faces'], payload.get('poles') or [])
 
-    def corners(mesh):
+    def corners(mesh: Any) -> set:
         return set(TOL.geometric_key(mesh.vertex_coordinates(v)) for v in mesh.vertices())
 
     notes = {}
@@ -492,7 +500,7 @@ def _layout_from_pull(result):
     # Every shaped edge on Skeleton::Polylines that is an edge of THIS layout
     # becomes a user curve: that is what densifying lays over the walls, and
     # what the editors carry through a cut or a corner move.
-    def key2(point):
+    def key2(point: Any) -> tuple[float, float]:
         return (round(point[0], 3), round(point[1], 3))
 
     known = set((key2(c[0]), key2(c[-1])) for c in tools_coarse._user_curves(layout))
@@ -539,7 +547,7 @@ def _layout_from_pull(result):
                     'description': 'Seconds to wait for Rhino. Default 30.'},
     },
     read_only=True, open_world=True, title='Pull the coarse layout from Rhino')
-def _t_rhino_pull_coarse(session, spacing=0.125, timeout=30.0):
+def _t_rhino_pull_coarse(session: MeshSession, spacing: float = 0.125, timeout: float = 30.0) -> dict[str, Any]:
     from compas_singular.mcp import tools_coarse
 
     reply = _ask('pull_coarse', {'spacing': float(spacing)}, timeout=timeout)
@@ -628,8 +636,8 @@ MARKER_KINDS = ('worst', 'singularity', 'pole')
                     'description': 'Seconds to wait for Rhino. Default 30.'},
     },
     open_world=True, title='Mark problems in Rhino')
-def _t_rhino_push_markers(session, worst=5, singularities=True, poles=True,
-                          clear=False, timeout=30.0):
+def _t_rhino_push_markers(session: MeshSession, worst: int = 5, singularities: bool = True, poles: bool = True,
+                          clear: bool = False, timeout: float = 30.0) -> dict[str, Any]:
     from compas_singular.mcp.handle import _face_min_angle
     from compas_singular.mcp.handle import _singular_vertices
 

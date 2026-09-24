@@ -46,10 +46,15 @@ since an attachment overrides the boundary constraint the vertex would otherwise
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 from math import cos
 from math import degrees
 from math import radians
+from typing import Any
+from typing import Iterable
+from typing import Sequence
+from typing import TYPE_CHECKING
 
 from compas.geometry import Point
 from compas.geometry import Polyline
@@ -58,6 +63,9 @@ from compas.geometry import angle_vectors
 from compas_singular.datastructures.mesh.smoothing import closest_point_on_constraint
 from compas_singular.datastructures.mesh.smoothing import mesh_boundary_loops
 from compas_singular.datastructures.mesh.smoothing import mesh_boundary_polylines
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import QuadMesh
 
 
 __all__ = [
@@ -171,7 +179,7 @@ class GuideCurve(object):
 
     """
 
-    def __init__(self, points, curve=None):
+    def __init__(self, points: "Iterable[Sequence[float]]", curve: Any = None) -> None:
         self.curve = curve
         cleaned = []
         for point in points:
@@ -190,7 +198,7 @@ class GuideCurve(object):
         self.cumulative = cumulative
         self.length = cumulative[-1]
 
-    def _closest(self, xyz):
+    def _closest(self, xyz: list[float]) -> tuple[list[float] | None, float | None, float, tuple[float, float, float] | None]:
         """(closest point, distance, arc length, unit tangent) -- everything, once."""
         best = (None, None, 0.0, None)
         points, cumulative = self.points, self.cumulative
@@ -209,7 +217,7 @@ class GuideCurve(object):
                         (abx / norm, aby / norm, abz / norm))
         return best
 
-    def project(self, xyz):
+    def project(self, xyz: list[float]) -> tuple[float | None, float, tuple[float, float, float] | None]:
         """Project a point onto the guide.
 
         Parameters
@@ -228,7 +236,7 @@ class GuideCurve(object):
         _, distance, t, tangent = self._closest(xyz)
         return distance, t, tangent
 
-    def closest_point(self, point):
+    def closest_point(self, point: list[float]) -> list[float] | None:
         """The closest point on the guide, as a plain ``[x, y, z]``.
 
         Present so that a :class:`GuideCurve` can be handed straight to
@@ -243,7 +251,7 @@ class GuideCurve(object):
             return closest_point_on_constraint(self.curve, point)
         return self._closest(point)[0]
 
-    def delta(self, t, t0):
+    def delta(self, t: float, t0: float) -> float:
         """Signed progress from arc length ``t0`` to ``t``.
 
         On a CLOSED guide the arc length wraps, so a step across the seam reads as a jump
@@ -260,38 +268,38 @@ class GuideCurve(object):
         return difference
 
 
-def _distance(a, b):
+def _distance(a: list[float], b: list[float]) -> float:
     return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
 
 
-def _unit(vector):
+def _unit(vector: list[float]) -> list[float] | None:
     norm = (vector[0] ** 2 + vector[1] ** 2 + vector[2] ** 2) ** 0.5
     if norm <= 0.0:
         return None
     return [component / norm for component in vector]
 
 
-def _angle(a, b):
+def _angle(a: list[float] | None, b: list[float] | None) -> float:
     """Degrees between two directions, or 0 if either has no direction."""
     if a is None or b is None:
         return 0.0
     return degrees(angle_vectors(a, b))
 
 
-def _as_guide(guide):
+def _as_guide(guide: "GuideCurve | Iterable[Sequence[float]]") -> GuideCurve:
     if isinstance(guide, GuideCurve):
         return guide
     return GuideCurve(guide)
 
 
-def mean_edge_length(mesh):
+def mean_edge_length(mesh: "QuadMesh") -> float:
     """The mean length of the non-degenerate edges of a mesh."""
     lengths = [mesh.edge_length(edge) for edge in mesh.edges()]
     lengths = [length for length in lengths if length > 0.0]
     return sum(lengths) / len(lengths) if lengths else 1.0
 
 
-def _boundary_vertices(mesh):
+def _boundary_vertices(mesh: "QuadMesh") -> set[int]:
     # NOT vertices_on_boundary(): in COMPAS 2 that returns the LONGEST boundary only, so
     # every hole would count as interior and a chain could run right round one.
     return set(vertex for loop in mesh_boundary_loops(mesh) for vertex in loop)
@@ -301,7 +309,7 @@ def _boundary_vertices(mesh):
 # Choosing the chain
 # ==============================================================================
 
-def collect_polyedges(mesh):
+def collect_polyedges(mesh: "QuadMesh") -> list[tuple[list[int], bool]]:
     """The polyedges of a quad mesh as a list of vertex lists.
 
     A thin wrapper on :meth:`QuadMesh.collect_polyedges`, which returns a generator over
@@ -321,7 +329,7 @@ def collect_polyedges(mesh):
     return polyedges
 
 
-def _runs(polyedge, keep, closed):
+def _runs(polyedge: list[int], keep: list[bool], closed: bool) -> list[list[int]]:
     """The maximal runs of consecutive kept vertices, as lists of vertex keys.
 
     On a closed polyedge the run may wrap past the first vertex, which is the whole reason
@@ -345,7 +353,7 @@ def _runs(polyedge, keep, closed):
     return runs
 
 
-def _oriented(mesh, guide, run):
+def _oriented(mesh: "QuadMesh", guide: GuideCurve, run: list[int]) -> list[int]:
     """The run, ordered so that it advances along the guide."""
     _, t_first, _ = guide.project(mesh.vertex_coordinates(run[0]))
     _, t_last, _ = guide.project(mesh.vertex_coordinates(run[-1]))
@@ -354,7 +362,7 @@ def _oriented(mesh, guide, run):
     return run
 
 
-def _trimmed(mesh, guide, run):
+def _trimmed(mesh: "QuadMesh", guide: GuideCurve, run: list[int]) -> list[int]:
     """Drop vertices that project PAST the end of the guide, past the first one that does.
 
     A guide is shorter than the polyedge it follows more often than not -- it is drawn
@@ -377,7 +385,7 @@ def _trimmed(mesh, guide, run):
     return run[start:end + 1]
 
 
-def _directions(mesh, polyedge, closed):
+def _directions(mesh: "QuadMesh", polyedge: list[int], closed: bool) -> list[list[float] | None]:
     """The polyedge's own direction AT each of its vertices.
 
     Taken across the vertex -- from the one before to the one after -- rather than along
@@ -402,7 +410,7 @@ def _directions(mesh, polyedge, closed):
     return directions
 
 
-def _parallel(direction, tangent, minimum_cosine):
+def _parallel(direction: list[float] | None, tangent: tuple[float, float, float] | None, minimum_cosine: float) -> bool:
     """Whether a polyedge direction still follows the guide's tangent.
 
     ``abs`` because a polyedge has no direction of its own -- it may be collected either
@@ -413,7 +421,7 @@ def _parallel(direction, tangent, minimum_cosine):
     return abs(sum(direction[i] * tangent[i] for i in range(3))) >= minimum_cosine
 
 
-def _alignment(mesh, guide, run):
+def _alignment(mesh: "QuadMesh", guide: GuideCurve, run: list[int]) -> float:
     """How closely the run's own edges follow the guide: 1 along it, 0 across it."""
     values = []
     for u, v in zip(run, run[1:]):
@@ -427,7 +435,7 @@ def _alignment(mesh, guide, run):
     return sum(values) / len(values) if values else 0.0
 
 
-def _span(mesh, chain, guide, average):
+def _span(mesh: "QuadMesh", chain: list[int], guide: GuideCurve, average: float) -> dict[str, float]:
     """Coverage and end gaps, summed step by step so a closed guide works too."""
     if len(chain) < 2 or guide.length <= 0.0:
         return {'coverage': 0.0, 'gap_start': 0.0, 'gap_end': 0.0}
@@ -445,8 +453,14 @@ def _span(mesh, chain, guide, average):
     }
 
 
-def guide_chain(mesh, guide, tolerance=None, max_angle=DEFAULT_MAX_ANGLE,
-                boundary='anchor', polyedges=None):
+def guide_chain(
+    mesh: "QuadMesh",
+    guide: "GuideCurve | Iterable[Sequence[float]]",
+    tolerance: float | None = None,
+    max_angle: float = DEFAULT_MAX_ANGLE,
+    boundary: str = 'anchor',
+    polyedges: list[tuple[list[int], bool]] | None = None,
+) -> tuple[list[int], dict[str, Any]]:
     """Choose the run of a polyedge that follows a guide curve.
 
     Parameters
@@ -583,7 +597,7 @@ def guide_chain(mesh, guide, tolerance=None, max_angle=DEFAULT_MAX_ANGLE,
 # Attaching it
 # ==============================================================================
 
-def _boundary_curves(mesh):
+def _boundary_curves(mesh: "QuadMesh") -> dict[int, Polyline]:
     """{vertex: the closed polyline of the boundary loop it is on}.
 
     By loop membership, not by proximity: a vertex belongs to exactly one boundary, and
@@ -598,7 +612,13 @@ def _boundary_curves(mesh):
     return curves
 
 
-def attach_chain(mesh, chain, guide, hold='fixed', boundary_curves=None):
+def attach_chain(
+    mesh: "QuadMesh",
+    chain: list[int],
+    guide: "GuideCurve | Iterable[Sequence[float]]",
+    hold: str = 'fixed',
+    boundary_curves: dict[int, Polyline] | None = None,
+) -> tuple[dict[int, list[float]], dict[int, Any]]:
     """Work out where each vertex of a chain goes and what holds it there.
 
     **A boundary vertex is never moved onto the guide.** At most it SLIDES: it keeps its
@@ -655,7 +675,7 @@ def attach_chain(mesh, chain, guide, hold='fixed', boundary_curves=None):
 # Is it a clean, long polyedge line?
 # ==============================================================================
 
-def chain_quality(mesh, chain, guide):
+def chain_quality(mesh: "QuadMesh", chain: list[int], guide: "GuideCurve | Iterable[Sequence[float]]") -> dict[str, Any]:
     """Measure a chain against what it is supposed to be: a clean, long polyedge line.
 
     ``purity``, ``runs`` and ``valid_path`` are true by construction for a chain that came
@@ -774,7 +794,14 @@ def chain_quality(mesh, chain, guide):
     return quality
 
 
-def _projection_damage(mesh, chain, guide, boundary_vertices, ends, average):
+def _projection_damage(
+    mesh: "QuadMesh",
+    chain: list[int],
+    guide: GuideCurve,
+    boundary_vertices: set[int],
+    ends: set[int],
+    average: float,
+) -> dict[str, Any]:
     """What attaching the chain does to the faces around it.
 
     Through :func:`attach_chain`, so this measures what the command actually does --

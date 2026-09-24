@@ -16,6 +16,11 @@ surface wrapper found for itself are passed in.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import Any
+from typing import Sequence
+from typing import TYPE_CHECKING
 
 from compas.geometry import Point
 from compas.geometry import closest_point_in_cloud
@@ -26,6 +31,9 @@ from compas_singular.datastructures.mesh.smoothing import _split_loop_at_corners
 from compas_singular.datastructures.mesh.smoothing import closest_point_on_constraint
 from compas_singular.datastructures.mesh.smoothing import constrained_smoothing
 from compas_singular.datastructures.mesh.smoothing import mesh_boundary_loops
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import Mesh
 
 
 __all__ = [
@@ -42,10 +50,10 @@ class _NearestOf(object):
     of one border is picked up by the next.
     """
 
-    def __init__(self, curves):
+    def __init__(self, curves: Sequence[Any]) -> None:
         self.curves = list(curves)
 
-    def closest_point(self, point):
+    def closest_point(self, point: Any) -> list[float] | None:
         xyz = list(point)[:3]
         best, minimum = None, None
         for curve in self.curves:
@@ -56,7 +64,7 @@ class _NearestOf(object):
         return best
 
 
-def automated_smoothing_surface_constraints(mesh, surface, borders, kinks=None):
+def automated_smoothing_surface_constraints(mesh: Mesh, surface: Any, borders: Sequence[Any], kinks: Sequence[list[float]] | None = None) -> dict[int, Any]:
     """Constrain every vertex of a mesh to a surface, its borders and its kinks.
 
     Interior vertices go to the surface. Each boundary vertex goes to the border
@@ -98,7 +106,7 @@ def automated_smoothing_surface_constraints(mesh, surface, borders, kinks=None):
     return constraints
 
 
-def automated_smoothing_constraints(mesh, points=None, curves=None, surface=None):
+def automated_smoothing_constraints(mesh: Mesh, points: Sequence[list[float]] | None = None, curves: Sequence[Any] | None = None, surface: Any | None = None) -> dict[int, Any]:
     """Constrain the vertices of a mesh to points, curves and a surface.
 
     Every vertex goes to ``surface``. The boundary is then split at the vertices
@@ -147,7 +155,7 @@ def automated_smoothing_constraints(mesh, points=None, curves=None, surface=None
     return constraints
 
 
-def surface_constrained_smoothing(mesh, surface, borders, kmax=100, damping=0.5, algorithm='centroid'):
+def surface_constrained_smoothing(mesh: Mesh, surface: Any, borders: Sequence[Any], kmax: int = 100, damping: float = 0.5, algorithm: str = 'centroid') -> dict[int, Any]:
     """Smooth a mesh while it stays on a surface and its boundary on the surface's borders.
 
     Unlike :func:`automated_smoothing_surface_constraints`, a boundary vertex is

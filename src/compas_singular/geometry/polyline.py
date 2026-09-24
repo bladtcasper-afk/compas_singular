@@ -1,6 +1,7 @@
 from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
+from __future__ import annotations
 
 from math import ceil
 
@@ -25,7 +26,7 @@ __all__ = [
 ]
 
 
-def closest_on_polyline(point, points, closed=False):
+def closest_on_polyline(point: list[float], points: list[list[float]], closed: bool = False) -> tuple[int, float, list[float], float]:
     """``(segment index, t, closest point, distance)`` on a polyline.
 
     The richest of this module's projection results: distance, the point itself,
@@ -84,7 +85,7 @@ def closest_on_polyline(point, points, closed=False):
     return best
 
 
-def project_on_polyline(point, points):
+def project_on_polyline(point: list[float], points: list[list[float]]) -> tuple[float, float, float]:
     """``(distance, arclength, total length)`` for a point near an OPEN polyline.
 
     Open, not closed: joining last to first would invent a segment an arc does
@@ -122,12 +123,12 @@ def project_on_polyline(point, points):
     return best[0], best[1], travelled
 
 
-def distance_to_polyline(point, points):
+def distance_to_polyline(point: list[float], points: list[list[float]]) -> float:
     """Shortest distance from a point to an OPEN polyline."""
     return project_on_polyline(point, points)[0]
 
 
-def distance_to_loop(p, loop):
+def distance_to_loop(p: list[float], loop: list[list[float]]) -> float:
     """Shortest distance from a point to a CLOSED polyline, in XY.
 
     Distance to the polyline itself, not to its nearest vertex: ``t`` is clamped
@@ -162,7 +163,7 @@ def distance_to_loop(p, loop):
     return best
 
 
-def bounding_box_diagonal(*loops):
+def bounding_box_diagonal(*loops: list[list[float]]) -> float:
     """The diagonal ``D`` of the TOTAL bounding box of every loop given, in XY.
 
     The scale the thesis measures a discretisation against -- see
@@ -188,7 +189,7 @@ def bounding_box_diagonal(*loops):
     return ((max(xs) - min(xs)) ** 2 + (max(ys) - min(ys)) ** 2) ** 0.5
 
 
-def _clean_loop(points):
+def _clean_loop(points: list[list[float]]) -> list[list[float]]:
     """A loop as XY floats, with consecutive duplicates and a closing point dropped."""
     pts = [[float(p[0]), float(p[1]), float(p[2]) if len(p) > 2 else 0.0]
            for p in points]
@@ -203,7 +204,7 @@ def _clean_loop(points):
     return out
 
 
-def _subdivide(loop, spacing):
+def _subdivide(loop: list[list[float]], spacing: float) -> list[list[float]]:
     """Subdivide EACH segment of a closed loop so that none exceeds ``spacing``."""
     out = []
     for a, b in pairwise(loop + loop[:1]):
@@ -216,7 +217,7 @@ def _subdivide(loop, spacing):
     return out
 
 
-def _subdivide_chain(chain, spacing):
+def _subdivide_chain(chain: list[list[float]], spacing: float) -> list[list[float]]:
     """Subdivide EACH segment of an OPEN chain so that none exceeds ``spacing``.
 
     The loop version closes the chain and drops every segment's end point. An
@@ -233,7 +234,7 @@ def _subdivide_chain(chain, spacing):
     return out
 
 
-def _clean_chain(points):
+def _clean_chain(points: list[list[float]]) -> list[list[float]]:
     """An open chain as XY floats, consecutive duplicates dropped, ends kept."""
     pts = [[float(p[0]), float(p[1]), float(p[2]) if len(p) > 2 else 0.0]
            for p in points]
@@ -246,7 +247,7 @@ def _clean_chain(points):
     return out
 
 
-def discretise_line(line, spacing):
+def discretise_line(line: list[list[float]], spacing: float | None) -> list[list[float]]:
     """Discretise ONE open curve at ``spacing``, per thesis eq. 4.1.
 
     Deliberately separate from :func:`discretise_boundary` rather than a flag on
@@ -288,7 +289,13 @@ def discretise_line(line, spacing):
     return _subdivide_chain(points, spacing)
 
 
-def discretise_boundary(outer, inners=None, alpha=0.04, d_min=5, spacing=None):
+def discretise_boundary(
+    outer: list[list[float]],
+    inners: list[list[list[float]]] | None = None,
+    alpha: float | None = 0.04,
+    d_min: int | None = 5,
+    spacing: float | None = None,
+) -> tuple[list[list[float]], list[list[list[float]]]]:
     """Discretise closed boundary loops, per Oval's thesis eq. 4.1.
 
     The number of points of each curve ``i`` is
@@ -361,7 +368,7 @@ def discretise_boundary(outer, inners=None, alpha=0.04, d_min=5, spacing=None):
         raise ValueError(
             'spacing must be positive, got {}'.format(spacing))
 
-    def one(loop):
+    def one(loop: list[list[float]]) -> list[list[float]]:
         if len(loop) < 2:
             return loop
         # ``d_min`` as a spacing rather than a count: the subdivision is
@@ -379,7 +386,7 @@ def discretise_boundary(outer, inners=None, alpha=0.04, d_min=5, spacing=None):
     return one(outer), [one(loop) for loop in inners]
 
 
-def resample_loop(points, spacing=None):
+def resample_loop(points: list[list[float]], spacing: float | None = None) -> list[list[float]]:
     """One loop through :func:`discretise_boundary`, with no scale rule.
 
     Kept for callers outside this repository. ``spacing`` is
@@ -393,10 +400,10 @@ def resample_loop(points, spacing=None):
 
 class Polyline(Polyline):
 
-    def __init__(self, points):
+    def __init__(self, points: list[list[float]]) -> None:
         super(Polyline, self).__init__(points)
 
-    def vertex_curvature(self, i):
+    def vertex_curvature(self, i: int) -> float | None:
         """Discrete polyline curvature.
 
         Parameters

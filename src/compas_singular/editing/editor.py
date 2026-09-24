@@ -39,8 +39,11 @@ did something else the confirmation would be a lie.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 from copy import deepcopy
+from typing import Any
+from typing import TYPE_CHECKING
 
 from compas_singular.datastructures.mesh_quad.grammar.add_strip import split_strips
 from compas_singular.datastructures.mesh_quad.grammar.delete_strip import collateral_strip_deletions
@@ -51,11 +54,14 @@ from compas_singular.datastructures.mesh_quad.grammar.delete_strip import total_
 from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import BoundaryLoop
 from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import mean_edge_length
 
+if TYPE_CHECKING:
+    from compas_singular.datastructures import QuadMesh
+
 
 __all__ = ['MeshEditor', 'boundary_vertex_set']
 
 
-def boundary_vertex_set(mesh):
+def boundary_vertex_set(mesh: "QuadMesh") -> set[int]:
     """Every vertex with a faceless halfedge. See :meth:`MeshEditor.boundary_vertices`."""
     out = set()
     for u, nbrs in mesh.halfedge.items():
@@ -121,7 +127,7 @@ class MeshEditor(object):
     #: once a rebuild has renumbered the strips.
     STRIP_KEYED_ATTRIBUTES = ('strips', 'polyedges', 'strips_density')
 
-    def __init__(self, mesh, walls=None, work_on_copy=True):
+    def __init__(self, mesh: "QuadMesh", walls: list[Any] | None = None, work_on_copy: bool = True) -> None:
         if mesh is None:
             raise ValueError('no mesh to edit')
         self.target = mesh
@@ -147,7 +153,7 @@ class MeshEditor(object):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _as_walls(walls):
+    def _as_walls(walls: list[Any] | None) -> list[BoundaryLoop]:
         """``BoundaryLoop`` per wall. Accepts loops already built as one."""
         out = []
         for wall in (walls or []):
@@ -159,7 +165,7 @@ class MeshEditor(object):
                 out.append(BoundaryLoop(points))
         return out
 
-    def project_to_wall(self, xyz):
+    def project_to_wall(self, xyz: list[float]) -> list[float]:
         """The nearest point of the nearest wall, or ``xyz`` if there is no wall.
 
         Only ever called for a vertex that is TOPOLOGICALLY on the mesh boundary.
@@ -180,11 +186,11 @@ class MeshEditor(object):
     # measuring the mesh
     # ------------------------------------------------------------------
 
-    def mean_edge(self, mesh=None):
+    def mean_edge(self, mesh: "QuadMesh | None" = None) -> float:
         """Mean edge length -- the scale every tolerance here is expressed in."""
         return mean_edge_length(self.mesh if mesh is None else mesh)
 
-    def boundary_vertices(self, mesh=None):
+    def boundary_vertices(self, mesh: "QuadMesh | None" = None) -> set[int]:
         """Every vertex on every boundary -- holes included -- as a set.
 
         Read straight off the halfedges: a vertex is on a boundary exactly when
@@ -202,11 +208,11 @@ class MeshEditor(object):
         mesh = self.mesh if mesh is None else mesh
         return boundary_vertex_set(mesh)
 
-    def is_vertex_on_boundary(self, vkey, mesh=None):
+    def is_vertex_on_boundary(self, vkey: int, mesh: "QuadMesh | None" = None) -> bool:
         """Whether a vertex is on ANY boundary of the mesh -- holes included."""
         return vkey in self.boundary_vertices(mesh)
 
-    def check_strip_count(self, mesh=None):
+    def check_strip_count(self, mesh: "QuadMesh | None" = None) -> tuple[bool, int, int]:
         """**Thesis Eq 5.6:** the number of OPEN strips is ``E - 2F``.
 
         A free post-condition on the strip data. Every boundary edge is one of the
@@ -236,7 +242,7 @@ class MeshEditor(object):
     # returning
     # ------------------------------------------------------------------
 
-    def _refuse(self, reason):
+    def _refuse(self, reason: str) -> tuple[bool, dict[str, str]]:
         """Record why an operation was not performed. Always ``(False, notes)``.
 
         Recorded rather than printed: this module has no idea whether it is
@@ -247,7 +253,7 @@ class MeshEditor(object):
         self.last_reason = reason
         return False, {'error': reason}
 
-    def _accept(self, **notes):
+    def _accept(self, **notes: Any) -> tuple[bool, dict[str, Any]]:
         """Record a success. Always ``(True, notes)``."""
         self.last_reason = ''
         return True, notes
@@ -256,7 +262,7 @@ class MeshEditor(object):
     # move one vertex
     # ------------------------------------------------------------------
 
-    def move_vertex(self, vkey, xyz, project=True):
+    def move_vertex(self, vkey: int, xyz: list[float], project: bool = True) -> tuple[bool, dict[str, Any]]:
         """Move one vertex. ``(ok, notes)``.
 
         A vertex on the mesh boundary is projected back onto the nearest domain
@@ -281,7 +287,7 @@ class MeshEditor(object):
         self.edited = True
         return self._accept(moved=vkey, xyz=point, projected=projected)
 
-    def _as_point(self, xyz):
+    def _as_point(self, xyz: list[float]) -> list[float]:
         """``xyz`` as three floats, flattened onto z = 0 when :attr:`PLANAR`."""
         point = list(xyz)
         while len(point) < 3:
@@ -293,11 +299,11 @@ class MeshEditor(object):
     # undo
     # ------------------------------------------------------------------
 
-    def snapshot(self):
+    def snapshot(self) -> None:
         """Make the current mesh the state :meth:`reset` returns to."""
         self._snapshot = self.mesh.copy()
 
-    def reset(self):
+    def reset(self) -> tuple[bool, dict[str, Any]]:
         """Put the mesh back as it was at construction, or at the last snapshot.
 
         Restores the whole MESH, not just the coordinates: the topological
@@ -320,20 +326,20 @@ class MeshEditor(object):
     # than asking first -- needs this to make an accidental pick cheap to walk
     # back, without losing everything edited before it.
 
-    def _state(self):
+    def _state(self) -> dict[str, Any]:
         """Everything :meth:`undo` needs to put back. A subclass with more
         state than the mesh (a curve map, a dirty flag) extends this and
         :meth:`_restore` together, never one without the other."""
         return {'mesh': self.mesh.copy(), 'edited': self.edited,
                 'last_deletion': dict(self.last_deletion)}
 
-    def _restore(self, state):
+    def _restore(self, state: dict[str, Any]) -> None:
         """The inverse of :meth:`_state`."""
         self.mesh = state['mesh']
         self.edited = state['edited']
         self.last_deletion = state['last_deletion']
 
-    def push_undo(self):
+    def push_undo(self) -> None:
         """Remember the mesh as it is now, before the change about to happen.
 
         Call this immediately before an operation that may mutate ``self.mesh``
@@ -344,12 +350,12 @@ class MeshEditor(object):
         """
         self._undo_stack.append(self._state())
 
-    def discard_last_undo(self):
+    def discard_last_undo(self) -> None:
         """Drop the most recent :meth:`push_undo` snapshot -- nothing changed."""
         if self._undo_stack:
             self._undo_stack.pop()
 
-    def undo(self):
+    def undo(self) -> tuple[bool, dict[str, Any]]:
         """Put back the mesh as it was before the last :meth:`push_undo`. ``(ok, notes)``.
 
         Refuses with nothing to restore rather than silently doing nothing, so
@@ -366,7 +372,7 @@ class MeshEditor(object):
     # deleting a strip -- the template
     # ------------------------------------------------------------------
 
-    def _split_strips(self, work, to_split):
+    def _split_strips(self, work: "QuadMesh", to_split: dict[int, int]) -> dict[int, list[int]]:
         """Refine the strips that would otherwise let a boundary collapse.
 
         Thesis 5.3.2, Fig 5.18: a boundary collapses when fewer than three edges
@@ -375,17 +381,16 @@ class MeshEditor(object):
         "to avoid any bias". ``strips_to_split_to_prevent_boundary_collapse``
         works that out; this performs it.
 
-        **The strips this adds have ZERO WIDTH**, because the grammar's
-        ``add_strip`` only ever does topology. A subclass MUST open them, and the
-        two editors do it differently -- exact thirds on a coarse layout, centroid
-        relaxation on a dense mesh -- which is why this is a hook and why the base
-        deliberately does not pick one. Leaving them closed welds coincident
-        vertices into the result, which survives ``is_manifold`` but bakes as a
-        broken mesh.
+        **The strips this adds have ZERO WIDTH**: the base asks the grammar for
+        topology only. A subclass MUST open them, because only it knows its walls;
+        both editors do it with the grammar's exact-thirds rule, projecting the
+        pairs on the boundary onto ``project_to_wall``. Leaving them closed welds
+        coincident vertices into the result, which survives ``is_manifold`` but
+        bakes as a broken mesh.
         """
-        return split_strips(work, to_split)
+        return split_strips(work, to_split, open_strip=False)
 
-    def _gate(self, work):
+    def _gate(self, work: "QuadMesh") -> tuple[bool, str]:
         """**Is this result acceptable?** ``(ok, reason)``. Subclasses decide.
 
         Called on the COPY, before it is adopted. The base accepts anything, so a
@@ -394,7 +399,7 @@ class MeshEditor(object):
         """
         return True, ''
 
-    def strip_through(self, edge):
+    def strip_through(self, edge: tuple[int, int]) -> int | None:
         """The strip key through ``edge``, resolved on a copy. ``None`` if none.
 
         Collected on a COPY so the live mesh keeps no state the caller did not ask
@@ -406,7 +411,12 @@ class MeshEditor(object):
         work.collect_strips()
         return work.edge_strip(tuple(edge))
 
-    def _trial_delete(self, edge=None, preserve_boundaries=False, skey=None):
+    def _trial_delete(
+        self,
+        edge: tuple[int, int] | None = None,
+        preserve_boundaries: bool = False,
+        skey: int | None = None,
+    ) -> tuple["QuadMesh | None", dict[str, Any]]:
         """Delete a strip on a COPY. ``(mesh or None, info)``. Touches no state.
 
         One code path for both :meth:`plan_strip_deletion` and
@@ -512,7 +522,12 @@ class MeshEditor(object):
         info['vertices_after'] = work.number_of_vertices()
         return work, info
 
-    def plan_strip_deletion(self, edge=None, preserve_boundaries=False, skey=None):
+    def plan_strip_deletion(
+        self,
+        edge: tuple[int, int] | None = None,
+        preserve_boundaries: bool = False,
+        skey: int | None = None,
+    ) -> dict[str, Any]:
         """**What deleting the strip would cost.** No mutation.
 
         Deleting a strip is not a local edit, and a front end has to be able to
@@ -542,7 +557,12 @@ class MeshEditor(object):
         self.last_reason = '' if info['ok'] else info['reason']
         return info
 
-    def remove_strip(self, edge=None, preserve_boundaries=False, skey=None):
+    def remove_strip(
+        self,
+        edge: tuple[int, int] | None = None,
+        preserve_boundaries: bool = False,
+        skey: int | None = None,
+    ) -> tuple[bool, dict[str, Any]]:
         """**Delete the strip through** ``edge`` (or ``skey``). ``(ok, notes)``.
 
         Applied to a copy and adopted only if the copy survives :meth:`_gate`, so
@@ -567,7 +587,7 @@ class MeshEditor(object):
     # handing the result back to the caller's own object
     # ------------------------------------------------------------------
 
-    def _transplant(self, source, carry_strip_data=False):
+    def _transplant(self, source: "QuadMesh", carry_strip_data: bool = False) -> "QuadMesh":
         """**Make** :attr:`target` **become** ``source``, keeping its identity.
 
         The caller holds a reference to the mesh it handed in, so a commit that

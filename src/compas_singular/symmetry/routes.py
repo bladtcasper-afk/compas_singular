@@ -14,12 +14,21 @@ diagonal is smaller, so re-deriving it would mesh the unit finer than the plate.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import Sequence
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import CoarsePseudoQuadMesh
+    from compas_singular.symmetry.domain import Domain
 
 
 __all__ = ['mesher_for', 'route_name', 'domain_of']
 
 
-def route_name(decomposition):
+def route_name(decomposition: Any) -> str:
     name = type(decomposition).__name__
     if name == 'SkeletonDecomposition':
         return 'skeleton'
@@ -28,7 +37,7 @@ def route_name(decomposition):
     raise TypeError('no symmetry adapter for {}'.format(name))
 
 
-def domain_of(decomposition):
+def domain_of(decomposition: Any) -> Domain:
     """The :class:`~.domain.Domain` a decomposition was built from."""
     from compas_singular.symmetry.domain import Domain
     inputs = getattr(decomposition, 'inputs', None) or {}
@@ -46,7 +55,7 @@ def domain_of(decomposition):
     return Domain(inputs['outer_boundary'], inputs.get('inner_boundaries') or [], guides, poles)
 
 
-def mesher_for(decomposition):
+def mesher_for(decomposition: Any) -> SkeletonMesher | FieldMesher:
     route = route_name(decomposition)
     if route == 'skeleton':
         return SkeletonMesher(decomposition)
@@ -57,11 +66,17 @@ class SkeletonMesher(object):
 
     route = 'skeleton'
 
-    def __init__(self, decomposition):
+    def __init__(self, decomposition: Any) -> None:
         self.cls = type(decomposition)
         self.inputs = dict(decomposition.inputs)
 
-    def __call__(self, outer, holes, guides, poles):
+    def __call__(
+        self,
+        outer: Sequence[Sequence[float]],
+        holes: Sequence[Sequence[Sequence[float]]],
+        guides: Sequence[Any],
+        poles: Sequence[Sequence[float]],
+    ) -> tuple[CoarsePseudoQuadMesh, dict[str, Any]]:
         d = self.cls.from_boundary(
             outer, inner_boundaries=holes, polyline_features=guides, point_features=poles,
             target_length=self.inputs.get('target_length'),
@@ -77,7 +92,7 @@ class FieldMesher(object):
 
     route = 'field'
 
-    def __init__(self, decomposition):
+    def __init__(self, decomposition: Any) -> None:
         self.cls = type(decomposition)
         self.inputs = dict(decomposition.inputs)
         target = self.inputs.get('target_length')
@@ -89,7 +104,13 @@ class FieldMesher(object):
             target = 0.04 * bounding_box_diagonal(outer, *inners)
         self.target = target
 
-    def __call__(self, outer, holes, guides, poles):
+    def __call__(
+        self,
+        outer: Sequence[Sequence[float]],
+        holes: Sequence[Sequence[Sequence[float]]],
+        guides: Sequence[Any],
+        poles: Sequence[Sequence[float]],
+    ) -> tuple[CoarsePseudoQuadMesh, dict[str, Any]]:
         i = self.inputs
         d = self.cls.from_boundary(
             outer, inner_boundaries=holes, guides=guides or None,

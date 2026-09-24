@@ -24,8 +24,16 @@ fail would give it an authority it has not earned.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import Iterable
 
 from compas_singular.mcp.handle import vertex_handle
+
+if TYPE_CHECKING:
+    from compas.datastructures import Mesh
 
 
 __all__ = ['DEFAULT_THRESHOLDS', 'band', 'describe', 'format_triple']
@@ -44,7 +52,7 @@ DEFAULT_THRESHOLDS = {
 BANDS = ('good', 'usable', 'poor', 'unusable')
 
 
-def band(value, limits):
+def band(value: Any, limits: dict[str, Any]) -> str:
     """Which band a value falls in. ``'unknown'`` when it cannot be judged."""
     if value is None:
         return 'unknown'
@@ -66,7 +74,7 @@ def band(value, limits):
     return 'unusable'
 
 
-def _worst(bands):
+def _worst(bands: Iterable[str]) -> str:
     """The least good of the bands seen."""
     for name in reversed(BANDS):
         if name in bands:
@@ -74,7 +82,7 @@ def _worst(bands):
     return 'unknown'
 
 
-def format_triple(triple):
+def format_triple(triple: tuple[Any, Any, Any] | None) -> str:
     """``(min, max, aspect)`` as a short string, or ``'-'``."""
     if not triple:
         return '-'
@@ -85,7 +93,7 @@ def format_triple(triple):
         aspect if aspect is not None else float('nan'))
 
 
-def _face_location(mesh, fkey):
+def _face_location(mesh: Mesh | None, fkey: Any) -> tuple[str | None, bool]:
     """A handle for where a face is, and whether it touches a boundary.
 
     The face's own key is useless to a caller -- it renumbers, and it is not a
@@ -105,7 +113,7 @@ def _face_location(mesh, fkey):
     return vertex_handle(centroid), on_boundary
 
 
-def describe(mesh, metrics, limits=None):
+def describe(mesh: Mesh | None, metrics: dict[str, Any], limits: dict[str, Any] | None = None) -> dict[str, Any]:
     """A prose reading of a quality dict.
 
     Parameters

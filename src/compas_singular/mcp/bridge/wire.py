@@ -39,6 +39,16 @@ time, for nothing.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import Iterable
+from typing import Sequence
+
+if TYPE_CHECKING:
+    from compas.datastructures import Mesh
+    from compas.geometry import Polyline
 
 
 __all__ = [
@@ -54,7 +64,7 @@ class WireError(ValueError):
     """The wire payload is not a mesh. Raised where the fault is, not later."""
 
 
-def points_of(curve):
+def points_of(curve: Polyline | Sequence[Any]) -> list[list[float]]:
     """Any curve-ish thing as a plain list of ``[x, y, z]``.
 
     Accepts what the rest of the library hands around: a compas ``Polyline``, a
@@ -74,17 +84,17 @@ def points_of(curve):
     return [[float(p[0]), float(p[1]), float(p[2])] for p in points]
 
 
-def curve_to_wire(curve):
+def curve_to_wire(curve: Polyline | Sequence[Any]) -> list[list[float]]:
     """One curve as a point list. Alias of :func:`points_of`, named for the wire."""
     return points_of(curve)
 
 
-def curves_to_wire(curves):
+def curves_to_wire(curves: Iterable[Polyline | Sequence[Any]] | None) -> list[list[list[float]]]:
     """A sequence of curves as a list of point lists."""
     return [points_of(curve) for curve in curves or []]
 
 
-def _pole_points(mesh):
+def _pole_points(mesh: Mesh) -> list[list[float]]:
     """The mesh's poles as points, or ``[]`` if it has no notion of one.
 
     A plain compas ``Mesh`` -- what comes back out of Rhino -- has no ``poles``,
@@ -101,7 +111,7 @@ def _pole_points(mesh):
     return [list(mesh.vertex_coordinates(vkey)) for vkey in keys]
 
 
-def mesh_to_wire(mesh):
+def mesh_to_wire(mesh: Mesh) -> dict[str, Any]:
     """Encode a mesh for the spool.
 
     Parameters
@@ -122,7 +132,7 @@ def mesh_to_wire(mesh):
     return {'vertices': vertices, 'faces': faces, 'poles': _pole_points(mesh)}
 
 
-def mesh_from_wire(data, cls=None):
+def mesh_from_wire(data: dict[str, Any], cls: type | None = None) -> Mesh:
     """Rebuild a mesh from the spool.
 
     Parameters

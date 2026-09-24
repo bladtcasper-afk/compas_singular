@@ -1,8 +1,15 @@
 from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+from typing import Any
 
 import networkx as nx
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import QuadMesh
 
 
 __all__ = [
@@ -20,7 +27,7 @@ __all__ = [
 # strip isomorphism
 # --------------------------------------------------------------------------
 
-def strip_graph(mesh, close_strip_data=False):
+def strip_graph(mesh: QuadMesh, close_strip_data: bool = False) -> nx.MultiGraph:
     # graph of quad mesh strips: one graph vertex <-> one mesh strip and one graph <-> edge one mesh face
     # graph vertices have an attribute whether the corresponding strip is closed or not
     if mesh.attributes['strips'] is None or mesh.attributes['strips'] == {}:
@@ -31,12 +38,12 @@ def strip_graph(mesh, close_strip_data=False):
     return graph
 
 
-def are_strip_graphs_isomorphic(strip_graph_i, strip_graph_j):
+def are_strip_graphs_isomorphic(strip_graph_i: nx.MultiGraph, strip_graph_j: nx.MultiGraph) -> bool:
     # check if two strip graphs are isomorphic, including closeness data
     return nx.is_isomorphic(strip_graph_i, strip_graph_j, node_match=nx.isomorphism.categorical_node_match('closed', None))
 
 
-def are_strips_isomorphic(mesh_i, mesh_j, close_strip_data=False):
+def are_strips_isomorphic(mesh_i: QuadMesh, mesh_j: QuadMesh, close_strip_data: bool = False) -> bool:
     strip_graph_i = strip_graph(mesh_i, close_strip_data=close_strip_data)
     strip_graph_j = strip_graph(mesh_j, close_strip_data=close_strip_data)
     return are_strip_graphs_isomorphic(strip_graph_i, strip_graph_j)
@@ -46,7 +53,7 @@ def are_strips_isomorphic(mesh_i, mesh_j, close_strip_data=False):
 # mesh isomorphism
 # --------------------------------------------------------------------------
 
-def mesh_graph(mesh, boundary_edge_data=False):
+def mesh_graph(mesh: QuadMesh, boundary_edge_data: bool = False) -> nx.MultiGraph:
     # graph of meshes with edges only
     # edges have an attribute whether they are on the boundary or not (vertex attributes would not be sufficient)
     graph = nx.MultiGraph(mesh.edges())
@@ -55,18 +62,18 @@ def mesh_graph(mesh, boundary_edge_data=False):
     return graph
 
 
-def are_mesh_graphs_isomorphic(mesh_graph_i, mesh_graph_j):
+def are_mesh_graphs_isomorphic(mesh_graph_i: nx.MultiGraph, mesh_graph_j: nx.MultiGraph) -> bool:
     # check if two mesh graphs are isomorphic, including boundary data
     return nx.is_isomorphic(mesh_graph_i, mesh_graph_j, edge_match=nx.isomorphism.categorical_edge_match('boundary', None))
 
 
-def are_meshes_isomorphic(mesh_i, mesh_j, boundary_edge_data=False):
+def are_meshes_isomorphic(mesh_i: QuadMesh, mesh_j: QuadMesh, boundary_edge_data: bool = False) -> bool:
     mesh_graph_i = mesh_graph(mesh_i, boundary_edge_data=boundary_edge_data)
     mesh_graph_j = mesh_graph(mesh_j, boundary_edge_data=boundary_edge_data)
     return are_mesh_graphs_isomorphic(mesh_graph_i, mesh_graph_j)
 
 
-def matches_between_ismorphic_meshes(mesh_i, mesh_j, boundary_edge_data=False):
+def matches_between_ismorphic_meshes(mesh_i: QuadMesh, mesh_j: QuadMesh, boundary_edge_data: bool = False) -> Any:
     mesh_graph_i = mesh_graph(mesh_i, boundary_edge_data=boundary_edge_data)
     mesh_graph_j = mesh_graph(mesh_j, boundary_edge_data=boundary_edge_data)
     matcher = nx.isomorphism.GraphMatcher(mesh_graph_i, mesh_graph_j)

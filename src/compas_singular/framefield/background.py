@@ -15,7 +15,11 @@ Planar domain, so every tangent space is world XY -- no parallel transport, no
 per-edge connection. ``face_basis`` returns the identity and exists only so the
 surface case does not need an API change.
 """
+from __future__ import annotations
+
 from math import ceil
+from typing import Any
+from typing import TYPE_CHECKING
 
 from compas_singular.datastructures import Mesh   # has .boundaries(); compas core does not
 from compas_singular.geometry.polyline import bounding_box_diagonal
@@ -29,6 +33,9 @@ from compas.geometry import subtract_vectors
 from compas.geometry import cross_vectors
 from compas.geometry import length_vector
 
+if TYPE_CHECKING:
+    from compas_singular.framefield.symmetry import Symmetry
+
 
 # ``discretise_boundary`` is re-exported, not reimplemented: the skeleton front
 # end discretises its walls with the SAME function, so the two routes cannot
@@ -36,7 +43,7 @@ from compas.geometry import length_vector
 __all__ = ['BackgroundMesh', 'discretise_boundary', 'interior_grid']
 
 
-def _as_open_loop(points):
+def _as_open_loop(points: Any) -> list[list[float]]:
     """Drop a repeated closing point and any consecutive duplicates."""
     pts = [[float(p[0]), float(p[1]), 0.0] for p in points]
     out = [pts[0]]
@@ -48,7 +55,13 @@ def _as_open_loop(points):
     return out
 
 
-def interior_grid(outer, inners=(), target_length=None, margin=0.45, symmetry=None):
+def interior_grid(
+    outer: list[list[float]],
+    inners: Any = (),
+    target_length: float | None = None,
+    margin: float = 0.45,
+    symmetry: Symmetry | None = None,
+) -> list[list[float]]:
     """The INTERIOR points of the background mesh, at ``target_length`` spacing.
 
     The half of this module the skeleton front end has no use for. Its
@@ -120,7 +133,7 @@ def interior_grid(outer, inners=(), target_length=None, margin=0.45, symmetry=No
     return points
 
 
-def _jitter(i, j, amount):
+def _jitter(i: int, j: int, amount: float) -> float:
     """Deterministic sub-cell offset.
 
     A perfectly regular grid makes every square's four corners cocircular, so
@@ -147,7 +160,13 @@ class BackgroundMesh(object):
         The spacing the triangulation was built at.
     """
 
-    def __init__(self, mesh, outer, inners, target_length):
+    def __init__(
+        self,
+        mesh: Mesh,
+        outer: list[list[float]],
+        inners: list[list[list[float]]],
+        target_length: float,
+    ) -> None:
         self.mesh = mesh
         self.outer = outer
         self.inners = inners
@@ -159,8 +178,16 @@ class BackgroundMesh(object):
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_boundary(cls, outer_boundary, inner_boundaries=None, target_length=None,
-                      margin=0.45, symmetry=None, alpha=0.04, d_min=5):
+    def from_boundary(
+        cls,
+        outer_boundary: list[list[float]],
+        inner_boundaries: list[list[list[float]]] | None = None,
+        target_length: float | None = None,
+        margin: float = 0.45,
+        symmetry: Symmetry | None = None,
+        alpha: float = 0.04,
+        d_min: int = 5,
+    ) -> BackgroundMesh:
         """Triangulate the region inside ``outer_boundary`` and outside the inners.
 
         Parameters
@@ -239,7 +266,7 @@ class BackgroundMesh(object):
     # tangent spaces
     # ------------------------------------------------------------------
 
-    def face_basis(self, fkey):
+    def face_basis(self, fkey: int) -> tuple[list[float], list[float]]:
         """Orthonormal tangent basis of a face.
 
         Planar domain, so this is the world XY basis for every face. Kept in the
@@ -248,7 +275,7 @@ class BackgroundMesh(object):
         """
         return ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 
-    def boundary_tangents(self):
+    def boundary_tangents(self) -> dict[int, list[list[float]]]:
         """The adjacent boundary EDGE directions at every boundary vertex.
 
         Two per vertex (one each side), not one averaged tangent.
@@ -284,7 +311,7 @@ class BackgroundMesh(object):
             self._boundary_tangents = tangents
         return self._boundary_tangents
 
-    def boundary_vertices(self):
+    def boundary_vertices(self) -> set[int]:
         """Set of vertex keys on any boundary."""
         return set(self.boundary_tangents())
 
@@ -292,7 +319,7 @@ class BackgroundMesh(object):
     # validation
     # ------------------------------------------------------------------
 
-    def validate(self):
+    def validate(self) -> dict[str, Any]:
         """Check the invariants Step 2 relies on.
 
         Returns

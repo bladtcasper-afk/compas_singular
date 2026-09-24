@@ -38,6 +38,7 @@ common case, not the rare one.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 from math import atan2
 from math import cos
@@ -45,6 +46,9 @@ from math import degrees
 from math import hypot
 from math import pi
 from math import sin
+from typing import Any
+from typing import Sequence
+from typing import TYPE_CHECKING
 
 from compas_singular.symmetry._geometry import area_centroid
 from compas_singular.symmetry._geometry import open_loop
@@ -54,6 +58,10 @@ from compas_singular.symmetry._geometry import signed_area
 from compas_singular.symmetry.group import _mirror
 from compas_singular.symmetry.group import _rotation
 
+if TYPE_CHECKING:
+    from compas_singular.symmetry.domain import Domain
+    from compas_singular.symmetry.group import SymmetryGroup
+
 
 __all__ = ['cut_unit', 'UnitDomain', 'clip_halfplane']
 
@@ -62,12 +70,12 @@ __all__ = ['cut_unit', 'UnitDomain', 'clip_halfplane']
 # half-plane clipping
 # ----------------------------------------------------------------------
 
-def _interp(p, q, sp, sq):
+def _interp(p: Sequence[float], q: Sequence[float], sp: float, sq: float) -> list[float]:
     t = sp / (sp - sq)
     return [p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1]), 0.0]
 
 
-def _dedupe(points, eps, closed=True):
+def _dedupe(points: Sequence[Sequence[float]], eps: float, closed: bool = True) -> list[Sequence[float]]:
     out = []
     for p in points:
         if out and abs(p[0] - out[-1][0]) <= eps and abs(p[1] - out[-1][1]) <= eps:
@@ -79,7 +87,7 @@ def _dedupe(points, eps, closed=True):
     return out
 
 
-def _remove_spikes(loop, eps):
+def _remove_spikes(loop: list[Sequence[float]], eps: float) -> list[Sequence[float]]:
     """Drop vertices where the loop doubles straight back on itself."""
     changed = True
     while changed and len(loop) > 3:
@@ -98,7 +106,9 @@ def _remove_spikes(loop, eps):
     return loop
 
 
-def clip_halfplane(loops, point, direction, eps):
+def clip_halfplane(
+    loops: Sequence[Sequence[Sequence[float]]], point: Sequence[float], direction: Sequence[float], eps: float
+) -> list[list[Sequence[float]]]:
     """The part of the region bounded by ``loops`` LEFT of the directed line.
 
     Parameters
@@ -117,10 +127,10 @@ def clip_halfplane(loops, point, direction, eps):
     cx, cy = point[0], point[1]
     dx, dy = direction[0], direction[1]
 
-    def side(p):
+    def side(p: Sequence[float]) -> float:
         return dx * (p[1] - cy) - dy * (p[0] - cx)
 
-    def along(p):
+    def along(p: Sequence[float]) -> float:
         return dx * (p[0] - cx) + dy * (p[1] - cy)
 
     kept = []
@@ -195,7 +205,9 @@ def clip_halfplane(loops, point, direction, eps):
     return kept
 
 
-def clip_polyline(points, point, direction, eps):
+def clip_polyline(
+    points: Sequence[Sequence[float]], point: Sequence[float], direction: Sequence[float], eps: float
+) -> list[list[Sequence[float]]]:
     """Pieces of an open polyline left of the line (on the line counts as in).
     Pieces lying entirely ON the line are dropped: they are seam, not guide."""
     cx, cy = point[0], point[1]
@@ -242,7 +254,7 @@ class Seam(object):
     ``'rotation'`` (``element`` is the rotation taking seam A onto seam B).
     """
 
-    def __init__(self, name, angle, kind, element_key, centre):
+    def __init__(self, name: str, angle: float, kind: str, element_key: str, centre: Sequence[float]) -> None:
         self.name = name
         self.angle = angle
         self.kind = kind
@@ -250,7 +262,7 @@ class Seam(object):
         self.centre = centre
         self.direction = (cos(angle), sin(angle))
 
-    def locate(self, point, eps):
+    def locate(self, point: Sequence[float], eps: float) -> float | None:
         """Distance ``t`` from the centre along the seam, or ``None`` if off it."""
         dx, dy = self.direction
         px, py = point[0] - self.centre[0], point[1] - self.centre[1]
@@ -261,10 +273,10 @@ class Seam(object):
             return None
         return max(t, 0.0)
 
-    def point_at(self, t):
+    def point_at(self, t: float) -> list[float]:
         return [self.centre[0] + t * self.direction[0], self.centre[1] + t * self.direction[1], 0.0]
 
-    def to_data(self):
+    def to_data(self) -> dict[str, Any]:
         return {'name': self.name, 'angle': degrees(self.angle), 'kind': self.kind,
                 'element': self.element}
 
@@ -289,7 +301,17 @@ class UnitDomain(object):
     eps : float
     """
 
-    def __init__(self, group, seams, components, guides, poles, poles_on_seams, eps, wedge):
+    def __init__(
+        self,
+        group: SymmetryGroup,
+        seams: list[Seam],
+        components: list[tuple[list[Sequence[float]], list[list[Sequence[float]]]]],
+        guides: list[Sequence[Any]],
+        poles: list[Sequence[float]],
+        poles_on_seams: list[Sequence[float]],
+        eps: float,
+        wedge: float,
+    ) -> None:
         self.group = group
         self.seams = seams
         self.components = components
@@ -300,16 +322,16 @@ class UnitDomain(object):
         self.wedge = wedge
 
     @property
-    def centre(self):
+    def centre(self) -> list[float]:
         return self.group.centre
 
-    def seam(self, name):
+    def seam(self, name: str) -> Seam:
         for s in self.seams:
             if s.name == name:
                 return s
         raise KeyError(name)
 
-    def locate(self, point, eps=None):
+    def locate(self, point: Sequence[float], eps: float | None = None) -> list[tuple[str, float]]:
         """``[(seam name, t), ...]`` for every seam ``point`` lies on."""
         eps = self.eps if eps is None else eps
         out = []
@@ -319,7 +341,7 @@ class UnitDomain(object):
                 out.append((s.name, t))
         return out
 
-    def _line_of(self, a, b):
+    def _line_of(self, a: Sequence[float], b: Sequence[float]) -> int | None:
         """Index of the seam LINE both points lie on, or ``None``.
 
         By line rather than by ray: in a half-plane unit (``D1``, ``C2``) the two
@@ -338,7 +360,7 @@ class UnitDomain(object):
                 return index
         return None
 
-    def _lines(self):
+    def _lines(self) -> list[tuple[float, float]]:
         out = []
         for s in self.seams:
             dx, dy = s.direction
@@ -347,7 +369,7 @@ class UnitDomain(object):
             out.append((dx, dy))
         return out
 
-    def junctions(self):
+    def junctions(self) -> list[Sequence[float]]:
         """Corners of the unit on a seam -- where a seam meets a wall, and the apex.
 
         Every unit mesh must have a vertex at each: the copies are glued along the
@@ -366,7 +388,7 @@ class UnitDomain(object):
                         out.append(loop[i])
         return out
 
-    def seam_runs(self):
+    def seam_runs(self) -> dict[str, list[list[float]]]:
         """``{seam name: [[t_lo, t_hi], ...]}`` -- where each seam bounds the unit."""
         out = {}
         for s in self.seams:
@@ -375,7 +397,7 @@ class UnitDomain(object):
                 out[s.name].append([lo, hi])
         return out
 
-    def _runs(self, s):
+    def _runs(self, s: Seam) -> list[list[float]]:
         segments = []
         for outer, holes in self.components:
             for loop in [outer] + holes:
@@ -401,7 +423,7 @@ class UnitDomain(object):
                 merged.append([lo, hi])
         return merged
 
-    def seam_segments(self):
+    def seam_segments(self) -> list[list[list[float]]]:
         """The seams as polylines, where they bound the unit."""
         runs = []
         for s in self.seams:
@@ -431,18 +453,20 @@ class UnitDomain(object):
             runs += [[s.point_at(lo), s.point_at(hi)] for lo, hi in merged]
         return runs
 
-    def to_data(self):
+    def to_data(self) -> dict[str, Any]:
         return {'group': self.group.to_data(), 'seams': [s.to_data() for s in self.seams],
                 'wedge': degrees(self.wedge), 'eps': self.eps,
                 'components': [[outer, holes] for outer, holes in self.components],
                 'guides': self.guides, 'poles': self.poles, 'poles_on_seams': self.poles_on_seams}
 
 
-def _choose_rotation_seam(domain, group, eps, samples=180):
+def _choose_rotation_seam(domain: Domain, group: SymmetryGroup, eps: float, samples: int = 180) -> float:
     return rotation_seam_candidates(domain, group, eps, samples)[0]
 
 
-def rotation_seam_candidates(domain, group, eps, samples=180, count=None):
+def rotation_seam_candidates(
+    domain: Domain, group: SymmetryGroup, eps: float, samples: int = 180, count: int | None = None
+) -> list[float]:
     """Seam angles for a rotation-only group, best first. See the scoring below.
 
     Nearly equal angles are collapsed so the list offers genuinely different
@@ -459,7 +483,9 @@ def rotation_seam_candidates(domain, group, eps, samples=180, count=None):
     return out
 
 
-def _score_rotation_seams(domain, group, eps, samples=180):
+def _score_rotation_seams(
+    domain: Domain, group: SymmetryGroup, eps: float, samples: int = 180
+) -> list[tuple[float, float]]:
     """``[(score, angle)]`` for every sampled seam angle of a rotation-only group.
 
     Scored by: crossings with holes and guides, poles near the ray, extra
@@ -495,7 +521,7 @@ def _score_rotation_seams(domain, group, eps, samples=180):
     return scored
 
 
-def _count_crossings(a, b, loop, closed):
+def _count_crossings(a: Sequence[float], b: Sequence[float], loop: Sequence[Sequence[float]], closed: bool) -> int:
     n = len(loop)
     last = n if closed else n - 1
     count = 0
@@ -510,7 +536,13 @@ def _count_crossings(a, b, loop, closed):
     return count
 
 
-def cut_unit(domain, group, centre='route', seam=None, eps=None):
+def cut_unit(
+    domain: Domain,
+    group: SymmetryGroup,
+    centre: str = 'route',
+    seam: float | None = None,
+    eps: float | None = None,
+) -> UnitDomain:
     """Cut one fundamental region of ``group`` out of ``domain``.
 
     Parameters
@@ -596,7 +628,7 @@ def cut_unit(domain, group, centre='route', seam=None, eps=None):
     return unit
 
 
-def subgroups_avoiding_poles(domain, group, eps=None):
+def subgroups_avoiding_poles(domain: Domain, group: SymmetryGroup, eps: float | None = None) -> list[SymmetryGroup]:
     """Subgroups of ``group``, largest first, whose seams do not run through a pole.
 
     What to suggest when a pole sits on a mirror axis. At equal order a group with
@@ -615,5 +647,5 @@ def subgroups_avoiding_poles(domain, group, eps=None):
     return out
 
 
-def wedge_angle_of(point, centre):
+def wedge_angle_of(point: Sequence[float], centre: Sequence[float]) -> float:
     return atan2(point[1] - centre[1], point[0] - centre[0])

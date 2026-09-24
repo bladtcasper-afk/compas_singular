@@ -17,11 +17,14 @@ failure modes, all guarded here rather than left for later:
   the exit point is numerically ill-conditioned. Caught by clipping against the
   boundary segment rather than extrapolating the last step.
 """
+from __future__ import annotations
+
 from collections import namedtuple
 from math import atan2
 from math import cos
 from math import pi
 from math import sin
+from typing import Any
 
 from compas_singular.geometry.polyline import closest_on_polyline
 from compas.geometry import distance_point_point
@@ -29,6 +32,7 @@ from compas.geometry import intersection_segment_segment_xy
 from compas.itertools import pairwise
 
 from compas_singular.framefield.constraints import PERIOD
+from compas_singular.framefield.field import CrossField
 from compas_singular.framefield.field import wrap_to_period
 
 
@@ -46,7 +50,12 @@ Separatrix = namedtuple('Separatrix', 'points source sink reason')
 ALIGN_TIE = 0.02
 
 
-def _bary(p, a, b, c):
+def _bary(
+    p: list[float],
+    a: list[float],
+    b: list[float],
+    c: list[float],
+) -> tuple[float, float, float] | None:
     """Barycentric coordinates of ``p`` in triangle ``abc``, in XY."""
     v0x, v0y = b[0] - a[0], b[1] - a[1]
     v1x, v1y = c[0] - a[0], c[1] - a[1]
@@ -81,7 +90,13 @@ class Tracer(object):
         minima under those same faces are an exact orbit. See ``symmetry.py``.
     """
 
-    def __init__(self, field, step=None, max_length=None, singularity_points=None):
+    def __init__(
+        self,
+        field: CrossField,
+        step: float | None = None,
+        max_length: float | None = None,
+        singularity_points: dict[int, list[float]] | None = None,
+    ) -> None:
         self.field = field
         self.background = field.background
         self.mesh = field.background.mesh
@@ -101,7 +116,7 @@ class Tracer(object):
     # point location
     # ------------------------------------------------------------------
 
-    def _build_grid(self):
+    def _build_grid(self) -> None:
         grid = {}
         for fkey in self.mesh.faces():
             pts = [self.mesh.vertex_coordinates(v) for v in self.mesh.face_vertices(fkey)]
@@ -114,7 +129,7 @@ class Tracer(object):
                     grid.setdefault((i, j), []).append(fkey)
         self._grid = grid
 
-    def locate(self, point, hint=None):
+    def locate(self, point: list[float], hint: int | None = None) -> tuple[int, tuple[float, float, float]] | None:
         """Containing face and barycentric coordinates, or ``None`` if outside.
 
         ``hint`` is checked first -- consecutive integration steps almost always
@@ -137,7 +152,12 @@ class Tracer(object):
                 return found
         return None
 
-    def _test(self, fkey, point, tol=-1e-9):
+    def _test(
+        self,
+        fkey: int,
+        point: list[float],
+        tol: float = -1e-9,
+    ) -> tuple[int, tuple[float, float, float]] | None:
         vkeys = self.mesh.face_vertices(fkey)
         a, b, c = [self.mesh.vertex_coordinates(v) for v in vkeys]
         bary = _bary(point, a, b, c)
@@ -151,7 +171,12 @@ class Tracer(object):
     # field sampling
     # ------------------------------------------------------------------
 
-    def direction_at(self, point, reference, hint=None):
+    def direction_at(
+        self,
+        point: list[float],
+        reference: list[float],
+        hint: int | None = None,
+    ) -> tuple[list[float] | None, int | None]:
         """Unit field direction at ``point``, on the arm closest to ``reference``.
 
         Returns ``(direction, fkey)`` or ``(None, None)`` outside the domain.
@@ -174,7 +199,7 @@ class Tracer(object):
     # launch directions
     # ------------------------------------------------------------------
 
-    def _singularity_points(self):
+    def _singularity_points(self) -> dict[int, list[float]]:
         """Where each singularity IS, for launching and for snapping against.
 
         ``repair.build_network`` reads this too rather than recomputing the
@@ -185,7 +210,7 @@ class Tracer(object):
                 or self.mesh.face_centroid(fkey)
                 for fkey, _ in self.field.singularities()}
 
-    def launch_directions(self, centre, index):
+    def launch_directions(self, centre: list[float], index: int) -> list[list[float]]:
         """Directions in which separatrices leave a singularity.
 
         Walk a small circle around the singularity; a separatrix leaves wherever
@@ -248,7 +273,7 @@ class Tracer(object):
         return [[cos(a), sin(a), 0.0] for a in best]
 
     @staticmethod
-    def _level_crossings(phis, residual, target):
+    def _level_crossings(phis: list[float], residual: list[float], target: int) -> list[float]:
         """Where the unwrapped residual first reaches each multiple of the period.
 
         Over one lap the residual advances by exactly ``target`` periods, so there
@@ -289,7 +314,7 @@ class Tracer(object):
     # integration
     # ------------------------------------------------------------------
 
-    def _inward_normal(self, loop, i):
+    def _inward_normal(self, loop: list[list[float]], i: int) -> list[float] | None:
         """Unit normal at ``loop[i]`` pointing INTO the domain, or ``None``.
 
         Taken from the edge tangent rather than from the loop's centroid, so it
@@ -310,7 +335,7 @@ class Tracer(object):
                 return normal
         return None
 
-    def _cut_launches_from(self, loop, count):
+    def _cut_launches_from(self, loop: list[list[float]], count: int) -> list[tuple[list[float], list[float]]]:
         """``count`` launch sites spread around ``loop``, each on a field line.
 
         Two independent choices, and both matter:
@@ -392,7 +417,11 @@ class Tracer(object):
             launches.append((point, arm))
         return launches
 
-    def hole_launches(self, corner_limit=pi / 12.0, count=4):
+    def hole_launches(
+        self,
+        corner_limit: float = pi / 12.0,
+        count: int = 4,
+    ) -> list[tuple[list[float], list[float]]]:
         """Cuts opening a boundary loop that emits no separatrix of its own.
 
         Separatrices otherwise come from two places only: interior singularities
@@ -440,7 +469,7 @@ class Tracer(object):
             launches.extend(self._cut_launches_from(loop, count))
         return launches
 
-    def corner_points(self, corner_limit=pi / 12.0):
+    def corner_points(self, corner_limit: float = pi / 12.0) -> list[list[float]]:
         """Every boundary corner, as a flat list of points."""
         from compas_singular.framefield.separatrix_network import boundary_corners
         out = []
@@ -449,7 +478,14 @@ class Tracer(object):
                 out.append(list(loop[i]))
         return out
 
-    def trace(self, start, direction, source=None, singular_points=None, corners=None):
+    def trace(
+        self,
+        start: list[float],
+        direction: list[float],
+        source: int | str | None = None,
+        singular_points: dict[int, list[float]] | None = None,
+        corners: list[list[float]] | None = None,
+    ) -> Separatrix:
         """Integrate one separatrix from ``start`` along ``direction``.
 
         Returns
@@ -533,7 +569,7 @@ class Tracer(object):
 
         return Separatrix(points, source, sink, reason)
 
-    def _revisits(self, points, tol):
+    def _revisits(self, points: list[list[float]], tol: float) -> bool:
         """Whether the head has returned to an early part of its own trail."""
         head = points[-1]
         for p in points[:-20]:
@@ -541,7 +577,7 @@ class Tracer(object):
                 return True
         return False
 
-    def _project_to_boundary(self, point):
+    def _project_to_boundary(self, point: list[float]) -> list[float] | None:
         """Closest point on any boundary loop."""
         best, best_d = None, float('inf')
         for loop in [self.background.outer] + list(self.background.inners):
@@ -550,7 +586,7 @@ class Tracer(object):
                 best, best_d = q, d
         return best
 
-    def _clip_to_boundary(self, inside, outside):
+    def _clip_to_boundary(self, inside: list[float], outside: list[float]) -> list[float] | None:
         """Where the segment leaves the domain.
 
         Clipping against the actual boundary segment rather than extrapolating
@@ -574,7 +610,7 @@ class Tracer(object):
     # the whole set
     # ------------------------------------------------------------------
 
-    def corner_launches(self, corner_limit=pi / 12.0):
+    def corner_launches(self, corner_limit: float = pi / 12.0) -> list[tuple[list[float], list[float]]]:
         """Separatrices emitted by the domain's own corners.
 
         Interior singularities are not the only sources. A boundary corner with
@@ -664,7 +700,12 @@ class Tracer(object):
                     for d, _ in candidates[:k - 1])
         return launches
 
-    def _interior_angle(self, back, fwd, loop):
+    def _interior_angle(
+        self,
+        back: list[float],
+        fwd: list[float],
+        loop: list[list[float]],
+    ) -> tuple[float, bool]:
         """Interior angle at a corner, measured on the domain side.
 
         On a counter-clockwise loop the interior is to the left, so the interior
@@ -682,7 +723,7 @@ class Tracer(object):
         sweep = (a_back - a_fwd) % (2.0 * pi)
         return (sweep if ccw else 2.0 * pi - sweep), ccw
 
-    def separatrices(self):
+    def separatrices(self) -> tuple[list[Separatrix], dict[str, Any]]:
         """Every separatrix of the field -- from singularities and from corners.
 
         Returns

@@ -1,6 +1,9 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from __future__ import annotations
+
+from typing import Any
 
 from compas.datastructures.graph.operations.join import graph_polylines
 from compas.tolerance import TOL
@@ -26,7 +29,7 @@ class Skeleton(Mesh):
            Available at https://www.sciencedirect.com/science/article/abs/pii/S0167865515001233.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super(Skeleton, self).__init__(*args, **kwargs)
         #: Curve-feature edges as pairs of ``TOL.geometric_key``. An adjacency
         #: across one of these is not a real adjacency -- see
@@ -37,7 +40,7 @@ class Skeleton(Mesh):
         #: ordering to tell whether two branches land at the same place.
         self.feature_points = []
 
-    def real_neighbors(self, fkey):
+    def real_neighbors(self, fkey: int) -> list[int]:
         """The adjacent faces of ``fkey``, excluding any across a curve feature.
 
         Thesis S4.3.2 makes a topological cut along each curve feature so that no
@@ -61,7 +64,7 @@ class Skeleton(Mesh):
             return neighbors
         return [nbr for nbr in neighbors if not self._adjacent_across_feature(fkey, nbr)]
 
-    def _adjacent_across_feature(self, fkey, nbr):
+    def _adjacent_across_feature(self, fkey: int, nbr: int) -> bool:
         """Do these two faces share an edge that lies on a curve feature?"""
         shared = set(self.face_vertices(fkey)) & set(self.face_vertices(nbr))
         if len(shared) != 2:
@@ -70,7 +73,7 @@ class Skeleton(Mesh):
         return (u, v) in self.feature_edges or (v, u) in self.feature_edges
 
     @classmethod
-    def from_mesh(cls, mesh):
+    def from_mesh(cls, mesh: Mesh) -> "Skeleton":
         """Construct a Skeleton object from a Mesh.
 
         Returns
@@ -83,7 +86,7 @@ class Skeleton(Mesh):
         skeleton.feature_edges = frozenset(mesh.attributes.get('feature_edges') or ())
         return skeleton
 
-    def singular_faces(self):
+    def singular_faces(self) -> list[int]:
         """Get the indices of the singular faces in the Delaunay mesh, i.e. the ones with three neighbours.
 
         Returns
@@ -94,7 +97,7 @@ class Skeleton(Mesh):
         """
         return [fkey for fkey in self.faces() if len(self.real_neighbors(fkey)) == 3]
 
-    def singular_points(self):
+    def singular_points(self) -> list[list[float]]:
         """Get the XYZ-coordinates of the singular points of the topological skeleton, i.e. the face circumcentre of the singular faces.
 
         Returns
@@ -107,7 +110,7 @@ class Skeleton(Mesh):
             trimesh_face_circle(self, fkey)[0] for fkey in self.singular_faces()
         ]
 
-    def lines(self):
+    def lines(self) -> list[tuple[list[float], list[float]]]:
         """Get the lines forming the topological skeleton, i.e. the lines connecting the circumcentres of adjacent faces.
 
         Returns
@@ -125,7 +128,7 @@ class Skeleton(Mesh):
             != TOL.geometric_key(trimesh_face_circle(self, nbr)[0])
         ]
 
-    def branches(self):
+    def branches(self) -> list[list[list[float]]]:
         """Get the branch polylines of the topological skeleton as polylines connecting singular points.
 
         Returns

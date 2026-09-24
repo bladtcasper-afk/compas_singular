@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from __future__ import annotations
 
 from compas_singular.datastructures.mesh_quad.mesh_quad import *  # noqa: F401 F403
 from compas_singular.datastructures.mesh_quad.coloring import *  # noqa: F401 F403

@@ -19,17 +19,24 @@ Delete this module when no ``.3dm`` from before that date matters any more.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 import json
 import os
+from typing import Any
+from typing import TYPE_CHECKING
 
 from compas_singular.settings import Settings
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import CoarsePseudoQuadMesh
+    from compas_singular.rhino.session import RhinoSession
 
 
 __all__ = ['read_legacy']
 
 
-def read_legacy(session):
+def read_legacy(session: RhinoSession) -> None:
     """Fill ``session`` from its document's old settings, drawing and side-cars."""
     doc = session.doc
     text = doc.Strings.GetValue('settings')
@@ -46,7 +53,7 @@ def read_legacy(session):
     session.field = _side_car(doc, 'field.json', 'CrossField')
 
 
-def _side_car(doc, filename, kind):
+def _side_car(doc: Any, filename: str, kind: str) -> Any:
     """A side-car beside a SAVED document, or ``None``."""
     if not doc.Path:
         return None
@@ -59,7 +66,7 @@ def _side_car(doc, filename, kind):
     return CoarsePseudoQuadMesh.load_from_json(path, default=None)
 
 
-def _drawn_layout():
+def _drawn_layout() -> CoarsePseudoQuadMesh | None:
     """The layout baked on ``Skeleton::Mesh`` with its poles, or ``None``."""
     from compas_singular.rhino.helpers import read_coarse
     try:
@@ -69,7 +76,7 @@ def _drawn_layout():
     return coarse
 
 
-def _drawn_polylines():
+def _drawn_polylines() -> list[list[list[float]]]:
     """The separatrices baked on ``Skeleton::Polylines``."""
     import rhinoscriptsyntax as rs
 
@@ -80,12 +87,12 @@ def _drawn_polylines():
     return read_polylines(layer) if rs.IsLayer(layer) else []
 
 
-def _same_corners(one, other):
+def _same_corners(one: CoarsePseudoQuadMesh, other: CoarsePseudoQuadMesh) -> bool:
     """Whether two layouts have the same ROUNDED corners -- a bake renumbers and
     stores single precision, so neither order nor exact coordinates prove anything."""
     from compas.tolerance import TOL
 
-    def keys(mesh):
+    def keys(mesh: CoarsePseudoQuadMesh) -> set[str]:
         return set(TOL.geometric_key(mesh.vertex_coordinates(v)) for v in mesh.vertices())
 
     return keys(one) == keys(other)

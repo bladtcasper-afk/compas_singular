@@ -17,9 +17,17 @@ what not to repeat, and it is only useful if it is still there.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import Any
+from typing import Sequence
+from typing import TYPE_CHECKING
 
 from compas_singular.mcp import library
 from compas_singular.mcp.registry import tool
+
+if TYPE_CHECKING:
+    from compas_singular.mcp.session import MeshSession
 
 
 __all__ = []
@@ -27,7 +35,7 @@ __all__ = []
 VERDICTS = ('good', 'acceptable', 'bad')
 
 
-def _fingerprint_of(session):
+def _fingerprint_of(session: MeshSession) -> dict[str, Any]:
     metrics = session.quality() or {}
     return library.fingerprint(metrics, walls=len(session.walls),
                                faces=metrics.get('faces'))
@@ -50,7 +58,7 @@ def _fingerprint_of(session):
                            'good, acceptable, bad.'},
     },
     read_only=True, idempotent=True, title='Recall similar sessions')
-def _t_recall_examples(session, limit=3, verdicts=None):
+def _t_recall_examples(session: MeshSession, limit: int = 3, verdicts: Sequence[str] | None = None) -> dict[str, Any]:
     wanted = tuple(verdicts) if verdicts else VERDICTS
     bad = [v for v in wanted if v not in VERDICTS]
     if bad:
@@ -94,7 +102,7 @@ def _t_recall_examples(session, limit=3, verdicts=None):
                         'description': 'What you were asked to do.'},
     },
     required=('name', 'verdict'), open_world=True, title='Save a worked example')
-def _t_save_example(session, name, verdict, lesson=None, instruction=None):
+def _t_save_example(session: MeshSession, name: str, verdict: str, lesson: str | None = None, instruction: str | None = None) -> dict[str, Any]:
     if verdict not in VERDICTS:
         return {'ok': False,
                 'reason': "verdict must be one of good, acceptable, bad; got "

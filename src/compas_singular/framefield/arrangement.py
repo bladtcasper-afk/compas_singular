@@ -48,12 +48,19 @@ The output is the same ``(boundary, others)`` pair ``build_network`` returns, so
 this module drops in between that and ``from_polylines`` and nothing downstream
 changes shape.
 """
+from __future__ import annotations
+
 from math import atan2
+from typing import Any
+from typing import TYPE_CHECKING
 
 from compas_singular.geometry.polyline import closest_on_polyline
 from compas_singular.geometry.polyline import distance_to_loop
 from compas.geometry import distance_point_point
 from compas.itertools import pairwise
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import Mesh
 
 
 __all__ = ['planar_arrangement', 'faces_with_repeated_vertices',
@@ -67,7 +74,12 @@ __all__ = ['planar_arrangement', 'faces_with_repeated_vertices',
 GKEY_RESOLUTION = 1e-3
 
 
-def _seg_seg(p1, p2, p3, p4):
+def _seg_seg(
+    p1: list[float],
+    p2: list[float],
+    p3: list[float],
+    p4: list[float],
+) -> tuple[float, float] | None:
     """Parameters ``(t, u)`` where two segments meet, or ``None``.
 
     Endpoints count as meeting: a crossing that happens to fall on a polyline
@@ -88,11 +100,11 @@ def _seg_seg(p1, p2, p3, p4):
     return None
 
 
-def _length_of(points):
+def _length_of(points: list[list[float]]) -> float:
     return sum(distance_point_point(a, b) for a, b in pairwise(points))
 
 
-def _cumulative(loop):
+def _cumulative(loop: list[list[float]]) -> list[float]:
     """Arc-length parameter of each loop vertex, plus the loop's total length."""
     cum = [0.0]
     for a, b in pairwise(list(loop) + list(loop[:1])):
@@ -100,7 +112,7 @@ def _cumulative(loop):
     return cum
 
 
-def _loop_param(loop, cum, p):
+def _loop_param(loop: list[list[float]], cum: list[float], p: list[float]) -> tuple[float, float]:
     """Arc-length position of the loop point closest to ``p``."""
     best_d, best_s = float('inf'), 0.0
     for i, (a, b) in enumerate(pairwise(list(loop) + list(loop[:1]))):
@@ -117,7 +129,11 @@ def _loop_param(loop, cum, p):
     return best_d, best_s
 
 
-def _partition_loop(loop, marks, tol):
+def _partition_loop(
+    loop: list[list[float]],
+    marks: list[list[float]],
+    tol: float,
+) -> list[list[list[float]]]:
     """Cut a closed loop into arcs at ``marks``: a true PARTITION, once round.
 
     ``build_network._split_loop`` walks the loop between consecutive marks by
@@ -161,7 +177,7 @@ def _partition_loop(loop, marks, tol):
     if len(unique) < 2:
         unique = [(total * k / 3.0, None) for k in range(3)]
 
-    def point_at(s):
+    def point_at(s: float) -> list[float]:
         s = s % total
         for i, (c0, c1) in enumerate(zip(cum, cum[1:])):
             if c0 - 1e-12 <= s <= c1 + 1e-12:
@@ -212,15 +228,20 @@ class _Nodes(object):
     ``geometric_key``.
     """
 
-    def __init__(self, tol, loops=None):
+    def __init__(self, tol: float, loops: list[list[list[float]]] | None = None) -> None:
         self.tol = tol
         self.loops = list(loops or [])
         self.points = []
 
-    def _on_wall(self, p):
+    def _on_wall(self, p: list[float]) -> bool:
         return any(distance_to_loop(p, loop) < self.tol * 0.25 for loop in self.loops)
 
-    def add(self, p, tol=None, exclude=None):
+    def add(
+        self,
+        p: list[float],
+        tol: float | None = None,
+        exclude: list[float] | None = None,
+    ) -> list[float]:
         """Return the canonical position for ``p``, creating a node if new.
 
         Two points that both sit on a WALL are held to a quarter of ``tol``.
@@ -243,7 +264,7 @@ class _Nodes(object):
         return q
 
 
-def _normalise(cut, n_points):
+def _normalise(cut: tuple[int, float], n_points: int) -> tuple[int, float]:
     """Move a cut sitting on a segment END onto the next segment's start.
 
     Without this a crossing at ``t = 1`` of segment ``i`` and the same crossing
@@ -256,7 +277,10 @@ def _normalise(cut, n_points):
     return i, t
 
 
-def _split_chain(points, cuts):
+def _split_chain(
+    points: list[list[float]],
+    cuts: list[tuple[int, float, list[float]]],
+) -> list[list[list[float]]]:
     """Cut a polyline at ``(segment, t, position)`` marks. Ends are kept."""
     if not cuts:
         return [[list(p) for p in points]]
@@ -283,7 +307,13 @@ def _split_chain(points, cuts):
     return pieces
 
 
-def planar_arrangement(boundary, others, tol, report=None, loops=None):
+def planar_arrangement(
+    boundary: list[list[list[float]]],
+    others: list[list[list[float]]],
+    tol: float,
+    report: dict[str, Any] | None = None,
+    loops: list[list[list[float]]] | None = None,
+) -> tuple[list[list[list[float]]], list[list[list[float]]]]:
     """Split every polyline at every crossing so the network is a planar graph.
 
     Parameters
@@ -481,7 +511,7 @@ def planar_arrangement(boundary, others, tol, report=None, loops=None):
     # -- 5. doubled edges --------------------------------------------------
     # ``from_lines`` cannot tell which side of a doubled edge a face is on. Two
     # pieces spanning the same node pair along the same route are one edge.
-    def key_of(piece):
+    def key_of(piece: list[list[float]]) -> tuple[tuple[float, float], tuple[float, float]]:
         a = tuple(round(c, 9) for c in piece[0][:2])
         b = tuple(round(c, 9) for c in piece[-1][:2])
         return (a, b) if a <= b else (b, a)
@@ -545,7 +575,7 @@ def planar_arrangement(boundary, others, tol, report=None, loops=None):
 # the guard
 # ----------------------------------------------------------------------------
 
-def faces_with_repeated_vertices(mesh):
+def faces_with_repeated_vertices(mesh: Mesh) -> list[int]:
     """Faces that visit the same vertex -- or the same POSITION -- twice.
 
     This is the direct symptom of a face recovered from a graph that was not a
@@ -578,7 +608,7 @@ def faces_with_repeated_vertices(mesh):
 # measurement, used by the checks
 # ----------------------------------------------------------------------------
 
-def count_interior_crossings(polylines, tol):
+def count_interior_crossings(polylines: list[list[list[float]]], tol: float) -> list[list[float]]:
     """Crossings that are in the INTERIOR of both polylines. Should be zero."""
     found = []
     for i in range(len(polylines)):
@@ -600,11 +630,15 @@ def count_interior_crossings(polylines, tol):
     return found
 
 
-def count_dangling_ends(boundary, others, tol):
+def count_dangling_ends(
+    boundary: list[list[list[float]]],
+    others: list[list[list[float]]],
+    tol: float,
+) -> list[list[float]]:
     """Endpoints that no second polyline reaches. Should be zero."""
     nodes, degree = [], []
 
-    def node(p):
+    def node(p: list[float]) -> int:
         for k, q in enumerate(nodes):
             if distance_point_point(p, q) < tol:
                 return k
@@ -622,7 +656,7 @@ def count_dangling_ends(boundary, others, tol):
 # face recovery
 # ----------------------------------------------------------------------------
 
-def _point_in_ring(p, ring):
+def _point_in_ring(p: list[float], ring: list[list[float]]) -> bool:
     """Ray casting. ``ring`` is a closed loop of [x, y, z]."""
     x, y = p[0], p[1]
     inside = False
@@ -637,7 +671,7 @@ def _point_in_ring(p, ring):
     return inside
 
 
-def _interior_sample(points):
+def _interior_sample(points: list[list[float]]) -> list[float] | None:
     """A point inside the polygon ``points``, or ``None``.
 
     The centroid is tried first and is right for anything convex. A half-annulus
@@ -658,7 +692,11 @@ def _interior_sample(points):
     return None
 
 
-def faces_from_arrangement(boundary, others, loops):
+def faces_from_arrangement(
+    boundary: list[list[list[float]]],
+    others: list[list[list[float]]],
+    loops: list[list[list[float]]],
+) -> list[list[list[float]]]:
     """Recover the domain's faces from the polyline network directly.
 
     ``CoarsePseudoQuadMesh.from_polylines`` cannot do this for every domain. It
@@ -699,7 +737,7 @@ def faces_from_arrangement(boundary, others, loops):
     list[list[[x, y, z]]]
         One entry per face, its corner points in order.
     """
-    def node(p):
+    def node(p: list[float]) -> tuple[float, float]:
         return (round(p[0] / GKEY_RESOLUTION), round(p[1] / GKEY_RESOLUTION))
 
     # Each polyline is ONE edge with two half-edges, ``(index, +1)`` running
@@ -714,7 +752,7 @@ def faces_from_arrangement(boundary, others, loops):
         if a != b:
             edges.append((a, b, list(pts)))
 
-    def ends(h):
+    def ends(h: tuple[int, int]) -> tuple[tuple[float, float], tuple[float, float], list[list[float]]]:
         i, d = h
         a, b, pts = edges[i]
         return (a, b, pts) if d > 0 else (b, a, pts[::-1])

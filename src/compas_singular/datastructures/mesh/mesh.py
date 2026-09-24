@@ -1,8 +1,10 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from __future__ import annotations
 
 import os
+from typing import Any
 
 from compas.datastructures import Mesh
 from compas.geometry import centroid_points
@@ -15,7 +17,7 @@ __all__ = ['Mesh']
 
 class Mesh(Mesh):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super(Mesh, self).__init__(*args, **kwargs)
 
     # ------------------------------------------------------------------------
@@ -29,22 +31,22 @@ class Mesh(Mesh):
     # ------------------------------------------------------------------------
 
     @staticmethod
-    def _as_edge(u, v):
+    def _as_edge(u: int | tuple[int, int], v: int | None) -> tuple[int, int]:
         return u if v is None else (u, v)
 
-    def edge_midpoint(self, u, v=None):
+    def edge_midpoint(self, u: int | tuple[int, int], v: int | None = None) -> Point:
         return super(Mesh, self).edge_midpoint(self._as_edge(u, v))
 
-    def edge_length(self, u, v=None):
+    def edge_length(self, u: int | tuple[int, int], v: int | None = None) -> float:
         return super(Mesh, self).edge_length(self._as_edge(u, v))
 
-    def edge_faces(self, u, v=None):
+    def edge_faces(self, u: int | tuple[int, int], v: int | None = None) -> tuple[int | None, int | None]:
         return super(Mesh, self).edge_faces(self._as_edge(u, v))
 
-    def is_edge_on_boundary(self, u, v=None):
+    def is_edge_on_boundary(self, u: int | tuple[int, int], v: int | None = None) -> bool:
         return super(Mesh, self).is_edge_on_boundary(self._as_edge(u, v))
 
-    def edge_point(self, u, v=None, t=0.5):
+    def edge_point(self, u: int | tuple[int, int], v: int | None = None, t: float = 0.5) -> Point:
         # old style: edge_point(u, v, t); new style: edge_point((u, v), t)
         if isinstance(u, (list, tuple)):
             return super(Mesh, self).edge_point(u, 0.5 if v is None else v)
@@ -63,7 +65,7 @@ class Mesh(Mesh):
     # per-strip densities including a hand-set 9, and 3 ``face_pole`` entries,
     # in 2.3 kB.
 
-    def save_to_json(self, filepath, pretty=False):
+    def save_to_json(self, filepath: str, pretty: bool = False) -> str:
         """Write the mesh and everything in :attr:`attributes` to ``filepath``.
 
         ``to_json`` with two differences worth having: the parent directory is
@@ -95,7 +97,7 @@ class Mesh(Mesh):
         return filepath
 
     @classmethod
-    def load_from_json(cls, filepath, default=None):
+    def load_from_json(cls, filepath: str, default: Any = None) -> Any:
         """**Construct a mesh from what** :meth:`save_to_json` **wrote.**
 
         The class comes from the FILE, not from ``cls``: compas stores a
@@ -137,7 +139,7 @@ class Mesh(Mesh):
         return cls.from_json(filepath)
 
     @classmethod
-    def __from_data__(cls, data):
+    def __from_data__(cls, data: dict) -> Any:
         """Every way a mesh is decoded comes through here, so the key repair
         :meth:`load_from_json` describes is done HERE. A mesh inside a larger
         JSON document (a session) is decoded without ever touching
@@ -152,7 +154,7 @@ class Mesh(Mesh):
                 for k, v in table.items()}
         return mesh
 
-    def to_vertices_and_faces(self, keep_keys=True):
+    def to_vertices_and_faces(self, keep_keys: bool = True) -> tuple[dict[int, list[float]] | list[list[float]], dict[int, list[int]] | list[list[int]]]:
 
         if keep_keys:
             vertices = {vkey: self.vertex_coordinates(vkey) for vkey in self.vertices()}
@@ -163,7 +165,7 @@ class Mesh(Mesh):
             faces = [[vertex_index[key] for key in self.face_vertices(fkey)] for fkey in self.faces()]
         return vertices, faces
 
-    def boundaries(self):
+    def boundaries(self) -> list[list[int]]:
         """Collect the mesh boundaries as lists of vertices.
 
         Parameters
@@ -198,7 +200,7 @@ class Mesh(Mesh):
 
         return boundaries
 
-    def is_boundary_vertex_kink(self, vkey, threshold_angle):
+    def is_boundary_vertex_kink(self, vkey: int, threshold_angle: float) -> bool:
         """Return whether there is a kink at a boundary vertex according to a threshold angle.
 
         Parameters
@@ -224,7 +226,7 @@ class Mesh(Mesh):
         # compare boundary angle with threshold angle
         return angle_points(self.vertex_coordinates(ukey), self.vertex_coordinates(vkey), self.vertex_coordinates(wkey)) > threshold_angle
 
-    def boundary_kinks(self, threshold_angle):
+    def boundary_kinks(self, threshold_angle: float) -> list[int]:
         """Return the boundary vertices with kinks.
 
         Parameters
@@ -241,7 +243,7 @@ class Mesh(Mesh):
 
         return [vkey for bdry in self.vertices_on_boundaries() for vkey in bdry if self.is_boundary_vertex_kink(vkey, threshold_angle)]
 
-    def vertex_centroid(self):
+    def vertex_centroid(self) -> list[float]:
         """Calculate the centroid of the mesh vertices.
 
         Parameters
@@ -255,7 +257,7 @@ class Mesh(Mesh):
 
         return centroid_points([self.vertex_coordinates(vkey) for vkey in self.vertices()])
 
-    def vertex_map(self, view=False):
+    def vertex_map(self, view: bool = False) -> list[tuple[int, Point]]:
         vkeys, _ = self.to_vertices_and_faces()
 
         vertices = []

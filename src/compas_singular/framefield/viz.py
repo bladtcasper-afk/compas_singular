@@ -16,12 +16,21 @@ pulled back to frame the whole grid, and ``--no-view`` to skip.
 Every ``add_*`` takes the group and an offset, so a caller can place several
 domains, or several stages of one domain, side by side.
 """
+from __future__ import annotations
+
+from typing import Any
+from typing import TYPE_CHECKING
+
 from compas.colors import Color
 from compas.datastructures import Graph
 from compas.geometry import Point
 from compas.geometry import Polyline
 
 from compas_singular.datastructures import QuadMesh
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import Mesh
+    from compas_singular.framefield.field_decomposition import FieldDecomposition
 
 
 __all__ = [
@@ -42,7 +51,7 @@ GUIDE = Color.purple()
 PATCH_EDGE = Color.from_rgb255(70, 110, 170)
 
 
-def translated(mesh, dx, dy, cls=None):
+def translated(mesh: Mesh, dx: float, dy: float, cls: type | None = None) -> Mesh:
     """A copy of ``mesh`` moved in XY.
 
     Rebuilt from vertices and faces rather than transformed in place, so a
@@ -58,26 +67,26 @@ def translated(mesh, dx, dy, cls=None):
     return (cls or QuadMesh).from_vertices_and_faces(vertices, faces)
 
 
-def _shift(points, dx, dy, dz=0.0):
+def _shift(points: list[list[float]], dx: float, dy: float, dz: float = 0.0) -> list[list[float]]:
     return [[p[0] + dx, p[1] + dy, p[2] + dz] for p in points]
 
 
 class Grid(object):
     """Panel placement, and a camera that frames the whole set."""
 
-    def __init__(self, pitch=16.0, cols=3):
+    def __init__(self, pitch: float = 16.0, cols: int = 3) -> None:
         self.pitch = pitch
         self.cols = cols
         self.used = 0
 
-    def cell(self, i=None):
+    def cell(self, i: int | None = None) -> tuple[float, float]:
         """Offset of panel ``i``. Rows run downwards, as they read."""
         if i is None:
             i = self.used
         self.used = max(self.used, i + 1)
         return (i % self.cols) * self.pitch, -(i // self.cols) * self.pitch
 
-    def frame(self, viewer, margin=1.1):
+    def frame(self, viewer: Any, margin: float = 1.1) -> Grid:
         """Point the camera at the middle of the grid and pull it back.
 
         The default camera frames a single object, so a multi-panel scene opens
@@ -104,14 +113,20 @@ class Grid(object):
 # layers
 # ----------------------------------------------------------------------------
 
-def add_background(group, decomposition, dx=0.0, dy=0.0):
+def add_background(group: Any, decomposition: FieldDecomposition, dx: float = 0.0, dy: float = 0.0) -> None:
     """The triangulation the field lives on."""
     group.add(translated(decomposition.background.mesh, dx, dy),
               show_points=False, show_lines=True, show_faces=True, opacity=0.25,
               name='background triangulation')
 
 
-def add_field(group, decomposition, dx=0.0, dy=0.0, budget=300):
+def add_field(
+    group: Any,
+    decomposition: FieldDecomposition,
+    dx: float = 0.0,
+    dy: float = 0.0,
+    budget: int = 300,
+) -> int:
     """Cross ticks, two arms per sample.
 
     Only two of the four arms are drawn -- the other two are their negatives and
@@ -148,7 +163,7 @@ def add_field(group, decomposition, dx=0.0, dy=0.0, budget=300):
     return n // 2
 
 
-def add_boundary(group, decomposition, dx=0.0, dy=0.0):
+def add_boundary(group: Any, decomposition: FieldDecomposition, dx: float = 0.0, dy: float = 0.0) -> None:
     """Outer wall and any holes."""
     bg = decomposition.background
     for i, loop in enumerate([bg.outer] + list(bg.inners)):
@@ -157,7 +172,7 @@ def add_boundary(group, decomposition, dx=0.0, dy=0.0):
                   name='outer wall' if i == 0 else 'hole {}'.format(i))
 
 
-def add_separatrices(group, decomposition, dx=0.0, dy=0.0):
+def add_separatrices(group: Any, decomposition: FieldDecomposition, dx: float = 0.0, dy: float = 0.0) -> int:
     """The traced field lines that cut the domain into patches."""
     _, others, _ = decomposition._build()
     for i, polyline in enumerate(others):
@@ -167,7 +182,13 @@ def add_separatrices(group, decomposition, dx=0.0, dy=0.0):
     return len(others)
 
 
-def add_singularities(group, decomposition, dx=0.0, dy=0.0, size=20):
+def add_singularities(
+    group: Any,
+    decomposition: FieldDecomposition,
+    dx: float = 0.0,
+    dy: float = 0.0,
+    size: int = 20,
+) -> None:
     """Field singularities, coloured by index sign."""
     for fkey, k in decomposition.field.singularities():
         x, y, _ = decomposition.background.mesh.face_centroid(fkey)
@@ -176,7 +197,13 @@ def add_singularities(group, decomposition, dx=0.0, dy=0.0, size=20):
                   name='singularity {:+d} (wants valence {})'.format(k, 4 - k))
 
 
-def add_layout(group, decomposition, dx=0.0, dy=0.0, faces=True):
+def add_layout(
+    group: Any,
+    decomposition: FieldDecomposition,
+    dx: float = 0.0,
+    dy: float = 0.0,
+    faces: bool = True,
+) -> None:
     """The coarse quad layout: patches, their corners, and the separatrices."""
     mesh = decomposition.mesh
     if mesh is not None:
@@ -191,13 +218,13 @@ def add_layout(group, decomposition, dx=0.0, dy=0.0, faces=True):
     add_boundary(group, decomposition, dx, dy)
 
 
-def add_dense(group, dense, dx=0.0, dy=0.0, name='dense quad mesh'):
+def add_dense(group: Any, dense: Mesh, dx: float = 0.0, dy: float = 0.0, name: str = 'dense quad mesh') -> None:
     """The densified quad mesh."""
     group.add(translated(dense, dx, dy),
               show_points=False, show_lines=True, show_faces=True, name=name)
 
 
-def add_guides(group, guides, dx=0.0, dy=0.0, name='cable'):
+def add_guides(group: Any, guides: list[Any], dx: float = 0.0, dy: float = 0.0, name: str = 'cable') -> None:
     """Cables or force lines, drawn above everything else."""
     for i, curve in enumerate(guides or []):
         pts = getattr(curve, 'points', curve)

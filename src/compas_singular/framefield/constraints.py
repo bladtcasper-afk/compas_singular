@@ -8,6 +8,8 @@ in ``field.py`` a plain linear system.
 Constraints live on VERTICES, not faces -- ``field.py`` carries one unknown per
 vertex.
 """
+from __future__ import annotations
+
 from cmath import exp as cexp
 from cmath import phase
 from collections import namedtuple
@@ -16,11 +18,16 @@ from math import cos
 from math import pi
 from math import sin
 from numbers import Number
+from typing import Any
+from typing import TYPE_CHECKING
 
 from compas.geometry import distance_point_point
 from compas.geometry import normalize_vector
 from compas.geometry import subtract_vectors
 from compas.itertools import pairwise
+
+if TYPE_CHECKING:
+    from compas_singular.framefield.background import BackgroundMesh
 
 
 __all__ = ['Constraint', 'as_curve_list', 'from_boundary', 'from_curves',
@@ -32,7 +39,7 @@ __all__ = ['Constraint', 'as_curve_list', 'from_boundary', 'from_curves',
 Constraint = namedtuple('Constraint', 'vkey direction weight')
 
 
-def representation(direction):
+def representation(direction: list[float]) -> complex:
     """The 4-fold-symmetric complex representation of a direction.
 
     ``exp(i * 4 * theta)``. Note ``representation(d) == representation(rotate90(d))``
@@ -43,7 +50,7 @@ def representation(direction):
     return cexp(4j * theta)
 
 
-def as_curve_list(curves):
+def as_curve_list(curves: Any) -> list[Any]:
     """A list of curves, whether one curve or several were passed.
 
     The test is on the DEPTH, not on the leaf type: ``curves[0][0]`` is a number
@@ -62,7 +69,11 @@ def as_curve_list(curves):
     return list(curves or [])
 
 
-def from_boundary(background, weight=None, corner_tolerance=0.1):
+def from_boundary(
+    background: BackgroundMesh,
+    weight: float | None = None,
+    corner_tolerance: float = 0.1,
+) -> list[Constraint]:
     """Pin the field tangent to every boundary vertex.
 
     This is the constraint that makes quads sit flush against the wall, and it is
@@ -103,8 +114,14 @@ def from_boundary(background, weight=None, corner_tolerance=0.1):
     return out
 
 
-def from_curves(background, curves, mode='perpendicular', band=None, weight=1.0,
-                skip_boundary=True):
+def from_curves(
+    background: BackgroundMesh,
+    curves: Any,
+    mode: str = 'perpendicular',
+    band: float | None = None,
+    weight: float | None = 1.0,
+    skip_boundary: bool = True,
+) -> list[Constraint]:
     """Pin the field along guide curves -- cables, force lines.
 
     Parameters
@@ -188,7 +205,7 @@ def from_curves(background, curves, mode='perpendicular', band=None, weight=1.0,
     return _merge_hard(out) if weight is None else out
 
 
-def _merge_hard(constraints):
+def _merge_hard(constraints: list[Constraint]) -> list[Constraint]:
     """One hard constraint per vertex, averaged in the 4th-power representation.
 
     Soft constraints need no help: ``field.solve`` accumulates them per vertex,
@@ -219,7 +236,7 @@ def _merge_hard(constraints):
     return out
 
 
-def _assert_mode_identity():
+def _assert_mode_identity() -> bool:
     """The 4-fold identity the ``mode`` docstring claims. Called by the tests."""
     d = normalize_vector([0.37, 0.93, 0.0])
     perp = [-d[1], d[0], 0.0]

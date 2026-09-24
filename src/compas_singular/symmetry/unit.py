@@ -19,11 +19,15 @@ both before any densification or expansion:
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 import json
 from copy import deepcopy
 from math import ceil
 from math import radians
+from typing import Any
+from typing import Callable
+from typing import Sequence
 
 from compas.geometry import vector_average
 
@@ -38,30 +42,31 @@ from compas_singular.symmetry.group import SymmetryGroup
 from compas_singular.symmetry.replicate import expand
 from compas_singular.symmetry.replicate import rotation_partners
 from compas_singular.symmetry.replicate import seam_membership
+from compas_singular.symmetry.report import SymmetryReport
 
 
 __all__ = ['SymmetricUnit', 'SymmetricQuadUnit', 'build_unit']
 
 
-def _symmetry(self):
+def _symmetry(self) -> dict[str, Any]:
     return self.attributes.setdefault('symmetry', {})
 
 
-def _group(self):
+def _group(self) -> SymmetryGroup:
     return SymmetryGroup.from_data(self.symmetry['group'])
 
 
-def _seams(self):
+def _seams(self) -> list[Seam]:
     centre = self.symmetry['group']['centre'] + [0.0]
     return [Seam(s['name'], radians(s['angle']), s['kind'], s['element'], centre)
             for s in self.symmetry.get('seams', [])]
 
 
-def _eps(self):
+def _eps(self) -> float:
     return self.symmetry.get('eps', 1e-7)
 
 
-def _expand(self, cls, curves=None):
+def _expand(self, cls: type, curves: dict[tuple[int, int], Any] | None = None) -> Any:
     return expand(self, self.group, self.seams, self.eps, cls,
                   match_tol=self.symmetry.get('match_tol'), curves=curves)
 
@@ -83,7 +88,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
     Build one with ``decomposition.symmetry_unit(...)`` or :func:`build_unit`.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super(SymmetricUnit, self).__init__(*args, **kwargs)
         self.attributes.setdefault('symmetry', {})
         #: The unit's own cross field on the field route, else ``None``. Used by
@@ -92,7 +97,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
         #: The decomposition that meshed the unit. Not serialised.
         self.decomposition = None
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         data = self.symmetry
         return '<SymmetricUnit {} of {}: {} patches, {} vertices, route {}>'.format(
             data.get('group', {}).get('name', '?'), data.get('detected', '?'),
@@ -101,7 +106,13 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
     __str__ = __repr__
 
     @classmethod
-    def from_coarse(cls, coarse, data=None, field=None, decomposition=None):
+    def from_coarse(
+        cls,
+        coarse: CoarsePseudoQuadMesh,
+        data: dict[str, Any] | None = None,
+        field: Any = None,
+        decomposition: Any = None,
+    ) -> SymmetricUnit:
         """Wrap a coarse layout as a unit. ``data`` defaults to the layout's own
         ``attributes['symmetry']`` -- for re-wrapping a copy that lost its class."""
         unit = coarse.copy(cls=cls)
@@ -117,7 +128,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
     # invariants
     # ------------------------------------------------------------------
 
-    def seam_partners(self):
+    def seam_partners(self) -> tuple[dict[int, int], list[tuple[float, int]], list[tuple[float, int]]]:
         """Rotation seams only: ``(partners, unmatched on A, unmatched on B)``."""
         seams = self.seams
         if not seams or seams[0].kind != 'rotation':
@@ -125,7 +136,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
         membership = seam_membership(self, seams, self.eps)
         return rotation_partners(membership, self.symmetry.get('match_tol') or 1e3 * self.eps)
 
-    def check(self):
+    def check(self) -> tuple[bool, list[str]]:
         """``(ok, notes)`` -- whether this unit can be densified and expanded.
 
         ``notes`` names every problem found; an empty list means none.
@@ -170,7 +181,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
                             sorted(group), sorted(values)))
         return not notes, notes
 
-    def seam_gaps(self):
+    def seam_gaps(self) -> list[list[Any]]:
         """Stretches of seam the layout's boundary does NOT run along, as
         ``[seam name, t_lo, t_hi]``. Empty when every seam is fully covered."""
         runs = self.symmetry.get('seam_runs') or {}
@@ -218,7 +229,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
                     gaps.append([name, round(t, 6), round(hi, 6)])
         return gaps
 
-    def snap_to_seams(self, fraction=0.25):
+    def snap_to_seams(self, fraction: float = 0.25) -> int:
         """Project boundary corners that lie NEAR a seam onto it. In place.
 
         A route meshes the unit without knowing which walls are seams, and may put
@@ -255,7 +266,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
                 moved += 1
         return moved
 
-    def _require_ok(self, action):
+    def _require_ok(self, action: str) -> None:
         ok, notes = self.check()
         if not ok:
             raise ValueError('cannot {} this symmetric unit: {}'.format(action, '; '.join(notes)))
@@ -264,7 +275,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
     # strips glued across rotation seams
     # ------------------------------------------------------------------
 
-    def glued_strips(self):
+    def glued_strips(self) -> list[list[int]]:
         """Groups of strip keys that are ONE strip of the global mesh.
 
         A strip that reaches seam A continues, in the neighbouring copy, as the
@@ -274,7 +285,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
         strips = self.attributes.get('strips') or {}
         parent = dict((k, k) for k in strips)
 
-        def find(k):
+        def find(k: int) -> int:
             while parent[k] != k:
                 parent[k] = parent[parent[k]]
                 k = parent[k]
@@ -298,17 +309,17 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
             groups.setdefault(find(k), []).append(k)
         return list(groups.values())
 
-    def _glued(self, skey):
+    def _glued(self, skey: int) -> list[int]:
         for group in self.glued_strips():
             if skey in group:
                 return group
         return [skey]
 
-    def set_strip_density(self, skey, d):
+    def set_strip_density(self, skey: int, d: int) -> None:
         for k in self._glued(skey):
             CoarseQuadMesh.set_strip_density(self, k, d)
 
-    def set_strip_density_target(self, skey, t):
+    def set_strip_density_target(self, skey: int, t: float) -> None:
         group = self._glued(skey)
         d = 1
         for k in group:
@@ -318,7 +329,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
         for k in group:
             CoarseQuadMesh.set_strip_density(self, k, d)
 
-    def set_strips_density_target(self, t, skeys=None):
+    def set_strips_density_target(self, t: float, skeys: Sequence[int] | None = None) -> None:
         done = set()
         for skey in (self.strips() if skeys is None else skeys):
             if skey in done:
@@ -331,7 +342,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
     # densify and expand
     # ------------------------------------------------------------------
 
-    def fingerprint(self):
+    def fingerprint(self) -> str:
         """What a dense unit was built from: densities, patterns and the corners."""
         densities = sorted((str(k), v) for k, v in (self.attributes.get('strips_density') or {}).items())
         patterns = sorted((str(k), v) for k, v in (self.attributes.get('dense_pattern') or {}).items())
@@ -339,7 +350,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
                          (self.vertex_coordinates(v) for v in self.vertices()))
         return json.dumps([densities, patterns, corners])
 
-    def quad_mesh(self, *args, **kwargs):
+    def quad_mesh(self, *args: Any, **kwargs: Any) -> SymmetricQuadUnit:
         """Densify the unit. Returns a :class:`SymmetricQuadUnit`.
 
         Takes exactly what ``CoarsePseudoQuadMesh.quad_mesh`` takes. ``field``
@@ -355,21 +366,21 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
         dense = super(SymmetricUnit, self).quad_mesh(*args, **kwargs)
         return self._wrap_dense(dense)
 
-    def densification(self, *args, **kwargs):
+    def densification(self, *args: Any, **kwargs: Any) -> SymmetricQuadUnit:
         """As ``CoarsePseudoQuadMesh.densification``; returns a :class:`SymmetricQuadUnit`."""
         self._require_ok('densify')
         kwargs.setdefault('field', self.field)
         dense = super(SymmetricUnit, self).densification(*args, **kwargs)
         return self._wrap_dense(dense)
 
-    def _wrap_dense(self, dense):
+    def _wrap_dense(self, dense: PseudoQuadMesh) -> SymmetricQuadUnit:
         quad_unit = dense.copy(cls=SymmetricQuadUnit)
         data = deepcopy(self.symmetry)
         data['fingerprint'] = self.fingerprint()
         quad_unit.attributes['symmetry'] = data
         return quad_unit
 
-    def expand_symmetrically(self):
+    def expand_symmetrically(self) -> CoarsePseudoQuadMesh:
         """The global COARSE layout: every copy of the unit, welded along the seams.
 
         Returns a plain ``CoarsePseudoQuadMesh`` carrying the edge shapes and
@@ -384,13 +395,13 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
 class SymmetricQuadUnit(PseudoQuadMesh):
     """The dense mesh of a symmetric unit. Made by :meth:`SymmetricUnit.quad_mesh`."""
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '<SymmetricQuadUnit {}: {} faces, {} vertices>'.format(
             self.symmetry.get('group', {}).get('name', '?'), self.number_of_faces(), self.number_of_vertices())
 
     __str__ = __repr__
 
-    def expand_symmetrically(self, unit=None):
+    def expand_symmetrically(self, unit: SymmetricUnit | None = None) -> PseudoQuadMesh:
         """The global quad mesh.
 
         Parameters
@@ -421,12 +432,12 @@ for _name, _member in _SHARED.items():
 # building a unit
 # ----------------------------------------------------------------------
 
-def _inside(point, outer, holes):
+def _inside(point: Sequence[float], outer: Sequence[Sequence[float]], holes: Sequence[Sequence[Sequence[float]]]) -> bool:
     return point_in_polygon(point[0], point[1], outer) and not any(
         point_in_polygon(point[0], point[1], h) for h in holes)
 
 
-def _join(parts):
+def _join(parts: Sequence[CoarsePseudoQuadMesh]) -> CoarsePseudoQuadMesh:
     """Several unit components' coarse meshes as one layout (they share no vertices)."""
     vertices, faces, face_poles, curves = [], [], {}, {}
     for coarse in parts:
@@ -446,7 +457,14 @@ def _join(parts):
     return mesh
 
 
-def build_unit(report, mesher, keys=None, centre='route', seam=None, route=None):
+def build_unit(
+    report: SymmetryReport,
+    mesher: Callable[..., Any],
+    keys: str | Sequence[str] | None = None,
+    centre: str = 'route',
+    seam: float | None = None,
+    route: str | None = None,
+) -> SymmetricUnit:
     """Cut the unit for ``keys``, mesh it with ``mesher``, return a :class:`SymmetricUnit`.
 
     Parameters

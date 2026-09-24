@@ -43,8 +43,12 @@ scheme was needed for it.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 import os
+from typing import Any
+from typing import Sequence
+from typing import TYPE_CHECKING
 
 from compas_singular.algorithms.skeleton_decomposition import SkeletonDecomposition
 from compas_singular.datastructures.mesh_quad_coarse.patterns import PATTERNS
@@ -59,11 +63,15 @@ from compas_singular.mcp.handle import vertex_handle
 from compas_singular.mcp.library import thresholds
 from compas_singular.mcp.registry import tool
 
+if TYPE_CHECKING:
+    from compas_singular.datastructures import CoarsePseudoQuadMesh
+    from compas_singular.mcp.session import MeshSession
+
 
 __all__ = []
 
 
-def _needs_walls(session):
+def _needs_walls(session: MeshSession) -> dict[str, Any] | None:
     if not session.walls:
         return {'ok': False,
                 'reason': 'no boundary is loaded -- call rhino_pull, or '
@@ -72,7 +80,7 @@ def _needs_walls(session):
     return None
 
 
-def _needs_coarse(session):
+def _needs_coarse(session: MeshSession) -> dict[str, Any] | None:
     if session.coarse is None:
         return {'ok': False,
                 'reason': 'no coarse layout is loaded -- call '
@@ -80,23 +88,23 @@ def _needs_coarse(session):
     return None
 
 
-def _polyline_points(curve):
+def _polyline_points(curve: Any) -> Any:
     """Plain points from a ``Polyline`` or an already-bare point list."""
     return getattr(curve, 'points', curve)
 
 
-def _close(a, b, tol=1e-9):
+def _close(a: Sequence[float], b: Sequence[float], tol: float = 1e-9) -> bool:
     return all(abs(a[i] - b[i]) <= tol for i in range(3))
 
 
-def _open_loop(points):
+def _open_loop(points: list[list[float]]) -> list[list[float]]:
     """Drop a duplicated closing point -- ``from_boundary`` wants an OPEN loop."""
     if len(points) > 1 and _close(points[0], points[-1]):
         return points[:-1]
     return points
 
 
-def _editor(session, shapes=None):
+def _editor(session: MeshSession, shapes: Sequence[Sequence[Any]] | None = None) -> CoarseEditor:
     """A fresh ``CoarseEditor`` on the session's coarse layout and domain.
 
     Seeded with the shapes a previous cut registered: the editor writes its
@@ -119,7 +127,7 @@ def _editor(session, shapes=None):
     return editor
 
 
-def _resolve_edge(mesh, handles):
+def _resolve_edge(mesh: CoarsePseudoQuadMesh, handles: Sequence[str]) -> tuple[tuple[Any, ...] | None, str | None]:
     """Two vertex handles as a coarse edge ``(u, v)``, or ``(None, reason)``."""
     if len(handles) != 2:
         return None, 'an edge needs exactly two vertex handles'
@@ -133,7 +141,7 @@ def _resolve_edge(mesh, handles):
     return tuple(keys), None
 
 
-def _pole_handles(mesh):
+def _pole_handles(mesh: CoarsePseudoQuadMesh) -> list[str]:
     poles = mesh.poles() if hasattr(mesh, 'poles') else []
     return [vertex_handle(mesh.vertex_coordinates(key)) for key in poles]
 
@@ -142,7 +150,7 @@ def _pole_handles(mesh):
 # faces, which have no handle of their own either
 # ------------------------------------------------------------------------------
 
-def _inside(point, polygon):
+def _inside(point: Sequence[float], polygon: Sequence[Sequence[float]]) -> bool:
     """Even-odd test in xy. The layout is planar; z plays no part."""
     x, y = point[0], point[1]
     inside = False
@@ -154,7 +162,7 @@ def _inside(point, polygon):
     return inside
 
 
-def _corners(coarse, fkey):
+def _corners(coarse: CoarsePseudoQuadMesh, fkey: Any) -> list[list[float]]:
     """A face's distinct corners -- a pseudo-quad repeats its pole."""
     out = []
     for vkey in coarse.face_vertices(fkey):
@@ -166,7 +174,7 @@ def _corners(coarse, fkey):
     return out
 
 
-def _face_point(coarse, fkey):
+def _face_point(coarse: CoarsePseudoQuadMesh, fkey: Any) -> str:
     """A point INSIDE a face, as a handle: the name a face is addressed by.
 
     The centroid, unless the patch is shaped so the centroid falls outside it;
@@ -184,7 +192,7 @@ def _face_point(coarse, fkey):
     return vertex_handle(centre)
 
 
-def _face_at(coarse, handle):
+def _face_at(coarse: CoarsePseudoQuadMesh, handle: str) -> tuple[Any, str | None]:
     """The face a handle points into, or ``(None, reason)``."""
     point = parse_handle(handle)
     if point is None:
@@ -200,7 +208,7 @@ def _face_at(coarse, handle):
     return None, 'no patch contains {}'.format(handle)
 
 
-def _patterns(coarse):
+def _patterns(coarse: CoarsePseudoQuadMesh) -> dict[Any, str]:
     """The face->pattern map, completed and pruned, IN PLACE.
 
     Completed, because a face a strip edit created has none, and
@@ -218,19 +226,19 @@ def _patterns(coarse):
     return patterns
 
 
-def _pattern_counts(coarse):
+def _pattern_counts(coarse: CoarsePseudoQuadMesh) -> dict[str, int]:
     counts = dict((name, 0) for name in PATTERNS)
     for pattern in _patterns(coarse).values():
         counts[pattern] = counts.get(pattern, 0) + 1
     return counts
 
 
-def _raised(changes):
+def _raised(changes: dict[Any, tuple[Any, Any]]) -> dict[str, list[Any]]:
     """``reconcile_strip_densities``' ``{skey: (old, new)}``, JSON-ready."""
     return dict((str(skey), [old, new]) for skey, (old, new) in sorted(changes.items()))
 
 
-def _user_curves(coarse):
+def _user_curves(coarse: CoarsePseudoQuadMesh) -> list[list[list[float]]]:
     """The edge shapes a cut left behind, as plain point lists.
 
     ``CoarseEditor.commit`` stores them in ``attributes['user_curves']``: the
@@ -243,14 +251,14 @@ def _user_curves(coarse):
             if len(curve) >= 2]
 
 
-def _closed(loop):
+def _closed(loop: Any) -> list[list[float]]:
     points = [list(p) for p in _polyline_points(loop)]
     if len(points) > 2 and not _close(points[0], points[-1]):
         points.append(list(points[0]))
     return points
 
 
-def _edges_to_curves(session):
+def _edges_to_curves(session: MeshSession) -> dict[tuple[Any, Any], list[list[float]]] | None:
     """The shape of each coarse edge, for densification.
 
     Best source first: the decomposition that built the layout; else the curves
@@ -300,7 +308,7 @@ def _edges_to_curves(session):
 # what a cut has to carry across its renumbering commit
 # ------------------------------------------------------------------------------
 
-def _distance_to_segment(point, a, b):
+def _distance_to_segment(point: Sequence[float], a: Sequence[float], b: Sequence[float]) -> float:
     ax, ay, bx, by = a[0], a[1], b[0], b[1]
     dx, dy = bx - ax, by - ay
     span = dx * dx + dy * dy
@@ -308,11 +316,11 @@ def _distance_to_segment(point, a, b):
     return ((point[0] - ax - t * dx) ** 2 + (point[1] - ay - t * dy) ** 2) ** 0.5
 
 
-def _length(a, b):
+def _length(a: Sequence[float], b: Sequence[float]) -> float:
     return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
 
 
-def _carry_densities(before, after):
+def _carry_densities(before: CoarsePseudoQuadMesh, after: CoarsePseudoQuadMesh) -> dict[Any, tuple[Any, int]]:
     """Give every strip of ``after`` a density from the strip of ``before`` it came from.
 
     A cut's commit welds and renumbers, so the strip table is rebuilt from
@@ -365,7 +373,7 @@ def _carry_densities(before, after):
     return carried
 
 
-def _carry_patterns(before, after):
+def _carry_patterns(before: CoarsePseudoQuadMesh, after: CoarsePseudoQuadMesh) -> dict[Any, str]:
     """Every new patch takes the pattern of the old patch it lies inside."""
     old = [(_corners(before, fkey), pattern)
            for fkey, pattern in _patterns(before).items()]
@@ -378,7 +386,7 @@ def _carry_patterns(before, after):
     return patterns
 
 
-def _pinches(layout, curves, limit):
+def _pinches(layout: CoarsePseudoQuadMesh, curves: Sequence[Sequence[Sequence[float]]], limit: float) -> list[tuple[str, float]]:
     """Where a new cut runs closer than ``limit`` to an edge it does not touch.
 
     A cut is refused only when it breaks the all-quad rule, so one drawn a hair
@@ -404,16 +412,16 @@ def _pinches(layout, curves, limit):
     return [(handle, round(d, 4)) for d, handle in found[:3]]
 
 
-def _crosses(a, b, c, d):
+def _crosses(a: Sequence[float], b: Sequence[float], c: Sequence[float], d: Sequence[float]) -> bool:
     """Whether segments ab and cd properly cross in xy. Touching ends do not count."""
-    def side(p, q, r):
+    def side(p: Sequence[float], q: Sequence[float], r: Sequence[float]) -> float:
         return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
     d1, d2 = side(c, d, a), side(c, d, b)
     d3, d4 = side(a, b, c), side(a, b, d)
     return (d1 * d2 < 0) and (d3 * d4 < 0)
 
 
-def _fold(mesh, vkey):
+def _fold(mesh: CoarsePseudoQuadMesh, vkey: Any) -> str | None:
     """Why moving ``vkey`` to where it now is broke the layout, or ``None``.
 
     ``densifiable`` catches an inverted patch, but not a corner dragged across a
@@ -446,7 +454,7 @@ def _fold(mesh, vkey):
     return None
 
 
-def _nearest_wall(walls, point):
+def _nearest_wall(walls: Sequence[Any], point: Sequence[float]) -> tuple[int | None, float | None]:
     """Index of the wall loop closest to ``point``, and the distance."""
     best = (None, None)
     for index, wall in enumerate(walls):
@@ -458,7 +466,7 @@ def _nearest_wall(walls, point):
     return best
 
 
-def _wall_kink(walls, point, degrees=30.0, tol=1e-3):
+def _wall_kink(walls: Sequence[Any], point: Sequence[float], degrees: float = 30.0, tol: float = 1e-3) -> bool:
     """Whether ``point`` sits on a wall vertex that turns by more than ``degrees``."""
     import math
     for wall in walls:
@@ -479,7 +487,7 @@ def _wall_kink(walls, point, degrees=30.0, tol=1e-3):
     return False
 
 
-def _snap_end(editor, point, tol):
+def _snap_end(editor: CoarseEditor, point: Sequence[float], tol: float) -> tuple[list[float] | None, float | None]:
     """Put one end of a drawn cut ON the layout, as a Rhino pick would.
 
     ``CoarseEditor`` insists an end lies on a coarse edge to within a thousandth
@@ -535,7 +543,7 @@ def _snap_end(editor, point, tol):
                            'are missed entirely.'},
     },
     title='Create a coarse mesh')
-def _t_create_coarse_mesh(session, target_length=None):
+def _t_create_coarse_mesh(session: MeshSession, target_length: float | None = None) -> dict[str, Any]:
     refusal = _needs_walls(session)
     if refusal:
         return refusal
@@ -606,7 +614,7 @@ def _t_create_coarse_mesh(session, target_length=None):
                            'max 1400.'},
     },
     read_only=True, idempotent=True, title='Inspect the coarse layout')
-def _t_coarse_inspect(session, image=False, size=None):
+def _t_coarse_inspect(session: MeshSession, image: bool = False, size: int | None = None) -> dict[str, Any]:
     refusal = _needs_coarse(session)
     if refusal:
         return refusal
@@ -686,7 +694,7 @@ def _t_coarse_inspect(session, image=False, size=None):
                            '"kind" and "value".'},
     },
     required=('density',), title='Set strip density')
-def _t_coarse_set_density(session, density):
+def _t_coarse_set_density(session: MeshSession, density: dict[str, Any]) -> dict[str, Any]:
     refusal = _needs_coarse(session)
     if refusal:
         return refusal
@@ -787,7 +795,7 @@ def _t_coarse_set_density(session, density):
                            'Default {"kind":"all"}.'},
     },
     required=('pattern',), title='Set patch pattern')
-def _t_coarse_set_pattern(session, pattern, faces=None):
+def _t_coarse_set_pattern(session: MeshSession, pattern: str, faces: dict[str, Any] | None = None) -> dict[str, Any]:
     refusal = _needs_coarse(session)
     if refusal:
         return refusal
@@ -869,7 +877,7 @@ def _t_coarse_set_pattern(session, pattern, faces=None):
     'are blended from their four sides, same as compas_singular has always '
     'done without one.',
     title='Densify the coarse layout')
-def _t_coarse_densify(session):
+def _t_coarse_densify(session: MeshSession) -> dict[str, Any]:
     refusal = _needs_coarse(session)
     if refusal:
         return refusal
@@ -958,8 +966,8 @@ def _t_coarse_densify(session):
                            'this deletion collapse a hole. Default false.'},
     },
     read_only=True, title='Plan a strip deletion')
-def _t_coarse_plan_strip_deletion(session, edge=None, skey=None,
-                                  preserve_boundaries=False):
+def _t_coarse_plan_strip_deletion(session: MeshSession, edge: Sequence[str] | None = None, skey: Any = None,
+                                  preserve_boundaries: bool = False) -> dict[str, Any]:
     refusal = _needs_coarse(session)
     if refusal:
         return refusal
@@ -1004,8 +1012,8 @@ def _t_coarse_plan_strip_deletion(session, edge=None, skey=None,
                            'this deletion collapse a hole. Default false.'},
     },
     destructive=True, title='Remove a strip')
-def _t_coarse_remove_strip(session, edge=None, skey=None,
-                           preserve_boundaries=False):
+def _t_coarse_remove_strip(session: MeshSession, edge: Sequence[str] | None = None, skey: Any = None,
+                           preserve_boundaries: bool = False) -> dict[str, Any]:
     refusal = _needs_coarse(session)
     if refusal:
         return refusal
@@ -1054,7 +1062,7 @@ def _t_coarse_remove_strip(session, edge=None, skey=None,
                            'to the next by a coarse edge.'},
     },
     required=('polyedge',), title='Add a strip')
-def _t_coarse_add_strip(session, polyedge):
+def _t_coarse_add_strip(session: MeshSession, polyedge: Sequence[str]) -> dict[str, Any]:
     refusal = _needs_coarse(session)
     if refusal:
         return refusal
@@ -1127,7 +1135,7 @@ def _t_coarse_add_strip(session, polyedge):
                                   'true; false refuses such a cut instead.'},
     },
     title='Divide a strip')
-def _t_coarse_divide(session, skey=None, t=None, points=None, extend=True):
+def _t_coarse_divide(session: MeshSession, skey: Any = None, t: float | None = None, points: Sequence[Sequence[float]] | None = None, extend: bool = True) -> dict[str, Any]:
     refusal = _needs_coarse(session)
     if refusal:
         return refusal
@@ -1252,7 +1260,7 @@ def _t_coarse_divide(session, skey=None, t=None, points=None, extend=True):
                                    'dense boundary leaves the wall there.'},
     },
     required=('corner', 'to'), title='Move a coarse corner')
-def _t_coarse_move_corner(session, corner, to, project=True):
+def _t_coarse_move_corner(session: MeshSession, corner: str, to: Sequence[float], project: bool = True) -> dict[str, Any]:
     refusal = _needs_coarse(session)
     if refusal:
         return refusal
@@ -1348,7 +1356,7 @@ def _t_coarse_move_corner(session, corner, to, project=True):
     'and mark the coarse steps taken since as undone in history. Independent '
     'of undo, which only ever touches the dense mesh.',
     destructive=True, title='Undo the last coarse edit')
-def _t_coarse_undo(session):
+def _t_coarse_undo(session: MeshSession) -> dict[str, Any]:
     ok, detail = session.undo_coarse()
     if not ok:
         return {'ok': False, 'reason': detail}
@@ -1369,7 +1377,7 @@ LAYOUT_FORMAT = 'compas_singular.mcp/coarse_layout'
 LAYOUT_VERSION = 1
 
 
-def _plain_curves(curves):
+def _plain_curves(curves: Sequence[Any]) -> list[list[list[float]]]:
     return [[list(p) for p in _polyline_points(curve)] for curve in curves]
 
 
@@ -1385,7 +1393,7 @@ def _plain_curves(curves):
         'path': {'type': 'string', 'description': 'Where to write the .json.'},
     },
     required=('path',), open_world=True, title='Save the coarse layout')
-def _t_coarse_save(session, path):
+def _t_coarse_save(session: MeshSession, path: str) -> dict[str, Any]:
     refusal = _needs_coarse(session)
     if refusal:
         return refusal
@@ -1439,7 +1447,7 @@ def _t_coarse_save(session, path):
                  'description': 'A .json written by coarse_save.'},
     },
     required=('path',), open_world=True, title='Load a coarse layout')
-def _t_coarse_load(session, path):
+def _t_coarse_load(session: MeshSession, path: str) -> dict[str, Any]:
     if not os.path.isfile(path):
         return {'ok': False, 'reason': 'no file at {}'.format(path)}
     import compas

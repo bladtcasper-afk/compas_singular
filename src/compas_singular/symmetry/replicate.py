@@ -23,14 +23,23 @@ result is symmetric to floating point and its vertex maps are known EXACTLY:
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+from typing import Any
 
 from compas_singular.symmetry.group import SymmetryGroup
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import CoarsePseudoQuadMesh
+    from compas_singular.datastructures import PseudoQuadMesh
+    from compas_singular.symmetry.cut import Seam
 
 
 __all__ = ['seam_membership', 'rotation_partners', 'expand', 'orbit_maps']
 
 
-def seam_membership(mesh, seams, eps):
+def seam_membership(mesh: PseudoQuadMesh | CoarsePseudoQuadMesh, seams: list[Seam], eps: float) -> dict[int, list[tuple[str, float]]]:
     """``{vkey: [(seam name, t), ...]}`` for every vertex on a seam."""
     out = {}
     for vkey in mesh.vertices():
@@ -45,7 +54,9 @@ def seam_membership(mesh, seams, eps):
     return out
 
 
-def rotation_partners(membership, tol):
+def rotation_partners(
+    membership: dict[int, list[tuple[str, float]]], tol: float
+) -> tuple[dict[int, int], list[tuple[float, int]], list[tuple[float, int]]]:
     """Match vertices on seam A to vertices on seam B at the same distance ``t``.
 
     Returns
@@ -77,7 +88,15 @@ def rotation_partners(membership, tol):
     return partners, unmatched_a, unmatched_b
 
 
-def expand(mesh, group, seams, eps, cls, match_tol=None, curves=None):
+def expand(
+    mesh: PseudoQuadMesh | CoarsePseudoQuadMesh,
+    group: SymmetryGroup,
+    seams: list[Seam],
+    eps: float,
+    cls: type,
+    match_tol: float | None = None,
+    curves: dict[tuple[int, int], Any] | None = None,
+) -> Any:
     """The global mesh from a unit mesh.
 
     Parameters
@@ -110,7 +129,7 @@ def expand(mesh, group, seams, eps, cls, match_tol=None, curves=None):
 
     parent = {}
 
-    def find(x):
+    def find(x: tuple[Any, str]) -> tuple[Any, str]:
         root = x
         while parent.get(root, root) != root:
             root = parent[root]
@@ -118,12 +137,12 @@ def expand(mesh, group, seams, eps, cls, match_tol=None, curves=None):
             parent[x], x = root, parent[x]
         return root
 
-    def rank(x):
+    def rank(x: tuple[Any, str]) -> tuple[int, str, str]:
         # The identity copy is preferred as a class's representative, so a vertex
         # of the unit keeps the unit's own coordinates in the global mesh.
         return (0 if x[1] == 'I' else 1, str(x[0]), x[1])
 
-    def union(x, y):
+    def union(x: tuple[Any, str], y: tuple[Any, str]) -> None:
         rx, ry = find(x), find(y)
         if rx != ry:
             if rank(ry) < rank(rx):
@@ -199,7 +218,7 @@ def expand(mesh, group, seams, eps, cls, match_tol=None, curves=None):
     return out
 
 
-def orbit_maps(mesh):
+def orbit_maps(mesh: PseudoQuadMesh | CoarsePseudoQuadMesh) -> dict[str, dict[int, int]]:
     """``{element key: {global vertex: global vertex}}`` from an expanded mesh.
 
     Exact: read from the labels :func:`expand` recorded, not from positions.
@@ -223,7 +242,9 @@ def orbit_maps(mesh):
     return maps
 
 
-def symmetrise_positions(mesh, maps=None):
+def symmetrise_positions(
+    mesh: PseudoQuadMesh | CoarsePseudoQuadMesh, maps: dict[str, dict[int, int]] | None = None
+) -> float:
     """Replace every vertex by the average of its orbit, mapped back. In place.
 
     ``x_v <- mean over h of  h^-1 ( x_{sigma_h(v)} )``: the orthogonal projection

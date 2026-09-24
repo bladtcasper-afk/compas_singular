@@ -22,9 +22,11 @@ __all__ = ['Settings']
 class Settings(BaseModel):
 
     #: Background triangulation spacing. NOT the quad size -- the field is
-    #: solved on this. Finer means a better field and a slower solve; 0.3 on a
-    #: 20 x 14 m plate is 2 438 vertices and 2.1 s.
-    triangulation_spacing: float = 0.5
+    #: solved on this. ``None`` takes thesis eq. 4.1, 0.04 times the domain's
+    #: bounding-box diagonal, in both routes; a number overrides it. Finer means
+    #: a better field and a slower solve; 0.3 on a 20 x 14 m plate is 2 438
+    #: vertices and 2.1 s. Rhino-side lengths: ``project.resolve_spacing``.
+    triangulation_spacing: Optional[float] = None
 
     #: 'tangent' makes elements run ALONG the guides, 'perpendicular' across.
     guide_alignment: str = Field(
@@ -46,8 +48,10 @@ class Settings(BaseModel):
     #: do not follow the field -- aspect 1.99 -> 3.20 on a square with a cable.
     field_aware: bool = True
 
-    #: ``"auto"`` detects the symmetry group; ``None`` (JSON null) disables it.
-    symmetry: Optional[str] = 'auto'
+    #: FRAME-FIELD route only: the symmetry group the field is solved under.
+    #: ``"auto"`` detects it; ``None`` (JSON null) disables it. The skeleton
+    #: route ignores it.
+    field_symmetry: Optional[str] = 'auto'
 
     #: ``"auto"`` relaxes when there are guides; or a bool.
     relax: Union[bool, str] = 'auto'

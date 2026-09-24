@@ -21,13 +21,22 @@ each. Splitting that wall at the pentagon corner turns each into a proper
 four-sided patch. ``SkeletonDecomposition.branches_boundary`` does the same
 thing for the same reason.
 """
+from __future__ import annotations
+
 from math import pi
+from typing import Any
+from typing import TYPE_CHECKING
 
 from compas_singular.geometry.polyline import distance_to_loop
 from compas.geometry import distance_point_point
 from compas.geometry import angle_vectors
 from compas.geometry import subtract_vectors
 from compas.itertools import pairwise
+
+if TYPE_CHECKING:
+    from compas_singular.framefield.field import CrossField
+    from compas_singular.framefield.symmetry import Symmetry
+    from compas_singular.framefield.trace import Separatrix
 
 
 __all__ = ['build_network', 'boundary_corners']
@@ -40,7 +49,7 @@ from compas_singular.editing.repair import densifiable            # noqa: F401,E
 from compas_singular.editing.repair import solve_non_quad_faces   # noqa: F401,E402
 from compas_singular.editing.repair import topological_quad_split  # noqa: F401,E402
 
-def _arc_lengths(loop):
+def _arc_lengths(loop: list[list[float]]) -> tuple[list[float], list[float]]:
     """Per-segment lengths and cumulative arc length of a closed loop."""
     ring = list(loop) + list(loop[:1])
     seg = [distance_point_point(a, b) for a, b in pairwise(ring)]
@@ -56,7 +65,12 @@ def _arc_lengths(loop):
 SHARP_TURN = pi / 4.0
 
 
-def boundary_corners(loop, limit=pi / 12.0, spacing=None, sharp=SHARP_TURN):
+def boundary_corners(
+    loop: list[list[float]],
+    limit: float = pi / 12.0,
+    spacing: float | None = None,
+    sharp: float = SHARP_TURN,
+) -> list[int]:
     """Indices of the loop's corners: places where the TANGENT JUMPS.
 
     The per-vertex turning angle alone is not that, and the difference is worth
@@ -227,7 +241,7 @@ def boundary_corners(loop, limit=pi / 12.0, spacing=None, sharp=SHARP_TURN):
     # whatever the loop's length is, so this only ever merges what the gap test
     # would have merged on a better-sampled loop. It cannot join two distant
     # corners: that still needs ``gap``.
-    def _same_run(prev, i):
+    def _same_run(prev: int, i: int) -> bool:
         return cum[i] - cum[prev] <= gap or i == prev + 1
 
     runs = [[candidates[0]]]
@@ -285,7 +299,14 @@ def boundary_corners(loop, limit=pi / 12.0, spacing=None, sharp=SHARP_TURN):
     return sorted(out)
 
 
-def _cluster(points, tol, loops=None, wall_tol=None, groups=None, symmetry=None):
+def _cluster(
+    points: list[list[float]],
+    tol: float,
+    loops: list[list[list[float]]] | None = None,
+    wall_tol: float | None = None,
+    groups: list[int] | None = None,
+    symmetry: Symmetry | None = None,
+) -> dict[int, list[float]]:
     """Group points within ``tol`` and return ``index -> canonical point``.
 
     The canonical point is one MEMBER of the cluster, not the centroid: members
@@ -322,7 +343,7 @@ def _cluster(points, tol, loops=None, wall_tol=None, groups=None, symmetry=None)
     """
     wall_tol = tol * 0.25 if wall_tol is None else wall_tol
 
-    def on_wall(p):
+    def on_wall(p: list[float]) -> bool:
         return any(distance_to_loop(p, loop) < tol * 0.25 for loop in (loops or []))
 
     flags = [on_wall(p) for p in points]
@@ -358,7 +379,7 @@ def _cluster(points, tol, loops=None, wall_tol=None, groups=None, symmetry=None)
     return out
 
 
-def _decimate(points, spacing):
+def _decimate(points: list[list[float]], spacing: float) -> list[list[float]]:
     """Thin a traced polyline, keeping both ends.
 
     Every intermediate point becomes a vertex of the planar network inside
@@ -377,7 +398,7 @@ def _decimate(points, spacing):
     return out
 
 
-def _resample(points, n):
+def _resample(points: list[list[float]], n: int) -> list[list[float]]:
     """``n`` points spread evenly by ARC LENGTH along a polyline, ends kept."""
     cum = [0.0]
     for a, b in pairwise(points):
@@ -402,12 +423,12 @@ def _resample(points, n):
     return out
 
 
-def _length_of(points):
+def _length_of(points: list[list[float]]) -> float:
     """Total arc length of a polyline."""
     return sum(distance_point_point(a, b) for a, b in pairwise(points))
 
 
-def _launch_direction(points, distance):
+def _launch_direction(points: list[list[float]], distance: float) -> list[float]:
     """The direction a polyline leaves its first point in.
 
     Measured to the point ``distance`` along, not to the next vertex: a
@@ -423,12 +444,12 @@ def _launch_direction(points, distance):
     return subtract_vectors(points[-1], points[0])
 
 
-def _arc_midpoint_of(points):
+def _arc_midpoint_of(points: list[list[float]]) -> list[float]:
     """The point half way along a polyline BY LENGTH."""
     return _resample(points, 3)[1]
 
 
-def _average_polylines(a, b):
+def _average_polylines(a: list[list[float]], b: list[list[float]]) -> list[list[float]]:
     """Mean of two polylines that share their endpoints.
 
     Both are resampled onto a common arc-length parameter first, since they are
@@ -441,7 +462,7 @@ def _average_polylines(a, b):
     return out
 
 
-def _param(loop, point):
+def _param(loop: list[list[float]], point: list[float]) -> tuple[int, float]:
     """(segment index, t) of the loop point closest to ``point``."""
     best, best_key = float('inf'), (0, 0.0)
     for i, (a, b) in enumerate(pairwise(loop + loop[:1])):
@@ -458,7 +479,11 @@ def _param(loop, point):
     return best_key
 
 
-def _split_loop(loop, cuts, corner_limit):
+def _split_loop(
+    loop: list[list[float]],
+    cuts: list[list[float]],
+    corner_limit: float,
+) -> tuple[list[list[list[float]]], list[list[float]]]:
     """Split a closed loop into arcs at ``cuts`` and at its own corners.
 
     Returns
@@ -518,8 +543,15 @@ def _split_loop(loop, cuts, corner_limit):
     return arcs, used
 
 
-def build_network(field, separatrices, tol=None, corner_limit=pi / 12.0, spacing=None,
-                  singularity_points=None, symmetry=None):
+def build_network(
+    field: CrossField,
+    separatrices: list[Separatrix],
+    tol: float | None = None,
+    corner_limit: float = pi / 12.0,
+    spacing: float | None = None,
+    singularity_points: dict[int, list[float]] | None = None,
+    symmetry: Symmetry | None = None,
+) -> tuple[list[list[list[float]]], list[list[list[float]]], dict[str, Any]]:
     """Snap, split and partition traced separatrices for ``from_polylines``.
 
     Parameters

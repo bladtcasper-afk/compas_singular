@@ -45,7 +45,7 @@ from compas_singular.framefield.quality import mesh_quality
 from compas_singular.rhino.helpers import bake_mesh, bake_polylines, clear_layer, read_boundaries
 from compas_singular.symmetry.measure import mesh_invariance
 
-from compas_singular.rhino.project import get_settings
+from compas_singular.rhino.project import get_settings, resolve_spacing
 from compas_singular.rhino.project import ROOT as PROJECT_ROOT
 
 
@@ -137,7 +137,7 @@ def main():
         return
     stage = "reading the domain"
     try:
-        outer, inners, guides, poles = read_boundaries(spacing=spacing)
+        outer, inners, guides, poles = read_boundaries(spacing=resolve_spacing(settings))
         outer = points_of(outer)
         inners = [points_of(loop) for loop in inners]
         guides = [points_of(curve) for curve in guides]

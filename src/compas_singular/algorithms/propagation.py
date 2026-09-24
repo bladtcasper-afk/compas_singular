@@ -1,9 +1,11 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from __future__ import annotations
 
 from math import pi
 from math import radians
+from typing import TYPE_CHECKING
 
 from compas.geometry import angle_vectors
 from compas.geometry import discrete_coons_patch
@@ -11,6 +13,9 @@ from compas.geometry import length_vector
 from compas.geometry import subtract_vectors
 
 from compas_singular.utilities import list_split
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import Mesh
 
 
 __all__ = [
@@ -22,7 +27,7 @@ __all__ = [
 ]
 
 
-def quadrangulate_mesh(mesh, sources):
+def quadrangulate_mesh(mesh: Mesh, sources: list[int]) -> None:
     """Quadrangulate the faces of a mesh by adding edges from vertex sources.
 
     Returns
@@ -55,7 +60,7 @@ def quadrangulate_mesh(mesh, sources):
                 sources_to_visit += new_sources
 
 
-def quadrangulate_faces(mesh, face_sources, max_faces=None):
+def quadrangulate_faces(mesh: Mesh, face_sources: dict[int, list[int]], max_faces: int | None = None) -> bool:
     """Quadrangulate the polygonal faces of a mesh, each from ITS OWN sources.
 
     :func:`quadrangulate_mesh` takes one list of sources for the whole mesh. That
@@ -114,7 +119,7 @@ def quadrangulate_faces(mesh, face_sources, max_faces=None):
     return True
 
 
-def is_straight_through(mesh, fkey, vkey, tol=0.5):
+def is_straight_through(mesh: Mesh, fkey: int, vkey: int, tol: float = 0.5) -> bool:
     """Does face ``fkey`` pass straight through vertex ``vkey``, within ``tol`` degrees?"""
     face_vertices = mesh.face_vertices(fkey)
     i = face_vertices.index(vkey)
@@ -126,7 +131,7 @@ def is_straight_through(mesh, fkey, vkey, tol=0.5):
     return angle_vectors(u, v) > pi - radians(tol)
 
 
-def quadrangulate_face(mesh, fkey, sources):
+def quadrangulate_face(mesh: Mesh, fkey: int, sources: list[int]) -> list[int]:
 
     face_vertices = mesh.face_vertices(fkey)[:]
 
@@ -189,7 +194,7 @@ def quadrangulate_face(mesh, fkey, sources):
     return new_sources
 
 
-def discrete_coons_patch_mesh(mesh, ab, bc, dc, ad):
+def discrete_coons_patch_mesh(mesh: Mesh, ab: list[int], bc: list[int], dc: list[int], ad: list[int]) -> None:
 
     ab_xyz = [mesh.vertex_coordinates(vkey) for vkey in ab]
     bc_xyz = [mesh.vertex_coordinates(vkey) for vkey in bc]
@@ -227,7 +232,7 @@ def discrete_coons_patch_mesh(mesh, ab, bc, dc, ad):
         mesh.add_face(list(reversed([vertex_index_map[vkey] for vkey in face])))
 
 
-def update_adjacent_face(mesh, u, v, vertices_uv):
+def update_adjacent_face(mesh: Mesh, u: int, v: int, vertices_uv: list[int]) -> None:
     fkey = mesh.halfedge[u][v]
     if fkey is not None:
         face_vertices = mesh.face_vertices(fkey)[:]

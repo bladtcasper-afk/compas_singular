@@ -28,12 +28,19 @@ Until 2026-09-18 a second, simpler implementation of this lived here while the
 one below lived in ``grammar_pattern.py``. The simpler one merged to a plain
 centroid and knew nothing about collateral deletions or poles.
 """
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from compas.datastructures.mesh.operations.substitute import mesh_substitute_vertex_in_faces
 from compas.geometry import centroid_points
 from compas.itertools import pairwise
 from compas.topology import connected_components
 
 from compas_singular.datastructures.network import Network
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import QuadMesh
 
 
 __all__ = [
@@ -45,7 +52,7 @@ __all__ = [
 ]
 
 
-def delete_strips(mesh, skeys):
+def delete_strips(mesh: QuadMesh, skeys: list[int]) -> None:
     """Delete several strips.
 
     Strip keys are re-checked as the deletions go, because deleting one strip can
@@ -56,7 +63,7 @@ def delete_strips(mesh, skeys):
             delete_strip(mesh, skey)
 
 
-def delete_strip(mesh, skey):
+def delete_strip(mesh: QuadMesh, skey: int) -> dict[int, int]:
     """**Delete the strip** ``skey``, welding the faces either side together.
 
     Parameters
@@ -170,7 +177,7 @@ def delete_strip(mesh, skey):
     return old_vkeys_to_new_vkeys
 
 
-def collateral_strip_deletions(mesh, skeys):
+def collateral_strip_deletions(mesh: QuadMesh, skeys: list[int]) -> list[int]:
     """The strips that deleting ``skeys`` would delete as well. Mutates nothing."""
     deleted_fkeys = [fkey for skey in skeys for fkey in mesh.strip_faces(skey)]
     # A strip with no faces at all is not collateral -- see ``delete_strip``.
@@ -178,7 +185,7 @@ def collateral_strip_deletions(mesh, skeys):
             and all([fkey in deleted_fkeys for fkey in mesh.strip_faces(skey)])]
 
 
-def total_boundary_deletions(mesh, skeys):
+def total_boundary_deletions(mesh: QuadMesh, skeys: list[int]) -> list[list[int]]:
     """The boundaries that deleting ``skeys`` would collapse. Mutates nothing."""
     deleted_strips = list(skeys) + list(collateral_strip_deletions(mesh, skeys))
     deleted_boundaries = []
@@ -190,7 +197,7 @@ def total_boundary_deletions(mesh, skeys):
     return deleted_boundaries
 
 
-def strips_to_split_to_prevent_boundary_collapse(mesh, skeys):
+def strips_to_split_to_prevent_boundary_collapse(mesh: QuadMesh, skeys: list[int]) -> dict[int, int] | None:
     """**What to split before deleting** ``skeys``, to keep every boundary alive.
 
     Thesis 5.3.2, Fig 5.18: a boundary collapses when fewer than three edges

@@ -1,6 +1,9 @@
 from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
+from __future__ import annotations
+
+from typing import Sequence
 
 import rhinoscriptsyntax as rs
 from compas_rhino.geometry import RhinoCurve
@@ -13,10 +16,10 @@ __all__ = [
 
 class RhinoCurve(RhinoCurve):
 
-    def __init__(self):
+    def __init__(self) -> None:
         super(RhinoCurve, self).__init__()
 
-    def divide(self, number_of_segments, over_space=False):
+    def divide(self, number_of_segments: int, over_space: bool = False) -> list[list[float]]:
         points = []
         rs.EnableRedraw(False)
         if over_space:
@@ -29,7 +32,7 @@ class RhinoCurve(RhinoCurve):
         rs.EnableRedraw(True)
         return points
 
-    def length(self):
+    def length(self) -> float:
         """Return the length of the curve.
 
         Returns
@@ -39,7 +42,7 @@ class RhinoCurve(RhinoCurve):
         """
         return rs.CurveLength(self.guid)
 
-    def tangents(self, points):
+    def tangents(self, points: Sequence[Sequence[float]]) -> list[list[float]]:
         tangents = []
         if rs.IsPolyCurve(self.guid):
             pass

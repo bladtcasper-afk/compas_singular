@@ -70,7 +70,7 @@ from compas_singular.rhino import mesh_ui
 from compas_singular.rhino.helpers import bake_mesh
 from compas_singular.rhino.helpers import mesh_from_rhino
 from compas_singular.rhino.helpers import read_boundary_loops
-from compas_singular.rhino.project import get_settings
+from compas_singular.rhino.project import get_settings, resolve_spacing
 from compas_singular.rhino.project import ROOT, layer_path
 from compas_singular.rhino.session import RhinoSession
 
@@ -121,7 +121,7 @@ def load_walls():
     works, the boundary simply stops being held.
     """
     try:
-        spacing = get_settings()["triangulation_spacing"]
+        spacing = resolve_spacing(get_settings())
         outer_loop, inner_loops = read_boundary_loops(spacing * 0.25)
     except Exception as e:
         print("boundary walls unavailable ({}) -- a moved boundary vertex will "

@@ -1,6 +1,10 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from __future__ import annotations
+
+from typing import Any
+from typing import TYPE_CHECKING
 
 from compas.geometry import cross_vectors
 from compas.geometry import dot_vectors
@@ -12,6 +16,9 @@ from compas.geometry import subtract_vectors
 from compas.geometry import sum_vectors
 from compas.itertools import pairwise
 from compas.tolerance import TOL
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import Mesh
 
 __all__ = [
     'mesh_move_by',
@@ -25,7 +32,7 @@ __all__ = [
 ]
 
 
-def mesh_move_by(mesh, vector):
+def mesh_move_by(mesh: Mesh, vector: list[float]) -> None:
     """Move a mesh by a vector.
 
     Parameters
@@ -42,7 +49,7 @@ def mesh_move_by(mesh, vector):
         mesh.vertex[vkey]['z'] += vector[2]
 
 
-def mesh_move_vertices_by(mesh, key_to_vector):
+def mesh_move_vertices_by(mesh: Mesh, key_to_vector: dict[int, list[float]]) -> None:
     """Move mesh vertices by different vectors.
 
     Parameters
@@ -59,7 +66,7 @@ def mesh_move_vertices_by(mesh, key_to_vector):
         mesh.vertex[vkey]['z'] += vector[2]
 
 
-def mesh_move_vertex_to(mesh, point, vkey):
+def mesh_move_vertex_to(mesh: Mesh, point: list[float], vkey: int) -> None:
     """Move a mesh vertex to a point.
 
     Parameters
@@ -87,7 +94,7 @@ def mesh_move_vertex_to(mesh, point, vkey):
 FLATNESS = 1e-12
 
 
-def is_face_degenerate(a, b, c, tol=FLATNESS):
+def is_face_degenerate(a: list[float], b: list[float], c: list[float], tol: float = FLATNESS) -> bool:
     """Is a triangle flat -- its three corners collinear, or two of them equal?
 
     Parameters
@@ -119,7 +126,7 @@ def is_face_degenerate(a, b, c, tol=FLATNESS):
     return length_vector(cross_vectors(ab, ac)) <= tol * longest ** 2
 
 
-def trimesh_face_circle(mesh, fkey):
+def trimesh_face_circle(mesh: Mesh, fkey: int) -> tuple[list[float], float, list[float]] | None:
     """Circumcircle of a triangular face.
 
     Parameters
@@ -187,7 +194,7 @@ def trimesh_face_circle(mesh, fkey):
     return center, radius, normal
 
 
-def mesh_weld(mesh, precision=None, cls=None):
+def mesh_weld(mesh: Mesh, precision: int | None = None, cls: type | None = None) -> Any:
     """Weld vertices of a mesh within a precision distance, returning a new mesh.
 
     Parameters
@@ -231,7 +238,7 @@ def mesh_weld(mesh, precision=None, cls=None):
     return cls.from_vertices_and_faces(vertices, faces)
 
 
-def meshes_join(meshes, cls=None):
+def meshes_join(meshes: list[Mesh], cls: type | None = None) -> Any:
     """Join meshes without welding, returning a new mesh.
 
     Parameters
@@ -264,7 +271,7 @@ def meshes_join(meshes, cls=None):
     return cls.from_vertices_and_faces(vertices, faces)
 
 
-def meshes_join_and_weld(meshes, precision=None, cls=None):
+def meshes_join_and_weld(meshes: list[Mesh], precision: int | None = None, cls: type | None = None) -> Any:
     """Join and weld meshes within a precision distance, returning a new mesh.
 
     Parameters

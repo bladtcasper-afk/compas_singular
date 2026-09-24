@@ -11,6 +11,7 @@ have. Import from ``compas_singular.datastructures`` in anything new.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import BoundaryLoop  # noqa: F401
 from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import coarse_edges_to_curves  # noqa: F401

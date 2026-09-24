@@ -1,11 +1,16 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from __future__ import annotations
 
 from math import floor
 # from math import ceil
 from math import pi
 from operator import itemgetter
+from typing import Any
+from typing import Iterable
+from typing import Sequence
+from typing import TYPE_CHECKING
 
 from compas.geometry import Polyline
 # from compas.geometry import length_vector
@@ -40,11 +45,17 @@ from compas_singular.utilities import list_split
 
 from compas_singular.algorithms.propagation import quadrangulate_faces
 
+if TYPE_CHECKING:
+    from compas_singular.datastructures import CoarseQuadMesh
+    from compas_singular.datastructures import Mesh
+    from compas_singular.symmetry import SymmetryReport
+    from compas_singular.symmetry.unit import SymmetricUnit
+
 
 __all__ = ['SkeletonDecomposition']
 
 
-def _wall_spacing(outer, inners, target_length, alpha):
+def _wall_spacing(outer: list[list[float]], inners: list[list[list[float]]], target_length: float | None, alpha: float | None) -> float | None:
     """The segment length the walls were discretised at, for the features.
 
     ``discretise_boundary`` resolves ``alpha`` against the bounding-box diagonal
@@ -85,7 +96,7 @@ class SkeletonDecomposition(Skeleton):
 
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super(SkeletonDecomposition, self).__init__(*args, **kwargs)
         self.mesh = None
         self.polylines = None
@@ -106,7 +117,7 @@ class SkeletonDecomposition(Skeleton):
         self._mesh_poles = None
 
     @classmethod
-    def from_skeleton(cls, skeleton):
+    def from_skeleton(cls, skeleton: Skeleton) -> SkeletonDecomposition:
         """Construct a SkeletonDecomposition object from a Skeleton.
 
         Returns
@@ -118,7 +129,7 @@ class SkeletonDecomposition(Skeleton):
         return cls.from_vertices_and_faces(*skeleton.to_vertices_and_faces())
 
     @classmethod
-    def from_mesh(cls, mesh):
+    def from_mesh(cls, mesh: Mesh) -> SkeletonDecomposition:
         """Construct a SkeletonDecomposition object from a Mesh.
 
         Returns
@@ -133,8 +144,9 @@ class SkeletonDecomposition(Skeleton):
         return skeleton
 
     @classmethod
-    def from_boundary(cls, outer_boundary, inner_boundaries=None, polyline_features=[], point_features=[],
-                      target_length=None, alpha=0.04, d_min=5):
+    def from_boundary(cls, outer_boundary: list[list[float]], inner_boundaries: list[list[list[float]]] | None = None,
+                      polyline_features: list[list[list[float]]] = [], point_features: list[list[float]] = [],
+                      target_length: float | None = None, alpha: float | None = 0.04, d_min: int | None = 5) -> SkeletonDecomposition:
         """Triangulate a domain given by its walls, ready to decompose.
 
         Parameters
@@ -217,7 +229,7 @@ class SkeletonDecomposition(Skeleton):
     # symmetry
     # --------------------------------------------------------------------------
 
-    def find_symmetry(self, tol=None, include=('walls', 'holes', 'guides', 'poles'), max_order=12):
+    def find_symmetry(self, tol: float | None = None, include: Iterable[str] = ('walls', 'holes', 'guides', 'poles'), max_order: int = 12) -> SymmetryReport:
         """**Detect the symmetry of the domain this decomposition was built from.**
 
         Walls, holes, polyline features and point features are all tested. The
@@ -236,7 +248,7 @@ class SkeletonDecomposition(Skeleton):
                                              max_order=max_order)
         return self.symmetry_report
 
-    def symmetry_unit(self, keys=None, centre='route', seam=None, report=None):
+    def symmetry_unit(self, keys: list[str] | None = None, centre: str = 'route', seam: float | None = None, report: SymmetryReport | None = None) -> SymmetricUnit:
         """**Mesh one symmetric unit of the domain with this route.**
 
         The unit is cut out of the domain along the seams of the symmetries in
@@ -268,7 +280,7 @@ class SkeletonDecomposition(Skeleton):
     # key elements
     # --------------------------------------------------------------------------
 
-    def corner_faces(self):
+    def corner_faces(self) -> list[int]:
         """Get the indices of the corner faces in the Delaunay mesh, i.e. the ones with one neighbour.
 
         Thesis S4.2.1 calls these END faces: "end faces have one adjacent face".
@@ -282,7 +294,7 @@ class SkeletonDecomposition(Skeleton):
         """
         return [fkey for fkey in self.faces() if len(self.real_neighbors(fkey)) == 1]
 
-    def corner_vertices(self):
+    def corner_vertices(self) -> list[int]:
         """Get the indices of the corner vertices of the topological skeleton, i.e. the two-valent boundary vertices in the Delaunay mesh.
 
         The "two-valent boundary vertices" the CLOSING operation of thesis
@@ -296,7 +308,7 @@ class SkeletonDecomposition(Skeleton):
         """
         return [vkey for bdry in self.vertices_on_boundaries() for vkey in bdry if len(self.vertex_neighbors(vkey)) == 2]
 
-    def split_vertices(self):
+    def split_vertices(self) -> list[int]:
         """Get the indices of the boundary split vertices, i.e. the vertices of the singular faces.
 
         The other half of what CLOSING splits the boundary at (thesis S4.2.2):
@@ -310,7 +322,7 @@ class SkeletonDecomposition(Skeleton):
         """
         return [vkey for fkey in self.singular_faces() for vkey in self.face_vertices(fkey)]
 
-    def free_tip_vertices(self):
+    def free_tip_vertices(self) -> list[int]:
         """Get the indices of the free extremities of the curve features.
 
         A curve feature whose extremity is off the boundary is a slit in the
@@ -332,7 +344,7 @@ class SkeletonDecomposition(Skeleton):
     # branches
     # --------------------------------------------------------------------------
 
-    def branches_singularity_to_singularity(self):
+    def branches_singularity_to_singularity(self) -> list[list[list[float]]]:
         """Get the branch polylines of the topological skeleton between singularities only, not corners.
 
         **PRUNING**, the first operation of thesis S4.2.2: "pruning removes the
@@ -350,7 +362,7 @@ class SkeletonDecomposition(Skeleton):
             branch for branch in self.branches()
             if TOL.geometric_key(branch[0]) not in map_corners and TOL.geometric_key(branch[-1]) not in map_corners]
 
-    def branches_singularity_to_boundary(self):
+    def branches_singularity_to_boundary(self) -> list[list[list[float]]]:
         """Get new branch polylines between singularities and boundaries, at the location fo the split vertices. Not part of the topological skeleton.
 
         **GRAFTING**, the second operation of thesis S4.2.2: "grafting adds
@@ -367,7 +379,7 @@ class SkeletonDecomposition(Skeleton):
                   for fkey in self.singular_faces() for vkey in self.face_vertices(fkey)]
         return self.merge_graft_targets(grafts)
 
-    def merge_graft_targets(self, grafts):
+    def merge_graft_targets(self, grafts: list[list[list[float]]]) -> list[list[list[float]]]:
         """Grafts landing on one feature at ADJACENT samples share a node.
 
         Two singular faces either side of a curve feature each graft to their own
@@ -436,7 +448,7 @@ class SkeletonDecomposition(Skeleton):
             return grafts
         return [[centre, move.get(TOL.geometric_key(target), target)] for centre, target in grafts]
 
-    def branches_boundary(self):
+    def branches_boundary(self) -> list[list[list[float]]]:
         """Get new branch polylines from the Delaunay mesh boundaries split at the corner and plit vertices. Not part of the topological skeleton.
 
         **CLOSING**, the third operation of thesis S4.2.2: "closing adds boundary
@@ -458,7 +470,7 @@ class SkeletonDecomposition(Skeleton):
     # decomposition
     # --------------------------------------------------------------------------
 
-    def decomposition_polylines(self):
+    def decomposition_polylines(self) -> list[list[list[float]]]:
         """Get all the branch polylines to form a decomposition of the Delaunay mesh.
 
         The three operations of thesis S4.2.2 -- pruning, grafting, closing --
@@ -491,7 +503,7 @@ class SkeletonDecomposition(Skeleton):
                                          splits=splits)
         return self.polylines
 
-    def decomposition_polyline(self, geom_key_1, geom_key_2):
+    def decomposition_polyline(self, geom_key_1: str, geom_key_2: str) -> list[list[float]] | None:
         """Retrieve the decomposition polyline with extremities corresponding to two geoemtric keys.
 
         Parameters
@@ -509,7 +521,7 @@ class SkeletonDecomposition(Skeleton):
         polylines = {(TOL.geometric_key(polyline[0]), TOL.geometric_key(polyline[-1])): polyline for polyline in self.polylines}
         return polylines.get((geom_key_1, geom_key_2), polylines.get((geom_key_2, geom_key_1), None))
 
-    def decomposition_mesh(self, poles):
+    def decomposition_mesh(self, poles: list[list[float]]) -> CoarsePseudoQuadMesh:
         """Return a quad mesh based on the decomposition polylines.
         Some fixes are added to convert the mesh formed by the decomposition polylines into a (coarse) quad mesh.
 
@@ -534,7 +546,7 @@ class SkeletonDecomposition(Skeleton):
         self.store_pole_data(poles)
         return self.mesh
 
-    def coarse_mesh(self, poles=None, force=False) -> CoarsePseudoQuadMesh:
+    def coarse_mesh(self, poles: list[list[float]] | None = None, force: bool = False) -> CoarsePseudoQuadMesh:
         """**The coarse quad layout. The same object every time you ask.**
 
         The entry point for the workflow::
@@ -590,7 +602,7 @@ class SkeletonDecomposition(Skeleton):
         self._mesh_poles = poles_key
         return mesh
 
-    def edges_to_curves(self, coarse=None, wall_sampling=None, snap=True):
+    def edges_to_curves(self, coarse: CoarseQuadMesh | CoarsePseudoQuadMesh | None = None, wall_sampling: float | None = None, snap: bool = True) -> tuple[dict[tuple[int, int], list[list[float]]], dict[str, int]]:
         """**The shape of every coarse edge**, for ``densification``.
 
         A coarse edge is a straight chord and has to be -- the layout is a
@@ -671,7 +683,7 @@ class SkeletonDecomposition(Skeleton):
     # corrections
     # --------------------------------------------------------------------------
 
-    def branches_splitting_collapsed_boundaries(self):
+    def branches_splitting_collapsed_boundaries(self) -> list[list[list[float]]]:
         """Add new branches to fix the problem of boundaries with less than three splits that would be collapsed in the decomposition mesh.
 
         Thesis S4.2.3.4, COLLAPSED BOUNDARIES: "If less than three branches
@@ -725,7 +737,7 @@ class SkeletonDecomposition(Skeleton):
 
         return new_branches
 
-    def branches_splitting_flipped_faces(self):
+    def branches_splitting_flipped_faces(self) -> list[list[list[float]]]:
         """Add new branches to fix the problem of polyline patches that would form flipped faces in the decomposition mesh.
 
         Thesis S4.2.3.3, FLIPPED PATCHES: a patch whose face normal opposes its
@@ -771,7 +783,7 @@ class SkeletonDecomposition(Skeleton):
 
         return new_branches
 
-    def boundary_interior_angle(self, vkey):
+    def boundary_interior_angle(self, vkey: int) -> float:
         """The interior angle of the domain at a boundary vertex, in radians.
 
         The sum of the incident face angles at ``vkey``. Convex is below pi,
@@ -793,7 +805,7 @@ class SkeletonDecomposition(Skeleton):
                                   self.vertex_coordinates(face_vertices[(i + 1) % len(face_vertices)]))
         return total
 
-    def branches_splitting_boundary_kinks(self):
+    def branches_splitting_boundary_kinks(self) -> list[list[list[float]]]:
         """Add new branches to fix the problem of boundary kinks not marked by the skeleton
 
         Thesis S4.2.3.1, MISSED CONCAVITIES: "The skeleton marks convex but not
@@ -850,7 +862,7 @@ class SkeletonDecomposition(Skeleton):
 
         return new_branches
 
-    def solve_triangular_faces(self):
+    def solve_triangular_faces(self) -> None:
         """Modify the decomposition mesh from polylines to make it a quad mesh by converting the degenerated quad faces that appear as triangular faces.
 
         Thesis S4.2.3.2, UNWANTED TRIANGLES: "If two adjacent singular faces have
@@ -960,7 +972,7 @@ class SkeletonDecomposition(Skeleton):
             attr['y'] += xyz[1]
             attr['z'] += xyz[2]
 
-    def quadrangulate_polygonal_faces(self):
+    def quadrangulate_polygonal_faces(self) -> None:
         """Turn the polygonal faces left by a curve feature into quad faces.
 
         Thesis S4.3.2, Fig 4.20d: "Pentagonal or higher-valency faces ... become
@@ -1056,7 +1068,7 @@ class SkeletonDecomposition(Skeleton):
             self.mesh = before
             self.repair_notes.append('seam propagation did not terminate; polygonal faces left to the fallback repair')
 
-    def quadrangulate_polygonal_faces_wip(self):
+    def quadrangulate_polygonal_faces_wip(self) -> None:
         pass
         # mesh = self.mesh
 
@@ -1066,7 +1078,7 @@ class SkeletonDecomposition(Skeleton):
         # 	face_vertices = mesh.face_vertices(fkey)
         # 	if len(face_vertices) > 4:
 
-    def repair_polygonal_faces(self, poles=()):
+    def repair_polygonal_faces(self, poles: Sequence[list[float]] = ()) -> None:
         """Last resort for a face seam propagation could not turn into quads.
 
         :meth:`quadrangulate_polygonal_faces` repairs a polygonal face by
@@ -1103,7 +1115,7 @@ class SkeletonDecomposition(Skeleton):
         if note:
             self.repair_notes.append('fallback repair: {}'.format(note))
 
-    def split_quads_with_poles(self, poles):
+    def split_quads_with_poles(self, poles: list[list[float]]) -> list[list[list[float]]]:
         new_lines = []
 
         mesh = self.mesh
@@ -1124,7 +1136,7 @@ class SkeletonDecomposition(Skeleton):
         self.polylines += new_lines
         return new_lines
 
-    def store_pole_data(self, poles):
+    def store_pole_data(self, poles: list[list[float]]) -> None:
         """Record, for every triangular face, which of its corners is the pole.
 
         A triangular face of the coarse mesh is not a defect: it is the
@@ -1166,7 +1178,7 @@ class SkeletonDecomposition(Skeleton):
 
         mesh.attributes['face_pole'] = face_poles
 
-    def _choose_pole(self, fkey):
+    def _choose_pole(self, fkey: int) -> int:
         """Which corner of a triangular face to collapse the pseudo-quad at.
 
         A pseudo-quad ``(p, a, b)`` is the quad ``(p, a, b, p)``: ``(p, a)`` and

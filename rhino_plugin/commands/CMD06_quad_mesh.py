@@ -40,7 +40,7 @@ from compas_singular.framefield.quality import mesh_quality
 
 from compas_singular.rhino.project import get_settings, set_settings
 from compas_singular.rhino.project import layout_polylines, read_layout
-from compas_singular.rhino.project import resolve_relax, resolve_symmetry
+from compas_singular.rhino.project import resolve_relax, resolve_field_symmetry, resolve_spacing
 from compas_singular.rhino.session import RhinoSession
 # One implementation, shared with CMD_densities.
 from compas_singular.rhino.project import resolve_densities
@@ -76,10 +76,10 @@ def main():
     # the mesh still welds, the quality gate still passes. It is simply aligned
     # to a shape that is no longer there. ``mismatch`` is the only thing in the
     # pipeline that can catch it.
-    outer, inners, guides, _point_features = read_boundaries(
-        spacing=settings["triangulation_spacing"])
+    spacing = resolve_spacing(settings)
+    outer, inners, guides, _point_features = read_boundaries(spacing=spacing)
     if field is not None:
-        # ``resolve_relax`` / ``resolve_symmetry``, not the defaults: they are
+        # ``resolve_relax`` / ``resolve_field_symmetry``, not the defaults: they are
         # what step 3 SOLVED with, and ``mismatch`` compares solver settings as
         # well as geometry. Checking against ``relax=False`` would report
         # "solver settings changed" on every guided document and throw away a
@@ -88,7 +88,7 @@ def main():
                              mode=settings["guide_alignment"],
                              target_length=settings["triangulation_spacing"],
                              relax=resolve_relax(settings, guides),
-                             symmetry=resolve_symmetry(settings))
+                             symmetry=resolve_field_symmetry(settings))
         if why:
             print("field ignored: {} since it was solved. Re-run step 3.".format(why))
             field = None
@@ -124,7 +124,7 @@ def main():
     # A coarse edge is a straight chord and the layout has to keep it that way,
     # so the SHAPE of each edge is handed to ``densification`` separately. Built
     # from the walls in the DOCUMENT plus the layout's own shape polylines.
-    wall_sampling = settings["triangulation_spacing"] * WALL_SAMPLING_FACTOR
+    wall_sampling = spacing * WALL_SAMPLING_FACTOR
     outer_loop, inner_loops = read_boundary_loops(wall_sampling)
     loops = [outer_loop] + inner_loops
 
@@ -146,7 +146,7 @@ def main():
     resolve_densities(coarse, settings)
 
     if settings["field_aware"] and field is not None:
-        dense = coarse.densification(boundary_curvature=boundary_curvature, skeleton_curvature=skeleton_curvature, field=field)
+        dense = coarse.quad_mesh(boundary_curvature=boundary_curvature, skeleton_curvature=skeleton_curvature, field=field)
     else:
         print(coarse.edges_to_curves())
         dense = coarse.quad_mesh(boundary_curvature=boundary_curvature, skeleton_curvature=skeleton_curvature)

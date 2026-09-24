@@ -102,7 +102,10 @@ at all; dualise it instead.
 Note that a joint's own 1-ring must be all quads, so a POLE cannot be blocked
 -- but a pole elsewhere in the mesh is fine, as long as no seam reaches it.
 """
+from __future__ import annotations
+
 from collections import defaultdict
+from typing import Any
 
 from compas.datastructures import Mesh
 from compas.geometry import angle_points
@@ -129,20 +132,20 @@ class Propagation(Exception):
 # reading a mesh
 # ----------------------------------------------------------------------------
 
-def joints(mesh):
+def joints(mesh: Mesh) -> list[int]:
     """Interior vertices where a number of mesh lines other than 4 gather."""
     return [v for v in mesh.vertices()
             if not mesh.is_vertex_on_boundary(v) and mesh.vertex_degree(v) != 4]
 
 
-def face_degrees(mesh):
+def face_degrees(mesh: Mesh) -> dict[int, int]:
     d = defaultdict(int)
     for f in mesh.faces():
         d[len(mesh.face_vertices(f))] += 1
     return dict(d)
 
 
-def interior_valences(mesh):
+def interior_valences(mesh: Mesh) -> dict[int, int]:
     d = defaultdict(int)
     for v in mesh.vertices():
         if not mesh.is_vertex_on_boundary(v):
@@ -150,7 +153,7 @@ def interior_valences(mesh):
     return dict(d)
 
 
-def index_sum(mesh):
+def index_sum(mesh: Mesh) -> int:
     """``Sum(4 - valence)`` over interior vertices ``+ Sum(4 - degree)`` over faces.
 
     The conserved quantity. A valence-5 joint and a pentagonal face carry the
@@ -163,7 +166,7 @@ def index_sum(mesh):
     return s + sum(4 - len(mesh.face_vertices(f)) for f in mesh.faces())
 
 
-def quality(mesh):
+def quality(mesh: Mesh) -> tuple[float, float, float]:
     """Worst corner angle (min, max, degrees) and worst edge aspect ratio."""
     lo, hi, asp = 180.0, 0.0, 1.0
     for f in mesh.faces():
@@ -179,7 +182,7 @@ def quality(mesh):
     return lo, hi, asp
 
 
-def _opposite_edge(mesh, fkey, u, v):
+def _opposite_edge(mesh: Mesh, fkey: int, u: int, v: int) -> tuple[int, int] | None:
     """The edge of quad ``fkey`` opposite ``(u, v)``. None if not a quad."""
     vertices = mesh.face_vertices(fkey)
     if len(vertices) != 4:
@@ -190,13 +193,13 @@ def _opposite_edge(mesh, fkey, u, v):
     return (vertices[(i + 2) % 4], vertices[(i + 3) % 4])
 
 
-def _across(mesh, fkey, u, v):
+def _across(mesh: Mesh, fkey: int, u: int, v: int) -> int:
     """The face on the other side of edge ``(u, v)`` from ``fkey``."""
     a, b = mesh.halfedge[u][v], mesh.halfedge[v][u]
     return b if a == fkey else a
 
 
-def _head(mesh, fkey, vkey, spin):
+def _head(mesh: Mesh, fkey: int, vkey: int, spin: int) -> tuple[int, int]:
     """Which outer edge of an incident quad the repair splits."""
     d = mesh.face_vertex_descendant(fkey, vkey)
     o = mesh.face_vertex_descendant(fkey, d)
@@ -204,7 +207,7 @@ def _head(mesh, fkey, vkey, spin):
     return (d, o) if spin == 0 else (o, a)
 
 
-def _median_edge_length(mesh):
+def _median_edge_length(mesh: Mesh) -> float:
     lengths = sorted(mesh.edge_length(edge) for edge in mesh.edges())
     if not lengths:
         return 0.0
@@ -215,7 +218,7 @@ def _median_edge_length(mesh):
 # will it work?
 # ----------------------------------------------------------------------------
 
-def head_strips(mesh, vkey, spin=0):
+def head_strips(mesh: Mesh, vkey: int, spin: int = 0) -> list[tuple[str, int]]:
     """Classify the strip each repair split must run in, one per incident quad.
 
     Returns ``(verdict, faces)`` per incident quad. ``open`` means the split
@@ -251,7 +254,7 @@ def head_strips(mesh, vkey, spin=0):
     return out
 
 
-def blockable(mesh, vkey):
+def blockable(mesh: Mesh, vkey: int) -> tuple[int | None, str]:
     """``(spin, reason)`` -- which chirality works at this joint, if either.
 
     ``spin`` is None when neither does, and ``reason`` says why in one line.
@@ -273,7 +276,9 @@ def blockable(mesh, vkey):
                   '{}'.format(len(bad), '; '.join(sorted(set(bad)))))
 
 
-def joint_at(mesh, point, tol=None):
+def joint_at(
+    mesh: Mesh, point: list[float], tol: float | None = None
+) -> tuple[int | None, float | None, str]:
     """The blockable joint at ``point``: ``(vkey, distance, reason)``.
 
     ``vkey`` is None when there is no joint there to block, and ``reason`` says
@@ -329,7 +334,14 @@ def joint_at(mesh, point, tol=None):
 # the operator
 # ----------------------------------------------------------------------------
 
-def block_at(mesh, vkey, ratio=0.4, spin=0, _splits=None, _report=None):
+def block_at(
+    mesh: Mesh,
+    vkey: int,
+    ratio: float = 0.4,
+    spin: int = 0,
+    _splits: dict[frozenset, bool] | None = None,
+    _report: dict[str, Any] | None = None,
+) -> tuple[Mesh | None, dict[str, Any]]:
     """A NEW mesh with the valence-n joint ``vkey`` replaced by an n-gon block.
 
     ``ratio`` is how far along each incident edge the block's corner sits, i.e.
@@ -389,7 +401,9 @@ def block_at(mesh, vkey, ratio=0.4, spin=0, _splits=None, _report=None):
     return _rebuild(mesh, {vkey: (ring, ratio, spin)}, splits, trunc), report
 
 
-def blocks_at(mesh, vkeys, ratio=0.4, spins=None):
+def blocks_at(
+    mesh: Mesh, vkeys: list[int], ratio: float = 0.4, spins: dict[int, int] | None = None
+) -> tuple[Mesh, dict[str, Any]]:
     """Every block in one pass, so their seams can end on each other."""
     splits, trunc, sing = {}, {}, {}
     spins = spins or {}
@@ -408,7 +422,7 @@ def blocks_at(mesh, vkeys, ratio=0.4, spins=None):
     return _rebuild(mesh, sing, splits, trunc), report
 
 
-def blocks_any_spin(mesh, vkeys, ratio=0.4):
+def blocks_any_spin(mesh: Mesh, vkeys: list[int], ratio: float = 0.4) -> tuple[Mesh, dict[str, Any]]:
     """Search the chirality assignments until one closes. Reports which."""
     import itertools
     n = len(vkeys)
@@ -425,11 +439,16 @@ def blocks_any_spin(mesh, vkeys, ratio=0.4):
     raise Propagation('no chirality assignment closes; last: {}'.format(last))
 
 
-def _rebuild(mesh, sing, splits, trunc):
+def _rebuild(
+    mesh: Mesh,
+    sing: dict[int, tuple[list[int], float, int]],
+    splits: dict[frozenset, bool],
+    trunc: dict[tuple[int, int], bool],
+) -> Mesh:
     """Assemble the new mesh from the original faces and the recorded splits."""
     points, index = [], {}
 
-    def add(tag, xyz):
+    def add(tag: tuple, xyz: list[float]) -> int:
         if tag not in index:
             index[tag] = len(points)
             points.append(list(xyz))
@@ -452,13 +471,13 @@ def _rebuild(mesh, sing, splits, trunc):
         b = mesh.vertex_coordinates(nbr)
         add(('t', vkey, nbr), [a[i] + ratio * (b[i] - a[i]) for i in range(3)])
 
-    def V(v):
+    def V(v: int) -> int:
         return index[('v', v)]
 
-    def S(u, w):
+    def S(u: int, w: int) -> int:
         return index[('s', frozenset((u, w)))]
 
-    def T(vkey, nbr):
+    def T(vkey: int, nbr: int) -> int:
         return index[('t', vkey, nbr)]
 
     faces = []
@@ -531,7 +550,7 @@ def _rebuild(mesh, sing, splits, trunc):
     return out
 
 
-def _edges_of(vertices):
+def _edges_of(vertices: list[int]) -> list[tuple[int, int]]:
     n = len(vertices)
     return [(vertices[i], vertices[(i + 1) % n]) for i in range(n)]
 
@@ -540,7 +559,13 @@ def _edges_of(vertices):
 # the point-driven entry point
 # ----------------------------------------------------------------------------
 
-def block_points(mesh, points, ratio=0.4, tol=None, relax_iters=0):
+def block_points(
+    mesh: Mesh,
+    points: list[list[float]],
+    ratio: float = 0.4,
+    tol: float | None = None,
+    relax_iters: int = 0,
+) -> tuple[Mesh, dict[str, Any]]:
     """Turn each picked point into an n-gon block face in a dense quad mesh.
 
     This is the entry point a picked point drives. It is keyed on COORDINATES
@@ -660,7 +685,13 @@ def block_points(mesh, points, ratio=0.4, tol=None, relax_iters=0):
     return out, report
 
 
-def _one_at_a_time(mesh, accepted, records, ratio, tol):
+def _one_at_a_time(
+    mesh: Mesh,
+    accepted: list[tuple[int, int, int, list[float]]],
+    records: list[dict[str, Any]],
+    ratio: float,
+    tol: float | None,
+) -> tuple[Mesh, dict[str, Any], list[tuple[int, int, int, list[float]]]]:
     """Fall back to one block per rebuild, re-locating each point as we go.
 
     The rebuild renumbers everything, so the remaining points have to be bound
@@ -699,7 +730,9 @@ def _one_at_a_time(mesh, accepted, records, ratio, tol):
 # the other route: collapse the pole's fan, the dual's trade done locally
 # ----------------------------------------------------------------------------
 
-def pole_at(mesh, point, tol=None):
+def pole_at(
+    mesh: Mesh, point: list[float], tol: float | None = None
+) -> tuple[int | None, float | None, str]:
     """The pole at ``point``: ``(vkey, distance, reason)``.
 
     A pole here is any INTERIOR vertex carrying at least one non-quad face in
@@ -737,7 +770,9 @@ def pole_at(mesh, point, tol=None):
                         'tolerance'.format(best, tol))
 
 
-def pole_blocks(mesh, points, tol=None, relax_iters=0):
+def pole_blocks(
+    mesh: Mesh, points: list[list[float]], tol: float | None = None, relax_iters: int = 0
+) -> tuple[Mesh, dict[str, Any]]:
     """Collapse the FAN at each pole into ONE n-gon face, centred on the point.
 
     This is what ``mesh_dual_conway`` does to a pole, done at one vertex
@@ -847,7 +882,7 @@ def pole_blocks(mesh, points, tol=None, relax_iters=0):
 
     points_out, index = [], {}
 
-    def add(v):
+    def add(v: int) -> int:
         if v not in index:
             index[v] = len(points_out)
             points_out.append(mesh.vertex_coordinates(v))
@@ -887,7 +922,7 @@ def pole_blocks(mesh, points, tol=None, relax_iters=0):
     return out, report
 
 
-def _block_face(mesh, xyz):
+def _block_face(mesh: Mesh, xyz: list[float]) -> int | None:
     """The non-quad face nearest ``xyz`` -- the block that was just built."""
     best, fkey = None, None
     for f in mesh.faces():
@@ -899,7 +934,7 @@ def _block_face(mesh, xyz):
     return fkey
 
 
-def _fan_boundary(mesh, fkeys):
+def _fan_boundary(mesh: Mesh, fkeys: list[int]) -> list[int] | None:
     """The ordered boundary cycle of a patch of faces, or None if it is not a disc.
 
     Not the same as ``vertex_neighbors(vkey, ordered=True)``, and the
@@ -935,7 +970,7 @@ def _fan_boundary(mesh, fkeys):
     return cycle
 
 
-def _face_of_degree_at(mesh, xyz, degree):
+def _face_of_degree_at(mesh: Mesh, xyz: list[float], degree: int) -> int | None:
     """The face of exactly ``degree`` sides nearest ``xyz``."""
     best, fkey = None, None
     for f in mesh.faces():
@@ -947,7 +982,7 @@ def _face_of_degree_at(mesh, xyz, degree):
     return fkey
 
 
-def report_lines(report):
+def report_lines(report: dict[str, Any]) -> list[str]:
     """``block_points``'s report as printable lines, one per point plus totals."""
     lines = []
     for i, r in enumerate(report['blocks']):
@@ -992,7 +1027,7 @@ def report_lines(report):
 # afterwards
 # ----------------------------------------------------------------------------
 
-def relax(mesh, kmax=30, slide=False, kink=30.0):
+def relax(mesh: Mesh, kmax: int = 30, slide: bool = False, kink: float = 30.0) -> Mesh:
     """Centroid smoothing with the boundary held, in place.
 
     The block's corners land on the incident edges at ``ratio``, which is a
@@ -1066,7 +1101,9 @@ def relax(mesh, kmax=30, slide=False, kink=30.0):
     return mesh
 
 
-def seam_edges(primal, result, tol=5):
+def seam_edges(
+    primal: Mesh, result: Mesh, tol: int = 5
+) -> list[tuple[list[float], list[float]]]:
     """Edges of ``result`` that are not edges of ``primal`` -- what a block cost.
 
     Matched on COORDINATES, so call it before :func:`relax`: the whole claim is

@@ -2,12 +2,25 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 from math import cos
 from math import pi
 from math import sin
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import Sequence
 
 from compas_singular.symmetry._geometry import point_in_polygon
+
+if TYPE_CHECKING:
+    from compas.geometry import Line
+    from compas.geometry import Point
+    from compas.geometry import Polyline
+
+    from compas_singular.symmetry.domain import Domain
+    from compas_singular.symmetry.group import Element
+    from compas_singular.symmetry.group import SymmetryGroup
 
 
 __all__ = ['SymmetryReport']
@@ -37,8 +50,18 @@ class SymmetryReport(object):
     domain : :class:`~.domain.Domain`
     """
 
-    def __init__(self, domain, group, tol, near, include, deviations,
-                 near_misses, circle_like, max_order):
+    def __init__(
+        self,
+        domain: Domain,
+        group: SymmetryGroup,
+        tol: float,
+        near: float,
+        include: Sequence[str],
+        deviations: dict[str, tuple[float, Any]],
+        near_misses: list[tuple[str, float, Any]],
+        circle_like: bool,
+        max_order: int,
+    ) -> None:
         self.domain = domain
         self.group = group
         self.tol = tol
@@ -52,21 +75,21 @@ class SymmetryReport(object):
     # ------------------------------------------------------------------
 
     @property
-    def centre(self):
+    def centre(self) -> list[float]:
         return list(self.group.centre)
 
     @property
-    def keys(self):
+    def keys(self) -> list[str]:
         return self.group.keys()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '<Symmetry {} about ({:.3f}, {:.3f}): {}>'.format(
             self.group.name, self.centre[0], self.centre[1], ' '.join(self.keys) or '-')
 
-    def centre_inside(self):
+    def centre_inside(self) -> bool:
         return self.domain.contains(self.centre)
 
-    def notes(self):
+    def notes(self) -> list[str]:
         """Plain-language remarks a user should read before choosing a unit."""
         out = []
         g = self.group
@@ -86,7 +109,7 @@ class SymmetryReport(object):
             out.append('near miss {}: {:.3g} off, worst on {}'.format(key, dev, tag))
         return out
 
-    def summary(self):
+    def summary(self) -> str:
         lines = [repr(self)]
         lines += ['  ' + note for note in self.notes()]
         return '\n'.join(lines)
@@ -95,7 +118,7 @@ class SymmetryReport(object):
     # per feature class
     # ------------------------------------------------------------------
 
-    def by_feature(self):
+    def by_feature(self) -> list[tuple[str, SymmetryReport]]:
         """The group with walls only, then adding holes, guides and poles in turn.
 
         Returns
@@ -126,7 +149,7 @@ class SymmetryReport(object):
     # geometry
     # ------------------------------------------------------------------
 
-    def geometry(self, arc_radius=None):
+    def geometry(self, arc_radius: float | None = None) -> dict[str, Any]:
         """Simple compas geometry that shows the symmetry.
 
         Returns
@@ -169,7 +192,7 @@ class SymmetryReport(object):
                 out['near_misses'].append(Point(*where[1]))
         return out
 
-    def _clip_line(self, angle):
+    def _clip_line(self, angle: float) -> tuple[list[float], list[float]]:
         """The axis through the centre at ``angle``, clipped to the outer wall."""
         c = self.centre
         ux, uy = cos(angle), sin(angle)
@@ -194,7 +217,9 @@ class SymmetryReport(object):
         lo, hi = min(ts), max(ts)
         return [c[0] + lo * ux, c[1] + lo * uy, 0.0], [c[0] + hi * ux, c[1] + hi * uy, 0.0]
 
-    def unit_outline(self, keys=None, centre='route', seam=None):
+    def unit_outline(
+        self, keys: Sequence[str] | None = None, centre: str = 'route', seam: Any = None
+    ) -> dict[str, list[Polyline]]:
         """The unit region for ``keys`` as closed ``Polyline``s, before any meshing.
 
         Returns
@@ -216,7 +241,7 @@ class SymmetryReport(object):
 
     # ------------------------------------------------------------------
 
-    def to_data(self):
+    def to_data(self) -> dict[str, Any]:
         return {'group': self.group.to_data(), 'tol': self.tol, 'near': self.near,
                 'include': list(self.include), 'circle_like': self.circle_like,
                 'deviations': {k: v[0] for k, v in self.deviations.items()},
@@ -224,5 +249,5 @@ class SymmetryReport(object):
                 'domain': self.domain.to_data()}
 
 
-def _inside(point, loop):
+def _inside(point: Sequence[float], loop: Sequence[Sequence[float]]) -> bool:
     return point_in_polygon(point[0], point[1], loop)

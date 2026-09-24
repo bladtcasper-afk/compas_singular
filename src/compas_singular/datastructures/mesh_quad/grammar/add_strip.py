@@ -1,21 +1,24 @@
-"""**Add a strip along a polyedge. Topology only -- nothing here moves a vertex.**
+"""**Add a strip along a polyedge, and open it by an exact rule.**
 
 ``add_strip`` splits every vertex of the polyedge in two and fills the band
 between the copies, which is thesis 5.3.1. Both copies are created AT THE
 POSITION of the vertex they replace, so the new strip has **zero width** until
-something separates them. That separation is deliberately not done here: it is a
-geometric decision, it differs per caller, and hiding it inside the grammar made
-it impossible to add a strip without also moving the rest of the mesh.
+something separates them.
 
-Openers in the codebase, for reference:
+``open_strip=True`` (the default) separates them with :func:`open_added_strip`:
+the new pair goes at one third and two thirds of the span the polyedge crossed,
+and pairs on the boundary are handed to an optional ``project`` callable (the
+coarse editor passes its wall projection). That moves ONLY the new pairs -- it
+is a rule, not smoothing; nothing else in the mesh moves.
 
-* :meth:`~compas_singular.editing.CoarseEditor._open_strip` -- exact rule, the
-  new pair goes at one third and two thirds of the span the polyedge crossed.
-  Corners on the layout boundary are projected back onto the wall.
+``open_strip=False`` is topology only, for callers that position the new pair
+themselves:
+
 * :meth:`~compas_singular.editing.DenseMeshEditor.relax` -- centroid smoothing
-  with every boundary ring held except the new pair.
+  with every boundary ring held except the new pair;
+* ``guide_lines.guide_band_mesh`` -- snaps the two rails onto the guide.
 
-**A caller that opens neither leaves coincident vertices**, which survive
+**A caller that opens neither way leaves coincident vertices**, which survive
 ``is_manifold`` but collapse a face to zero area -- and at float32 that is enough
 to make a whole Rhino mesh fail to bake.
 
@@ -26,9 +29,20 @@ ended with a 20-iteration constrained smooth of the WHOLE mesh. The walk below
 consumes the polyedge one vertex at a time and re-derives the remainder, which is
 what makes U-turns and self-crossings tractable -- see ``add_strip``.
 """
+from __future__ import annotations
+
+from typing import Any
+from typing import Callable
+from typing import Iterable
+from typing import TYPE_CHECKING
+
 from compas.topology import breadth_first_paths
 from compas.datastructures.mesh.operations.substitute import mesh_substitute_vertex_in_faces
+from compas.geometry import distance_point_point
 from compas.itertools import pairwise
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import QuadMesh
 
 
 __all__ = [
@@ -38,11 +52,13 @@ __all__ = [
     'split_strips',
     'strip_polyedge_update',
     'is_polyedge_valid_for_strip_addition',
+    'polyedge_sides',
+    'open_added_strip',
 ]
 
 
-def add_strips(mesh, polyedges):
-    """Add a strip along each polyedge, in order.
+def add_strips(mesh: QuadMesh, polyedges: list[list[int]], open_strip: bool = True, project: Callable[[list[float]], list[float]] | None = None) -> list[int]:
+    """Add a strip along each polyedge, in order. See :func:`add_strip`.
 
     The polyedges still to come are re-derived after every insertion: an
     insertion renumbers and replaces the very vertices they are written in terms
@@ -54,6 +70,10 @@ def add_strips(mesh, polyedges):
         A quad mesh, with ``attributes['strips']`` already collected.
     polyedges : list[list[int]]
         Polyedges, each a list of vertex keys.
+    open_strip : bool, optional
+        Open each new strip by :func:`open_added_strip`. Default ``True``.
+    project : callable, optional
+        Passed on to :func:`open_added_strip`.
 
     Returns
     -------
@@ -66,7 +86,8 @@ def add_strips(mesh, polyedges):
     while pending:
         polyedge = pending.pop()
         # ``list(...)``: ``add_strip`` consumes the polyedge it is given.
-        new_skey, old_to_new = add_strip(mesh, list(polyedge))
+        new_skey, old_to_new = add_strip(mesh, list(polyedge),
+                                         open_strip=open_strip, project=project)
         new_skeys.append(new_skey)
         pending = [strip_polyedge_update(mesh, pending_polyedge, old_to_new)
                    for pending_polyedge in pending]
@@ -74,8 +95,8 @@ def add_strips(mesh, polyedges):
     return new_skeys
 
 
-def add_strip(mesh, polyedge):
-    """**Add a strip along** ``polyedge``. Topology only -- the strip has zero width.
+def add_strip(mesh: QuadMesh, polyedge: list[int], open_strip: bool = True, project: Callable[[list[float]], list[float]] | None = None) -> tuple[int, dict[int, tuple[int, int]]]:
+    """**Add a strip along** ``polyedge``, opened by :func:`open_added_strip` by default.
 
     Each vertex ``Vi`` of the polyedge becomes two, ``Vi`` is substituted by the
     left copy in the faces on one side and by the right copy in those on the
@@ -94,6 +115,14 @@ def add_strip(mesh, polyedge):
     polyedge : list[int]
         Vertex keys in order, each joined to the next by an edge. Either closed,
         or with both ends on the boundary.
+    open_strip : bool, optional
+        Give the new strip its width with :func:`open_added_strip`. Default
+        ``True``. ``False`` is topology only: both copies of each vertex stay on
+        top of the vertex they replace.
+    project : callable, optional
+        ``project(xyz) -> xyz`` for the new pair at a BOUNDARY vertex, e.g. back
+        onto a curved wall. Without it they stay on the chord across the vertex.
+        Ignored when ``open_strip`` is ``False``.
 
     Returns
     -------
@@ -114,6 +143,14 @@ def add_strip(mesh, polyedge):
     ``[1, 2, 8, 2, 3]`` still raises there. Guard with
     ``is_polyedge_valid_for_strip_addition`` and keep polyedges simple.
     """
+    if open_strip:
+        # Measured BEFORE the walk: it deletes every vertex of the polyedge, so
+        # the neighbours that define each side have to be read off the mesh as
+        # it still is.
+        sides = polyedge_sides(mesh, polyedge)
+        boundary = _boundary_vertex_set(mesh)
+        on_boundary = set(vkey for vkey in polyedge if vkey in boundary)
+
     full_updated_polyedge = []
     # store data
     left_polyedge = []
@@ -237,23 +274,26 @@ def add_strip(mesh, polyedge):
     old_vkeys_to_new_vkeys = {u0: (u1, u2) for u0, u1, u2 in zip(full_updated_polyedge, left_polyedge, right_polyedge)}
 
     n = update_strip_data(mesh, full_updated_polyedge, old_vkeys_to_new_vkeys, closed=is_closed)
+    if open_strip:
+        open_added_strip(mesh, old_vkeys_to_new_vkeys, sides, on_boundary, project=project)
     return n, old_vkeys_to_new_vkeys
 
 
-def split_strip(mesh, skey, n=2):
-    """Refine a strip into ``n`` strips. Topology only -- see the module note.
+def split_strip(mesh: QuadMesh, skey: int, n: int = 2, open_strip: bool = True, project: Callable[[list[float]], list[float]] | None = None) -> list[int]:
+    """Refine a strip into ``n`` strips. ``open_strip``/``project`` as in :func:`add_strip`.
 
     Returns
     -------
     list
         The existing strip key, followed by the ``n - 1`` new ones.
     """
-    return [skey] + [add_strip(mesh, list(mesh.strip_side_polyedges(skey)[0]))[0]
+    return [skey] + [add_strip(mesh, list(mesh.strip_side_polyedges(skey)[0]),
+                               open_strip=open_strip, project=project)[0]
                      for _ in range(n - 1)]
 
 
-def split_strips(mesh, skey_to_n):
-    """Refine several strips. Topology only -- see the module note.
+def split_strips(mesh: QuadMesh, skey_to_n: dict[int, int], open_strip: bool = True, project: Callable[[list[float]], list[float]] | None = None) -> dict[int, list[int]]:
+    """Refine several strips. ``open_strip``/``project`` as in :func:`add_strip`.
 
     Parameters
     ----------
@@ -267,10 +307,163 @@ def split_strips(mesh, skey_to_n):
     dict
         Each split strip key, pointing to the keys of the strips refining it.
     """
-    return {skey: split_strip(mesh, skey, n) for skey, n in skey_to_n.items()}
+    return {skey: split_strip(mesh, skey, n, open_strip=open_strip, project=project)
+            for skey, n in skey_to_n.items()}
 
 
-def update_strip_data(mesh, full_updated_polyedge, old_vkeys_to_new_vkeys, closed=False):
+def polyedge_sides(mesh: QuadMesh, polyedge: list[int]) -> dict[int, tuple[list[int], list[int]] | None]:
+    """``{vertex: (left neighbours, right neighbours)}`` across the polyedge.
+
+    Which side a neighbour is on is the sign of the cross product of the
+    polyedge's direction AT the vertex with the direction to the neighbour.
+    The direction is taken ACROSS the vertex -- from the one before to the one
+    after -- rather than along a single edge, so one kinked edge does not
+    decide it. A vertex with no direction maps to ``None``. Planar (xy) only.
+    """
+    closed = polyedge[0] == polyedge[-1]
+    seq = polyedge[:-1] if closed else polyedge
+    count = len(seq)
+    out = {}
+    for i, vkey in enumerate(seq):
+        if closed:
+            prev, nxt = seq[(i - 1) % count], seq[(i + 1) % count]
+        else:
+            prev = seq[i - 1] if i > 0 else None
+            nxt = seq[i + 1] if i < count - 1 else None
+        point = mesh.vertex_coordinates(vkey)
+        a = mesh.vertex_coordinates(prev) if prev is not None else point
+        b = mesh.vertex_coordinates(nxt) if nxt is not None else point
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        if dx * dx + dy * dy < 1e-18:
+            out[vkey] = None
+            continue
+        left, right = [], []
+        for nbr in mesh.vertex_neighbors(vkey):
+            if nbr == prev or nbr == nxt:
+                continue
+            q = mesh.vertex_coordinates(nbr)
+            side = dx * (q[1] - point[1]) - dy * (q[0] - point[0])
+            (left if side > 0.0 else right).append(nbr)
+        out[vkey] = (left, right)
+    return out
+
+
+def open_added_strip(
+    mesh: QuadMesh,
+    old_to_new: dict[int, tuple[int, int]],
+    sides: dict[int, tuple[list[int], list[int]] | None],
+    on_boundary: Iterable[int] = (),
+    project: Callable[[list[float]], list[float]] | None = None,
+) -> int:
+    """**Give a new strip its width: redivide the two quads into three.**
+
+    :func:`add_strip` creates both copies of a vertex at the vertex's own
+    position, so the strip is degenerate until something separates them. The
+    span across the polyedge at a vertex ran from its left neighbour ``L``,
+    through the vertex, to its right neighbour ``R`` -- two quad widths. After
+    the insertion that same span carries three edges, so the two new vertices
+    belong at one third and two thirds of it.
+
+    This is an exact rule and moves nothing but the new pairs. It replaces the
+    20-iteration constrained smooth the old pattern grammar ran (``func_1``),
+    which slid coarse corners along a chorded boundary -- measured gaps of
+    0.096 / 0.071 / 0.130 ... 2.782 on a 4.389 loop, minimum angle 0.28 degrees.
+
+    Two cases need care and both are handled:
+
+    * **a vertex on the boundary.** ``L`` and ``R`` run along the wall, so
+      thirds of that span are still on the wall only if the wall is straight.
+      Both new vertices are passed through ``project`` when one is given.
+    * **a singularity on the polyedge.** A vertex of valence other than four
+      has more than one neighbour on a side, so each side contributes its
+      centroid rather than its single point. A side with NO neighbour at all
+      -- a valence-2 layout corner, say -- falls back to the vertex's own
+      position, which keeps the pair separated instead of leaving them
+      coincident.
+
+    Parameters
+    ----------
+    mesh : QuadMesh
+        The mesh after a topology-only :func:`add_strip`.
+    old_to_new : dict
+        ``{old vertex: (copy, copy)}``, the second return value of ``add_strip``.
+    sides : dict
+        :func:`polyedge_sides` of the polyedge, measured BEFORE ``add_strip``.
+    on_boundary : iterable, optional
+        Old vertices that were on the boundary.
+    project : callable, optional
+        ``project(xyz) -> xyz`` applied to the new pair at a boundary vertex.
+
+    Returns
+    -------
+    int
+        The number of pairs actually repositioned. Planar (xy): z is set to 0.
+    """
+    on_boundary = set(on_boundary)
+    opened = 0
+    for old, pair in old_to_new.items():
+        info = sides.get(old)
+        if info is None or len(pair) != 2:
+            continue
+        left_keys, right_keys = info
+        first, second = pair
+
+        # Which copy took which side is MEASURED on the result rather than
+        # assumed from the walk's left/right convention: the copy adjacent to a
+        # left-hand neighbour is the left one.
+        if any(k in mesh.halfedge.get(first, {}) for k in left_keys):
+            low, high = first, second
+        elif any(k in mesh.halfedge.get(second, {}) for k in left_keys):
+            low, high = second, first
+        elif any(k in mesh.halfedge.get(first, {}) for k in right_keys):
+            low, high = second, first
+        elif any(k in mesh.halfedge.get(second, {}) for k in right_keys):
+            low, high = first, second
+        else:
+            continue
+
+        here = mesh.vertex_coordinates(low)
+        a = _centroid([mesh.vertex_coordinates(k) for k in left_keys], here)
+        b = _centroid([mesh.vertex_coordinates(k) for k in right_keys], here)
+        if distance_point_point(a, b) <= 1e-12:
+            continue
+
+        one = [a[0] + (b[0] - a[0]) / 3.0, a[1] + (b[1] - a[1]) / 3.0, 0.0]
+        two = [a[0] + 2.0 * (b[0] - a[0]) / 3.0,
+               a[1] + 2.0 * (b[1] - a[1]) / 3.0, 0.0]
+        if project is not None and old in on_boundary:
+            one, two = project(one), project(two)
+
+        mesh.vertex_attributes(low, 'xyz', [one[0], one[1], 0.0])
+        mesh.vertex_attributes(high, 'xyz', [two[0], two[1], 0.0])
+        opened += 1
+    return opened
+
+
+def _centroid(points: list[list[float]], fallback: list[float]) -> list[float]:
+    """The average of ``points``, or ``fallback`` when there are none."""
+    if not points:
+        return list(fallback)
+    n = float(len(points))
+    return [sum(p[0] for p in points) / n, sum(p[1] for p in points) / n, 0.0]
+
+
+def _boundary_vertex_set(mesh: QuadMesh) -> set[int]:
+    """Every vertex with a faceless halfedge -- holes included, no loop walk.
+
+    The same rule as ``editing.editor.boundary_vertex_set``, repeated here
+    because the grammar must not import from ``editing``.
+    """
+    out = set()
+    for u, nbrs in mesh.halfedge.items():
+        for v, fkey in nbrs.items():
+            if fkey is None:
+                out.add(u)
+                out.add(v)
+    return out
+
+
+def update_strip_data(mesh: QuadMesh, full_updated_polyedge: list[int], old_vkeys_to_new_vkeys: dict[int, tuple[int, int]], closed: bool = False) -> int:
     """Bring ``attributes['strips']`` up to date after a strip was added.
 
     ``closed`` matters: a closed polyedge arrives here without its repeated end
@@ -318,7 +511,7 @@ def update_strip_data(mesh, full_updated_polyedge, old_vkeys_to_new_vkeys, close
     return n
 
 
-def strip_polyedge_update(mesh, polyedge, vertex_modifications):
+def strip_polyedge_update(mesh: QuadMesh, polyedge: list[int], vertex_modifications: dict[int, tuple[int, int]]) -> list[int]:
     """Rewrite ``polyedge`` in terms of the vertices an insertion left behind.
 
     Parameters
@@ -389,7 +582,7 @@ def strip_polyedge_update(mesh, polyedge, vertex_modifications):
     return shortest_polyedge
 
 
-def sort_faces(mesh, u, v, w):
+def sort_faces(mesh: QuadMesh, u: int | None, v: int, w: int | None) -> list[list[int]] | list[int]:
 
     sorted_faces = [[], []]
     k = 0
@@ -416,7 +609,7 @@ def sort_faces(mesh, u, v, w):
         return sorted_faces
 
 
-def adjacency_from_to_via_vertices(mesh, from_vkey, to_vkey, via_vkeys):
+def adjacency_from_to_via_vertices(mesh: QuadMesh, from_vkey: int, to_vkey: int, via_vkeys: list[int]) -> dict[int, dict[int, Any]]:
     # get mesh adjacency constraiend to from_vkey and via_keys, via_keys and via_keys, and via_vkeys and to_vkey
 
     all_vkeys = set([from_vkey, to_vkey] + via_vkeys)
@@ -435,14 +628,14 @@ def adjacency_from_to_via_vertices(mesh, from_vkey, to_vkey, via_vkeys):
     return adjacency
 
 
-def polyedge_from_to_via_vertices(mesh, from_vkey, to_vkey, via_vkeys):
+def polyedge_from_to_via_vertices(mesh: QuadMesh, from_vkey: int, to_vkey: int, via_vkeys: list[int]) -> list[int]:
     # return shortest polyedge from_vkey to_vkey via_vkeys
 
     adjacency = adjacency_from_to_via_vertices(mesh, from_vkey, to_vkey, via_vkeys)
     return next(breadth_first_paths(adjacency, from_vkey, to_vkey))
 
 
-def is_polyedge_valid_for_strip_addition(mesh, polyedge):
+def is_polyedge_valid_for_strip_addition(mesh: QuadMesh, polyedge: list[int]) -> bool:
     if len(polyedge) > 2:
         if polyedge[0] == polyedge[-1] or (mesh.is_vertex_on_boundary(polyedge[0]) and mesh.is_vertex_on_boundary(polyedge[-1])):
             return True

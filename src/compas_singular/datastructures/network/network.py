@@ -1,6 +1,9 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from __future__ import annotations
+
+from typing import Any
 
 from compas.datastructures import Network
 # from compas.utilities import pairwise
@@ -12,11 +15,11 @@ __all__ = ['Network']
 
 class Network(Network):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super(Network, self).__init__(*args, **kwargs)
 
     @classmethod
-    def from_nodes_and_edges(cls, nodes, edges):
+    def from_nodes_and_edges(cls, nodes: "list[list[float]] | dict[int, list[float]]", edges: list[tuple[int, int]]) -> "Network":
         """Construct a network from nodes and edges.
 
         Parameters

@@ -1,13 +1,16 @@
 from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
+from __future__ import annotations
+
+from typing import Any
 
 __all__ = [
     'is_adjacency_two_colorable'
 ]
 
 
-def is_adjacency_two_colorable(adjacency):
+def is_adjacency_two_colorable(adjacency: dict[Any, list[Any]]) -> dict[Any, int] | None:
     """Try to color a data of adjacency with two colors only withtout any element adjacent to each other having the same colour.
 
     Parameters

@@ -39,10 +39,13 @@ one. That is what makes the protocol testable with a fake in ``test_protocol.py`
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 import json
 import sys
 import traceback
+from typing import Any
+from typing import Callable
 
 
 __all__ = [
@@ -71,13 +74,13 @@ INTERNAL_ERROR = -32603
 class JsonRpcError(Exception):
     """A fault in the protocol, not in a tool. Becomes an ``error`` object."""
 
-    def __init__(self, code, message, data=None):
+    def __init__(self, code: int, message: str, data: Any = None) -> None:
         Exception.__init__(self, message)
         self.code = code
         self.message = message
         self.data = data
 
-    def to_object(self):
+    def to_object(self) -> dict[str, Any]:
         error = {'code': self.code, 'message': self.message}
         if self.data is not None:
             error['data'] = self.data
@@ -91,7 +94,7 @@ class JsonRpcError(Exception):
 IMAGE_KEY = '_image'
 
 
-def _text_content(payload):
+def _text_content(payload: Any) -> list[dict[str, Any]]:
     """A result dict as MCP's one and only universally understood content block.
 
     Tools in this package return plain dicts, the way every other tool layer in
@@ -127,20 +130,20 @@ class Dispatcher(object):
         Shown to the client once, at ``initialize``. Say what the server is for.
     """
 
-    def __init__(self, handler, name='compas_singular', version='0.1.0',
-                 instructions=None):
+    def __init__(self, handler: Any, name: str = 'compas_singular', version: str = '0.1.0',
+                 instructions: str | None = None) -> None:
         self.handler = handler
         self.name = name
         self.version = version
         self.instructions = instructions
         self.initialized = False
-        self.client_version = None
+        self.client_version: str | None = None
 
     # --------------------------------------------------------------------
     # what we can do
     # --------------------------------------------------------------------
 
-    def capabilities(self):
+    def capabilities(self) -> dict[str, Any]:
         """Advertise only what the handler actually implements.
 
         Claiming a capability the handler cannot serve means the client calls
@@ -160,7 +163,7 @@ class Dispatcher(object):
     # the methods
     # --------------------------------------------------------------------
 
-    def _initialize(self, params):
+    def _initialize(self, params: dict[str, Any] | None) -> dict[str, Any]:
         wanted = (params or {}).get('protocolVersion')
         self.client_version = wanted
         version = wanted if wanted in PROTOCOL_VERSIONS else PREFERRED_VERSION
@@ -173,10 +176,10 @@ class Dispatcher(object):
             result['instructions'] = self.instructions
         return result
 
-    def _tools_list(self, params):
+    def _tools_list(self, params: dict[str, Any] | None) -> dict[str, Any]:
         return {'tools': list(self.handler.list_tools())}
 
-    def _tools_call(self, params):
+    def _tools_call(self, params: dict[str, Any] | None) -> dict[str, Any]:
         params = params or {}
         name = params.get('name')
         if not name:
@@ -195,10 +198,10 @@ class Dispatcher(object):
                             'mimeType': image.get('mimeType', 'image/png')})
         return {'content': content, 'isError': bool(failed)}
 
-    def _resources_list(self, params):
+    def _resources_list(self, params: dict[str, Any] | None) -> dict[str, Any]:
         return {'resources': list(self.handler.list_resources())}
 
-    def _resources_read(self, params):
+    def _resources_read(self, params: dict[str, Any] | None) -> dict[str, Any]:
         uri = (params or {}).get('uri')
         if not uri:
             raise JsonRpcError(INVALID_PARAMS, "resources/read needs a 'uri'")
@@ -211,10 +214,10 @@ class Dispatcher(object):
                               'mimeType': found.get('mimeType', 'text/markdown'),
                               'text': found.get('text', '')}]}
 
-    def _prompts_list(self, params):
+    def _prompts_list(self, params: dict[str, Any] | None) -> dict[str, Any]:
         return {'prompts': list(self.handler.list_prompts())}
 
-    def _prompts_get(self, params):
+    def _prompts_get(self, params: dict[str, Any] | None) -> dict[str, Any]:
         params = params or {}
         name = params.get('name')
         if not name:
@@ -227,10 +230,10 @@ class Dispatcher(object):
                                    'content': {'type': 'text', 'text': found}}]}
         return found
 
-    def _ping(self, params):
+    def _ping(self, params: dict[str, Any] | None) -> dict[str, Any]:
         return {}
 
-    def methods(self):
+    def methods(self) -> dict[str, Callable[[dict[str, Any] | None], dict[str, Any]]]:
         table = {'initialize': self._initialize, 'ping': self._ping}
         if hasattr(self.handler, 'list_tools'):
             table['tools/list'] = self._tools_list
@@ -247,7 +250,7 @@ class Dispatcher(object):
     # dispatch
     # --------------------------------------------------------------------
 
-    def handle(self, message):
+    def handle(self, message: dict[str, Any]) -> dict[str, Any] | None:
         """One decoded message in, one decoded reply out (or ``None``).
 
         Parameters
@@ -297,7 +300,7 @@ class Dispatcher(object):
                                 '{}: {}'.format(type(exc).__name__, exc))
 
 
-def _error_reply(message_id, code, message, data=None):
+def _error_reply(message_id: Any, code: int, message: str, data: Any = None) -> dict[str, Any]:
     error = {'code': code, 'message': message}
     if data is not None:
         error['data'] = data
@@ -308,7 +311,7 @@ def _error_reply(message_id, code, message, data=None):
 # the stdio loop
 # ==============================================================================
 
-def serve(dispatcher, stdin=None, stdout=None, guard=True):
+def serve(dispatcher: Dispatcher, stdin: Any = None, stdout: Any = None, guard: bool = True) -> None:
     """Read newline-delimited JSON from stdin, write replies to stdout.
 
     Returns when stdin closes, which is how an MCP client says it is done.
@@ -363,7 +366,7 @@ def serve(dispatcher, stdin=None, stdout=None, guard=True):
             sys.stdout = saved
 
 
-def _write(sink, payload):
+def _write(sink: Any, payload: Any) -> None:
     """One message, one line, flushed.
 
     Flushing every message is not optional: the client is blocked on our reply,

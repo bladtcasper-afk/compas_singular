@@ -28,6 +28,11 @@ The three names worth knowing:
   before the work rather than several frames into it.
 """
 
+from __future__ import annotations
+
+from typing import Any
+from typing import Sequence
+from typing import TYPE_CHECKING
 from math import pi
 
 from compas.geometry import angle_vectors
@@ -36,11 +41,14 @@ from compas.geometry import length_vector
 from compas.geometry import subtract_vectors
 from compas.itertools import pairwise
 
+if TYPE_CHECKING:
+    from compas_singular.datastructures import QuadMesh
+
 
 __all__ = ['densifiable', 'solve_non_quad_faces', 'topological_quad_split']
 
 
-def _arc_midpoint(loops, a, b, tol=1e-6):
+def _arc_midpoint(loops: list[list[list[float]]] | None, a: list[float], b: list[float], tol: float = 1e-6) -> list[float] | None:
     """Midpoint of the boundary arc between two points, if both lie on one loop.
 
     A quad split places each new vertex at the CHORD midpoint of the edge it
@@ -107,7 +115,11 @@ def _arc_midpoint(loops, a, b, tol=1e-6):
     return None
 
 
-def topological_quad_split(vertices, faces, loops=None):
+def topological_quad_split(
+    vertices: list[list[float]],
+    faces: list[list[int]],
+    loops: list[list[list[float]]] | None = None,
+) -> tuple[list[list[float]], list[list[int]]]:
     """Catmull-Clark TOPOLOGICAL split: every n-gon becomes n quads.
 
     Original vertices keep their position -- no smoothing, no geometry change,
@@ -135,12 +147,12 @@ def topological_quad_split(vertices, faces, loops=None):
     # two vertices at one position is not manifold. Measured on a round-holed
     # plate: 3 duplicated coordinates and a non-manifold result. Keep the
     # occupied positions and fall back to the chord when one is taken.
-    def key_of(p):
+    def key_of(p: list[float]) -> tuple[float, float]:
         return (round(p[0], 9), round(p[1], 9))
 
     taken = set(key_of(p) for p in vertices)
 
-    def mid(u, v):
+    def mid(u: int, v: int) -> int:
         key = (min(u, v), max(u, v))
         if key not in edge_mid:
             edge_mid[key] = len(new_vertices)
@@ -163,11 +175,11 @@ def topological_quad_split(vertices, faces, loops=None):
     return new_vertices, new_faces
 
 
-def _signed_area(pts):
+def _signed_area(pts: list[list[float]]) -> float:
     return 0.5 * sum(p[0] * q[1] - q[0] * p[1] for p, q in zip(pts, pts[1:] + pts[:1]))
 
 
-def _min_angle(pts):
+def _min_angle(pts: list[list[float]]) -> float:
     """Smallest interior angle of a polygon, in radians."""
     n = len(pts)
     worst = pi
@@ -180,7 +192,7 @@ def _min_angle(pts):
     return worst
 
 
-def _fan(fv):
+def _fan(fv: list[int]) -> list[list[int]]:
     """Cut an n-gon into quads plus at most one triangle, along its DIAGONALS.
 
     Takes the first four corners as a quad and starts again from the fourth,
@@ -199,7 +211,7 @@ def _fan(fv):
     return out
 
 
-def _best_fan(fv, coords):
+def _best_fan(fv: list[int], coords: list[list[float]]) -> list[list[int]] | None:
     """The best rotation of :func:`_fan`, or ``None`` if none is valid.
 
     A diagonal of a NON-CONVEX face can pass outside it, and the pieces either
@@ -226,7 +238,7 @@ def _best_fan(fv, coords):
     return best[1] if best else None
 
 
-def _choose_pole(fv, coords):
+def _choose_pole(fv: list[int], coords: dict[int, list[float]]) -> int:
     """Which corner of a triangle to collapse the pseudo-quad's fourth side at.
 
     A pseudo-quad ``(p, a, b)`` is the quad ``(p, a, b, p)``: ``(p, a)`` and
@@ -249,7 +261,12 @@ def _choose_pole(fv, coords):
     return best[1] if best else fv[0]
 
 
-def solve_non_quad_faces(mesh, cls=None, loops=None, poles=()):
+def solve_non_quad_faces(
+    mesh: "QuadMesh",
+    cls: type | None = None,
+    loops: list[list[list[float]]] | None = None,
+    poles: Sequence[list[float]] = (),
+) -> tuple["QuadMesh", str]:
     """Make ``mesh`` a quad mesh, whatever it started as.
 
     Four stages, cheapest and most local first. Only the last one changes any
@@ -374,7 +391,7 @@ def solve_non_quad_faces(mesh, cls=None, loops=None, poles=()):
     return out, note
 
 
-def _local_repair(mesh, cls, poles=()):
+def _local_repair(mesh: "QuadMesh", cls: type, poles: Sequence[list[float]] = ()) -> tuple["QuadMesh | None", int, int]:
     """Stages 2 and 3: fan the n-gons, pole the triangles. No new vertices.
 
     Returns
@@ -422,7 +439,7 @@ def _local_repair(mesh, cls, poles=()):
     return out, fanned, len(face_poles)
 
 
-def densifiable(mesh):
+def densifiable(mesh: "QuadMesh") -> tuple[bool, str]:
     """Whether ``densification`` will actually succeed on this coarse mesh.
 
     Three conditions, and all three are needed. Checking only "is it all quads"
@@ -493,7 +510,7 @@ def densifiable(mesh):
     return True, ''
 
 
-def _unify(mesh, cls):
+def _unify(mesh: "QuadMesh", cls: type) -> tuple["QuadMesh", int]:
     """Make every face wind counter-clockwise in XY. Returns how many flipped.
 
     ``Mesh.unify_cycles`` makes the winding CONSISTENT but picks its seed
@@ -506,7 +523,7 @@ def _unify(mesh, cls):
     vertices = [mesh.vertex_coordinates(v) for v in mesh.vertices()]
     faces = [[index[v] for v in mesh.face_vertices(f)] for f in mesh.faces()]
 
-    def signed(fv):
+    def signed(fv: list[int]) -> float:
         pts = [vertices[v] for v in fv]
         return sum(p[0] * q[1] - q[0] * p[1] for p, q in zip(pts, pts[1:] + pts[:1]))
 
@@ -558,7 +575,7 @@ def _unify(mesh, cls):
         1 for fv in faces if signed(fv) <= 0)
 
 
-def _rebuild(mesh, cls):
+def _rebuild(mesh: "QuadMesh", cls: type) -> "QuadMesh":
     """Re-index a mesh after face surgery, dropping orphaned vertices."""
     keep = {v for f in mesh.faces() for v in mesh.face_vertices(f)}
     index = {vkey: i for i, vkey in enumerate(sorted(keep))}

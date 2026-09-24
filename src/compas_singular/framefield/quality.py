@@ -42,10 +42,17 @@ reports 0 degrees and an infinite aspect ratio.
 A 7.4 degree pole is bad, and it is the regression check's business, not the
 floor's.
 """
+from __future__ import annotations
+
 from math import acos
 from math import atan2
 from math import degrees
 from math import pi
+from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import Mesh
 
 
 __all__ = ['mesh_quality', 'hard_floor', 'face_angles', 'curve_alignment',
@@ -67,7 +74,7 @@ HARD_MAX_ANGLE = 179.5
 LOW_ANGLE = 20.0
 
 
-def face_angles(points):
+def face_angles(points: list[list[float]]) -> list[float]:
     """Interior angles of a polygon, in degrees, one per corner given.
 
     ``points`` are the corners the face ACTUALLY has -- for a pseudo-quad that
@@ -90,7 +97,7 @@ def face_angles(points):
     return out
 
 
-def _face_edges(points):
+def _face_edges(points: list[list[float]]) -> list[float]:
     """Edge lengths of a polygon, in the order its corners were given."""
     n = len(points)
     return [((points[i][0] - points[(i + 1) % n][0]) ** 2
@@ -98,7 +105,7 @@ def _face_edges(points):
             for i in range(n)]
 
 
-def mesh_quality(mesh, low_angle=LOW_ANGLE):
+def mesh_quality(mesh: Mesh, low_angle: float = LOW_ANGLE) -> dict[str, Any]:
     """Element quality of a quad (or pseudo-quad) mesh, as plain numbers.
 
     Parameters
@@ -172,7 +179,7 @@ def mesh_quality(mesh, low_angle=LOW_ANGLE):
 ALIGNMENT_RADIUS = 1.0
 
 
-def _curve_samples(curve, spacing):
+def _curve_samples(curve: list[list[float]], spacing: float) -> list[tuple[tuple[float, float], float]]:
     """``(point, tangent)`` every ``spacing`` units along a polyline."""
     out = []
     for a, b in zip(curve, curve[1:]):
@@ -188,7 +195,12 @@ def _curve_samples(curve, spacing):
     return out
 
 
-def curve_alignment_profile(mesh, curve, radius=ALIGNMENT_RADIUS, spacing=0.5):
+def curve_alignment_profile(
+    mesh: Mesh,
+    curve: list[list[float]],
+    radius: float = ALIGNMENT_RADIUS,
+    spacing: float = 0.5,
+) -> list[tuple[tuple[float, float], float]]:
     """**How far a MESH is from a curve it was supposed to follow.**
 
     Per sample along the curve, the mean angle between the curve and every mesh
@@ -234,7 +246,12 @@ def curve_alignment_profile(mesh, curve, radius=ALIGNMENT_RADIUS, spacing=0.5):
     return out
 
 
-def curve_alignment(mesh, curve, radius=ALIGNMENT_RADIUS, spacing=0.5):
+def curve_alignment(
+    mesh: Mesh,
+    curve: list[list[float]],
+    radius: float = ALIGNMENT_RADIUS,
+    spacing: float = 0.5,
+) -> float:
     """Mean of :func:`curve_alignment_profile`, in degrees.
 
     The mean over the whole curve understates what a guided mesh achieves,
@@ -248,7 +265,7 @@ def curve_alignment(mesh, curve, radius=ALIGNMENT_RADIUS, spacing=0.5):
     return sum(v for _, v in profile) / len(profile)
 
 
-def hard_floor(metrics):
+def hard_floor(metrics: dict[str, Any]) -> tuple[bool, str]:
     """TIER 1. Is anything in this mesh degenerate rather than merely poor?
 
     Absolute and permanent: no baseline, and no future retuning, may bless an

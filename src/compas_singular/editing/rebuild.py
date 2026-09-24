@@ -84,6 +84,11 @@ definition; an interior one is never moved however close it is.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import Any
+from typing import Sequence
+from typing import TYPE_CHECKING
 
 from compas.geometry import Polyline
 from compas.geometry import distance_point_point
@@ -92,6 +97,9 @@ from compas.itertools import pairwise
 from compas_singular.datastructures import CoarsePseudoQuadMesh
 
 from compas_singular.editing.repair import solve_non_quad_faces
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import QuadMesh
 
 
 __all__ = ['coarse_from_skeleton', 'warp_polyline', 'face_polylines',
@@ -109,14 +117,14 @@ PRECISION = 3
 # reading what Rhino handed back
 # ------------------------------------------------------------------
 
-def _is_mesh(thing):
+def _is_mesh(thing: Any) -> bool:
     """Duck-typed: a compas mesh of any class, including the pseudo-quad ones."""
     return all(hasattr(thing, name)
                for name in ('vertices', 'faces', 'vertex_coordinates',
                             'face_vertices'))
 
 
-def _as_points(thing):
+def _as_points(thing: Any) -> list[list[float]]:
     """A polyline, a compas ``Polyline``, or a bare list of points -> point list.
 
     The closing point of a closed polyline is dropped: Rhino writes it, a face
@@ -130,7 +138,7 @@ def _as_points(thing):
     return points
 
 
-def faces_from_geometry(geometry):
+def faces_from_geometry(geometry: Any) -> list[list[list[float]]]:
     """``[[corner, corner, ...], ...]`` from a mesh or from closed polylines.
 
     Accepts, in order of how it is checked:
@@ -157,7 +165,7 @@ def faces_from_geometry(geometry):
 # putting an edited corner back on the wall
 # ------------------------------------------------------------------
 
-def closest_on_loop(point, loop):
+def closest_on_loop(point: list[float], loop: list[list[float]]) -> tuple[float, list[float] | None]:
     """``(distance, projected point)`` for the closest point of a closed loop.
 
     The loop is treated as closed whether or not its last point repeats its
@@ -179,7 +187,7 @@ def closest_on_loop(point, loop):
     return best_d, best_p
 
 
-def snap_to_loops(mesh, loops, tol):
+def snap_to_loops(mesh: "QuadMesh", loops: list[list[list[float]]], tol: float) -> tuple[int, int]:
     """Project the mesh's own BOUNDARY corners onto the domain walls.
 
     **Which corners are eligible is decided topologically, not by distance.**
@@ -235,11 +243,11 @@ def snap_to_loops(mesh, loops, tol):
 # faces -> mesh
 # ------------------------------------------------------------------
 
-def _key(point):
+def _key(point: list[float]) -> tuple[float, float]:
     return (round(point[0], PRECISION), round(point[1], PRECISION))
 
 
-def mesh_from_faces(faces, cls=CoarsePseudoQuadMesh):
+def mesh_from_faces(faces: list[list[list[float]]], cls: type = CoarsePseudoQuadMesh) -> tuple["QuadMesh | None", int]:
     """A coarse mesh from faces given as lists of corner points.
 
     Corners are welded by rounded coordinate at :data:`PRECISION`, the same
@@ -277,8 +285,13 @@ def mesh_from_faces(faces, cls=CoarsePseudoQuadMesh):
 # the entry point
 # ------------------------------------------------------------------
 
-def coarse_from_skeleton(geometry, loops=None, poles=(), snap_tol=0.0,
-                         cls=CoarsePseudoQuadMesh):
+def coarse_from_skeleton(
+    geometry: Any,
+    loops: list[list[list[float]]] | None = None,
+    poles: Sequence[list[float]] = (),
+    snap_tol: float = 0.0,
+    cls: type = CoarsePseudoQuadMesh,
+) -> tuple["QuadMesh | None", dict[str, Any]]:
     """**A coarse quad layout from an edited patch skeleton.**
 
     ``skeleton`` here means THE PATCH SKELETON HANDED BACK FROM RHINO -- the
@@ -351,7 +364,7 @@ def coarse_from_skeleton(geometry, loops=None, poles=(), snap_tol=0.0,
 # moving a traced curve onto new endpoints
 # ------------------------------------------------------------------
 
-def warp_polyline(points, pa, pb, limit=1.0):
+def warp_polyline(points: list[list[float]], pa: list[float], pb: list[float], limit: float = 1.0) -> list[list[float]] | None:
     """**End-anchored warp of a traced separatrix onto moved endpoints.**
 
     The reason an edited layout keeps its field alignment. ``points`` is the
@@ -415,7 +428,7 @@ def warp_polyline(points, pa, pb, limit=1.0):
 # what to bake into Rhino
 # ------------------------------------------------------------------
 
-def face_polylines(coarse):
+def face_polylines(coarse: "QuadMesh") -> list[Polyline]:
     """**One closed polyline per patch: the thing to bake and edit.**
 
     CORNERS ONLY -- four points and the closing repeat, or three for a

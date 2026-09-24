@@ -34,6 +34,7 @@ Surface class for Rhino with additional methods
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 # from .geometry import *  # noqa: F401 F403
 # from .objects import *  # noqa: F401 F403

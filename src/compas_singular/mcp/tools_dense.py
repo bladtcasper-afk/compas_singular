@@ -25,6 +25,11 @@ always takes back the latest step whichever kind it was.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import Any
+from typing import Sequence
+from typing import TYPE_CHECKING
 
 from compas_singular.editing.denseeditor import DenseMeshEditor
 from compas_singular.mcp.bridge import wire
@@ -32,6 +37,10 @@ from compas_singular.mcp.describe import describe
 from compas_singular.mcp.handle import resolve
 from compas_singular.mcp.library import thresholds
 from compas_singular.mcp.registry import tool
+
+if TYPE_CHECKING:
+    from compas.datastructures import Mesh
+    from compas_singular.mcp.session import MeshSession
 
 
 __all__ = []
@@ -44,13 +53,13 @@ _EDGE = {
                    'next to it. Any edge of the line works.'}
 
 
-def _refuse(reason, **extra):
+def _refuse(reason: str, **extra: Any) -> dict[str, Any]:
     out = {'ok': False, 'reason': reason}
     out.update(extra)
     return out
 
 
-def _editor(session):
+def _editor(session: MeshSession) -> tuple[DenseMeshEditor | None, dict[str, Any] | None]:
     """``(editor, None)`` on the dense mesh in hand, or ``(None, refusal)``.
 
     A mesh that is not a ``QuadMesh`` -- a plain compas ``Mesh`` read from a
@@ -71,7 +80,7 @@ def _editor(session):
     return DenseMeshEditor(mesh, walls=walls or None), None
 
 
-def _edge(mesh, handles):
+def _edge(mesh: Mesh, handles: Sequence[str]) -> tuple[tuple[Any, Any] | None, str | None]:
     """``((u, v), None)`` for two handles that are neighbours, else ``(None, reason)``."""
     if len(handles) != 2:
         return None, 'an edge needs exactly two vertex handles'
@@ -88,13 +97,13 @@ def _edge(mesh, handles):
     return (u, v), None
 
 
-def _reading(session):
+def _reading(session: MeshSession) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     metrics = session.quality()
     told = describe(session.mesh, metrics, thresholds())
     return metrics, told
 
 
-def _note_layout(session):
+def _note_layout(session: MeshSession) -> str | None:
     if session.coarse is None:
         return None
     return ('this edit is on the DENSE mesh only. coarse_densify regenerates '
@@ -124,7 +133,7 @@ def _note_layout(session):
     },
     required=('edge',), read_only=True, idempotent=True,
     title='Plan a dense line removal')
-def _t_dense_plan_line_removal(session, edge, preserve_boundaries=False):
+def _t_dense_plan_line_removal(session: MeshSession, edge: Sequence[str], preserve_boundaries: bool = False) -> dict[str, Any]:
     editor, refusal = _editor(session)
     if refusal:
         return refusal
@@ -158,7 +167,7 @@ def _t_dense_plan_line_removal(session, edge, preserve_boundaries=False):
                            'false.'},
     },
     required=('edge',), destructive=True, title='Remove a dense line')
-def _t_dense_remove_line(session, edge, preserve_boundaries=False):
+def _t_dense_remove_line(session: MeshSession, edge: Sequence[str], preserve_boundaries: bool = False) -> dict[str, Any]:
     editor, refusal = _editor(session)
     if refusal:
         return refusal
@@ -194,21 +203,18 @@ def _t_dense_remove_line(session, edge, preserve_boundaries=False):
 @tool(
     'dense_add_line',
     'Add a line to the DENSE mesh: grow one new strip beside the whole polyedge '
-    'through an edge, wall to wall (or all the way round a closed one), then '
-    'relax so the new row opens up -- it is created with zero width. The '
+    'through an edge, wall to wall (or all the way round a closed one). The new '
+    'row is opened by an exact rule: only its own vertices move, and the ones '
+    'on a wall stay on it. Nothing else moves -- smooth afterwards if wanted. The '
     'polyedge must be closed or end on the boundary at both ends, and may not '
     'touch a face that is not a quad (a pole, or a polygon). Snapshots the '
     'whole mesh first -- undo takes it back. The edit is lost if coarse_densify '
     'runs again.',
     properties={
         'edge': _EDGE,
-        'relax': {'type': 'boolean',
-                  'description': 'Open the new strip by smoothing the interior '
-                                 '(boundary held except the new pair). Default '
-                                 'true; false leaves it zero-width.'},
     },
     required=('edge',), title='Add a dense line')
-def _t_dense_add_line(session, edge, relax=True):
+def _t_dense_add_line(session: MeshSession, edge: Sequence[str]) -> dict[str, Any]:
     editor, refusal = _editor(session)
     if refusal:
         return refusal
@@ -217,7 +223,7 @@ def _t_dense_add_line(session, edge, relax=True):
         return _refuse(reason)
     before = session.quality()
     session.snapshot('before dense_add_line', whole=True)
-    ok, _notes = editor.add_line(uv, relax=bool(relax))
+    ok, _notes = editor.add_line(uv)
     if not ok:
         session._undo.pop()
         return _refuse(editor.last_reason)
@@ -232,14 +238,9 @@ def _t_dense_add_line(session, edge, relax=True):
            'faces': addition.get('faces_after'),
            'polyedge_vertices': addition.get('polyedge_vertices'),
            'closed': addition.get('closed'),
-           'relaxed': addition.get('relaxed'),
            'quality': after, 'reading': told['reading'],
            'verdict': told['verdict'], 'undo_available': session.can_undo()}
     note = _note_layout(session)
     if note:
         out['note'] = note
-    if not relax:
-        out['warning'] = ('relax=false leaves the new strip with ZERO width -- '
-                          'its vertices sit on top of each other until something '
-                          'smooths them apart')
     return out

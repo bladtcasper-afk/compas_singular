@@ -22,6 +22,15 @@ this server being broken.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import Any
+from typing import Callable
+from typing import Sequence
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from compas_singular.mcp.session import MeshSession
 
 
 __all__ = ['ToolSpec', 'TOOLS', 'tool', 'tool_names', 'schemas', 'call']
@@ -30,9 +39,9 @@ __all__ = ['ToolSpec', 'TOOLS', 'tool', 'tool_names', 'schemas', 'call']
 class ToolSpec(object):
     """One callable tool: the function, what it is for, and its arguments."""
 
-    def __init__(self, name, function, description, schema,
-                 read_only=False, destructive=False, idempotent=False,
-                 open_world=False, title=None):
+    def __init__(self, name: str, function: Callable[..., dict[str, Any]], description: str, schema: dict[str, Any],
+                 read_only: bool = False, destructive: bool = False, idempotent: bool = False,
+                 open_world: bool = False, title: str | None = None) -> None:
         self.name = name
         self.function = function
         self.description = description
@@ -45,7 +54,7 @@ class ToolSpec(object):
         self.open_world = open_world
         self.title = title or name
 
-    def annotations(self):
+    def annotations(self) -> dict[str, Any]:
         return {
             'title': self.title,
             'readOnlyHint': self.read_only,
@@ -54,17 +63,17 @@ class ToolSpec(object):
             'openWorldHint': self.open_world,
         }
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '<ToolSpec {}>'.format(self.name)
 
 
-TOOLS = {}
+TOOLS: dict[str, ToolSpec] = {}
 
 
-def tool(name, description, properties=None, required=(), read_only=False,
-         destructive=False, idempotent=False, open_world=False, title=None):
+def tool(name: str, description: str, properties: dict[str, Any] | None = None, required: Sequence[str] = (), read_only: bool = False,
+         destructive: bool = False, idempotent: bool = False, open_world: bool = False, title: str | None = None) -> Callable[[Callable[..., dict[str, Any]]], Callable[..., dict[str, Any]]]:
     """Register a tool. ``properties`` is the JSON-schema body of its arguments."""
-    def wrap(function):
+    def wrap(function: Callable[..., dict[str, Any]]) -> Callable[..., dict[str, Any]]:
         schema = {
             'type': 'object',
             'properties': dict(properties or {}),
@@ -79,11 +88,11 @@ def tool(name, description, properties=None, required=(), read_only=False,
     return wrap
 
 
-def tool_names():
+def tool_names() -> list[str]:
     return sorted(TOOLS)
 
 
-def schemas():
+def schemas() -> list[dict[str, Any]]:
     """``[{name, description, inputSchema, annotations}, ...]`` for ``tools/list``.
 
     Note ``inputSchema``, camelCase -- MCP's spelling, which is not the
@@ -96,7 +105,7 @@ def schemas():
             for spec in (TOOLS[name] for name in tool_names())]
 
 
-def call(session, name, arguments=None):
+def call(session: MeshSession, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
     """Run a tool by name. An unknown name or bad arguments is a refusal.
 
     Parameters

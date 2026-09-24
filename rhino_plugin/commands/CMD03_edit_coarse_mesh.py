@@ -83,7 +83,7 @@ from compas_singular.rhino.mesh_ui import FINISH
 from compas_singular.rhino.coarse_curves import coarse_edges_to_curves
 from compas_singular.rhino.helpers import read_boundaries
 from compas_singular.rhino.helpers import read_boundary_loops
-from compas_singular.rhino.project import get_settings
+from compas_singular.rhino.project import get_settings, resolve_spacing
 from compas_singular.rhino.project import layout_polylines, read_layout
 from compas_singular.rhino.session import RhinoSession
 
@@ -93,7 +93,7 @@ from compas_singular.rhino.session import RhinoSession
 # ----------------------------------------------------------------------
 
 settings = get_settings()
-SPACING = settings["triangulation_spacing"]
+SPACING = resolve_spacing(settings)
 
 #: The walls the layout's boundary edges densify ALONG. Finer than the
 #: background, because these points ARE the boundary from here on.

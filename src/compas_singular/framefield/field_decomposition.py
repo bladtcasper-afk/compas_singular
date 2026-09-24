@@ -14,6 +14,11 @@ becomes
 Everything after that -- ``collect_strips``, ``set_strips_density_target``,
 ``densification``, ``add_strip``, the guide_lines helpers -- is untouched.
 """
+from __future__ import annotations
+
+from typing import Any
+from typing import TYPE_CHECKING
+
 from compas.geometry import distance_point_point
 from compas.itertools import pairwise
 from compas_singular.datastructures import CoarsePseudoQuadMesh
@@ -44,11 +49,19 @@ from compas_singular.editing.repair import solve_non_quad_faces
 from compas_singular.editing.repair import topological_quad_split
 from compas_singular.framefield.trace import Tracer
 
+if TYPE_CHECKING:
+    from compas_singular.datastructures import Mesh
+    from compas_singular.datastructures import QuadMesh
+    from compas_singular.framefield.symmetry import Symmetry
+    from compas_singular.framefield.trace import Separatrix
+    from compas_singular.symmetry.report import SymmetryReport
+    from compas_singular.symmetry.unit import SymmetricUnit
+
 
 __all__ = ['FieldDecomposition']
 
 
-def _on_loop(point, loop, tol=1e-6):
+def _on_loop(point: list[float], loop: list[list[float]], tol: float = 1e-6) -> bool:
     """Whether a point sits on a boundary loop (used to pick the outer arcs)."""
     from compas.geometry import distance_point_point
     from compas.itertools import pairwise
@@ -65,7 +78,7 @@ def _on_loop(point, loop, tol=1e-6):
     return False
 
 
-def _loop_chord_tolerance(loop):
+def _loop_chord_tolerance(loop: list[list[float]]) -> float:
     """How far off a loop the CURVE it samples can lie. ``1e-6`` if it is a
     polygon.
 
@@ -120,7 +133,11 @@ def _loop_chord_tolerance(loop):
     return max(1e-6, 0.5 * worst)
 
 
-def _arcs_between(loop, pa, pb):
+def _arcs_between(
+    loop: list[list[float]],
+    pa: list[float],
+    pb: list[float],
+) -> list[list[list[float]]]:
     """BOTH ways round a closed loop between two points ON it, shorter first.
 
     Two, not one, because **length does not decide which way round is the
@@ -160,7 +177,7 @@ def _arcs_between(loop, pa, pb):
     if total == 0.0:
         return []
 
-    def param(point):
+    def param(point: list[float]) -> float:
         best_d, best_s = float('inf'), 0.0
         for i, (a, b) in enumerate(pairwise(ring)):
             abx, aby = b[0] - a[0], b[1] - a[1]
@@ -175,7 +192,7 @@ def _arcs_between(loop, pa, pb):
                 best_d, best_s = d, cum[i] + t * (cum[i + 1] - cum[i])
         return best_s
 
-    def point_at(s):
+    def point_at(s: float) -> list[float]:
         s = s % total
         for i, (c0, c1) in enumerate(zip(cum, cum[1:])):
             if c0 - 1e-9 <= s <= c1 + 1e-9:
@@ -185,7 +202,7 @@ def _arcs_between(loop, pa, pb):
                 return [a[k] + (b[k] - a[k]) * t for k in range(3)]
         return list(ring[-1])
 
-    def span_arc(s0, span, reverse):
+    def span_arc(s0: float, span: float, reverse: bool) -> list[list[float]]:
         arc = [list(pa if not reverse else pb)]
         for i in range(1, len(pts) + 1):
             arc.append(point_at(s0 + span * i / float(len(pts) + 1)))
@@ -207,7 +224,7 @@ def _arcs_between(loop, pa, pb):
     return [span_arc(*args) for args in order]
 
 
-def _arc_between(loop, pa, pb):
+def _arc_between(loop: list[list[float]], pa: list[float], pb: list[float]) -> list[list[float]] | None:
     """The shorter arc of a closed loop between two points ON it, pa -> pb."""
     found = _arcs_between(loop, pa, pb)
     return found[0] if found else None
@@ -225,7 +242,13 @@ class FieldDecomposition(object):
         Set by :meth:`decomposition_mesh`.
     """
 
-    def __init__(self, background, field, separatrices, tracer):
+    def __init__(
+        self,
+        background: BackgroundMesh | None,
+        field: CrossField | None,
+        separatrices: list[Separatrix],
+        tracer: Tracer | None,
+    ) -> None:
         self.background = background
         self.field = field
         #: Every argument :meth:`from_boundary` was called with, so the same route
@@ -288,7 +311,7 @@ class FieldDecomposition(object):
         #: :meth:`edges_to_curves`, whose exact-match branch is what finds them.
         self.user_curves = []
 
-    def warnings(self):
+    def warnings(self) -> list[str]:
         """Anything that will silently degrade the layout.
 
         ``arm_mismatch`` is the one that matters. If the probe circles around a
@@ -322,10 +345,21 @@ class FieldDecomposition(object):
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_boundary(cls, outer_boundary, inner_boundaries=None, guides=None,
-                      mode='perpendicular', target_length=None, orthogonal=None,
-                      guide_weight=1.0, guide_band=None, relax=False, field_tau=None,
-                      symmetry='auto', solve=True):
+    def from_boundary(
+        cls,
+        outer_boundary: Any,
+        inner_boundaries: Any = None,
+        guides: Any = None,
+        mode: str = 'perpendicular',
+        target_length: float | None = None,
+        orthogonal: bool | None = None,
+        guide_weight: float = 1.0,
+        guide_band: float | None = None,
+        relax: bool = False,
+        field_tau: float | None = None,
+        symmetry: Symmetry | str | None = 'auto',
+        solve: bool = True,
+    ) -> FieldDecomposition:
         """Solve the field and trace its separatrices.
 
         Parameters
@@ -421,15 +455,15 @@ class FieldDecomposition(object):
         return out
 
     @property
-    def is_solved(self):
+    def is_solved(self) -> bool:
         return self.field is not None
 
-    def _require_solved(self):
+    def _require_solved(self) -> None:
         if self.field is None:
             raise ValueError('this FieldDecomposition was built with solve=False and has no field '
                              'yet -- call solve() first, or use symmetry_unit()')
 
-    def solve(self):
+    def solve(self) -> FieldDecomposition:
         """**The solved decomposition** for the stored inputs. Returns a NEW object.
 
         For a decomposition built with ``solve=False``. A solved one returns itself.
@@ -442,7 +476,12 @@ class FieldDecomposition(object):
     # symmetry
     # ------------------------------------------------------------------
 
-    def find_symmetry(self, tol=None, include=('walls', 'holes', 'guides', 'poles'), max_order=12):
+    def find_symmetry(
+        self,
+        tol: float | None = None,
+        include: tuple[str, ...] = ('walls', 'holes', 'guides', 'poles'),
+        max_order: int = 12,
+    ) -> SymmetryReport:
         """**Detect the symmetry of the domain this decomposition was built from.**
 
         Walls, holes and guides are tested. Works on an unsolved decomposition
@@ -460,7 +499,13 @@ class FieldDecomposition(object):
                                              max_order=max_order)
         return self.symmetry_report
 
-    def symmetry_unit(self, keys=None, centre='route', seam=None, report=None):
+    def symmetry_unit(
+        self,
+        keys: Any = None,
+        centre: str = 'route',
+        seam: Any = None,
+        report: SymmetryReport | None = None,
+    ) -> SymmetricUnit:
         """**Solve and trace one symmetric unit of the domain.**
 
         The unit is cut out along the seams of the symmetries in ``keys`` and
@@ -481,7 +526,7 @@ class FieldDecomposition(object):
         return build_unit(report, mesher_for(self), keys=keys, centre=centre, seam=seam)
 
     @classmethod
-    def from_mesh(cls, trimesh, **kwargs):
+    def from_mesh(cls, trimesh: Mesh, **kwargs: Any) -> FieldDecomposition:
         """Construct from a triangulation, mirroring ``SkeletonDecomposition.from_mesh``.
 
         Only the BOUNDARY of ``trimesh`` is used. compas_singular's
@@ -499,13 +544,13 @@ class FieldDecomposition(object):
     # the SkeletonDecomposition-shaped API
     # ------------------------------------------------------------------
 
-    def decomposition_polylines(self):
+    def decomposition_polylines(self) -> list[list[list[float]]]:
         """All the polylines forming the decomposition -- separatrices and walls."""
         boundary, others, _ = self._build()
         self.polylines = boundary + others
         return self.polylines
 
-    def decomposition_mesh(self, poles=(), force=False):
+    def decomposition_mesh(self, poles: Any = (), force: bool = False) -> CoarsePseudoQuadMesh:
         """The coarse quad mesh. **The same object every time you ask.**
 
         The layout is a pure function of the polyline network -- which
@@ -640,7 +685,7 @@ class FieldDecomposition(object):
         self._edited = False
         return self.mesh
 
-    def coarse_mesh(self, poles=(), force=False):
+    def coarse_mesh(self, poles: Any = (), force: bool = False) -> CoarsePseudoQuadMesh:
         """**The coarse quad layout.** The name both front ends answer to.
 
         ``SkeletonDecomposition.coarse_mesh`` is the same step by the other
@@ -657,7 +702,7 @@ class FieldDecomposition(object):
         """
         return self.decomposition_mesh(poles=poles, force=force)
 
-    def get_field(self):
+    def get_field(self) -> CrossField:
         """**The cross field, to hand to** ``densification(field=...)``.
 
         The field is the whole of what densification needs -- it carries its own
@@ -678,7 +723,13 @@ class FieldDecomposition(object):
         self._require_solved()
         return self.field
 
-    def edit_coarse(self, geometry, poles=None, snap_tol=None, strict=True):
+    def edit_coarse(
+        self,
+        geometry: Any,
+        poles: Any = None,
+        snap_tol: float | None = None,
+        strict: bool = True,
+    ) -> CoarsePseudoQuadMesh:
         """**Take a hand-edited coarse layout in place of the generated one.**
 
         The one seam in the pipeline. Hand back what came out of
@@ -794,7 +845,7 @@ class FieldDecomposition(object):
         self.edit_notes = notes
         return self.mesh
 
-    def set_user_curves(self, curves):
+    def set_user_curves(self, curves: list[list[Any]]) -> None:
         """Adopt the curves a user drew on the layout, and publish them.
 
         Assigning :attr:`user_curves` alone is not enough once
@@ -813,8 +864,13 @@ class FieldDecomposition(object):
             boundary, others, _ = self._build()
             self.polylines = boundary + others + list(self.user_curves)
 
-    def quad_mesh(self, target_length=None, density=None, coarse=None,
-                  densities=None):
+    def quad_mesh(
+        self,
+        target_length: float | None = None,
+        density: int | None = None,
+        coarse: Any = None,
+        densities: dict[Any, int] | None = None,
+    ) -> QuadMesh:
         """**The deliverable: an all-quad mesh of the domain. Always.**
 
         Use this rather than assembling ``decomposition_mesh`` +
@@ -959,7 +1015,7 @@ class FieldDecomposition(object):
         self.dense = mesh
         return mesh
 
-    def densify(self, coarse=None, **kwargs):
+    def densify(self, coarse: Any = None, **kwargs: Any) -> QuadMesh:
         """**The layout, densified with the field steering patch interiors.**
 
         The other half of the objective. ``edges_to_curves`` already makes the
@@ -1013,7 +1069,7 @@ class FieldDecomposition(object):
                     stats['guarded'], stats['patches']))
         return dense
 
-    def route(self):
+    def route(self) -> str:
         """Which of :meth:`quad_mesh`'s three routes produced the last mesh.
 
         ``'field'``    -- the separatrix layout; element flow follows the field.
@@ -1030,7 +1086,7 @@ class FieldDecomposition(object):
             return 'polygon'
         return 'field'
 
-    def quality(self, mesh=None, low_angle=None):
+    def quality(self, mesh: Any = None, low_angle: float | None = None) -> dict[str, Any]:
         """**The numbers to gate on.** Element quality of a mesh, as a dict.
 
         Structural correctness -- all quads, manifold, right area -- says
@@ -1075,9 +1131,9 @@ class FieldDecomposition(object):
                                if self.mesh is not None else None)
         return out
 
-    def _coverage(self, mesh):
+    def _coverage(self, mesh: Any) -> float:
         """The mesh's area as a fraction of the domain's. 1.0 is exact."""
-        def polygon_area(loop):
+        def polygon_area(loop: list[list[float]]) -> float:
             pts = list(loop)
             return abs(0.5 * sum(p[0] * q[1] - q[0] * p[1]
                                  for p, q in zip(pts, pts[1:] + pts[:1])))
@@ -1093,7 +1149,7 @@ class FieldDecomposition(object):
                              for p, q in zip(pts, pts[1:] + pts[:1]))
         return abs(got) / want
 
-    def _acceptable(self, mesh):
+    def _acceptable(self, mesh: Any) -> tuple[bool, str, dict[str, Any]]:
         """Does this mesh represent the domain, and are its elements usable?
 
         Two separate questions, and the return value keeps them separate on
@@ -1158,7 +1214,7 @@ class FieldDecomposition(object):
             return False, 'covers {:.0%} of the domain area'.format(ratio), metrics
         return True, '', metrics
 
-    def _note_quality(self, mesh, metrics):
+    def _note_quality(self, mesh: Any, metrics: dict[str, Any]) -> None:
         """Record a hard-floor breach loudly, without changing the route.
 
         The note must not contain the words ``triangulation`` or ``DISCARDED``:
@@ -1174,11 +1230,11 @@ class FieldDecomposition(object):
             'degenerate, not merely poor, and nothing downstream should '
             'assume otherwise.'.format(why))
 
-    def _loops(self):
+    def _loops(self) -> list[list[list[float]]]:
         """Every boundary loop, for boundary-aware repair."""
         return [self.background.outer] + list(self.background.inners)
 
-    def _fallback_patch(self, boundary, reason):
+    def _fallback_patch(self, boundary: list[list[list[float]]], reason: str) -> Any:
         """Mesh the domain as one polygon, ignoring the separatrices.
 
         Only for simply-connected domains: with a hole, a single polygon is not
@@ -1201,7 +1257,7 @@ class FieldDecomposition(object):
 
         return self._triangulation_fallback(reason)
 
-    def _triangulation_fallback(self, reason, target_length=None):
+    def _triangulation_fallback(self, reason: str, target_length: float | None = None) -> Any:
         """Last resort: quad-split a coarse triangulation of the domain.
 
         Every triangle becomes three quads. This works for ANY domain topology --
@@ -1247,7 +1303,7 @@ class FieldDecomposition(object):
                 '' if ok else ' STILL not densifiable: {}'.format(why)))
         return mesh
 
-    def _single_patch(self, boundary):
+    def _single_patch(self, boundary: list[list[list[float]]]) -> CoarsePseudoQuadMesh:
         """One face spanning a domain with no interior lines.
 
         Any corner count, not just four: a hexagonal plate has no singularities
@@ -1268,7 +1324,7 @@ class FieldDecomposition(object):
         return CoarsePseudoQuadMesh.from_vertices_and_faces(
             corners, [list(range(len(corners)))])
 
-    def _cut_holes(self):
+    def _cut_holes(self) -> list[list[list[float]]]:
         """Inner loops that needed cutting open -- no corner, no singularity.
 
         The condition ``Tracer.hole_launches`` uses, asked again here because it
@@ -1281,7 +1337,7 @@ class FieldDecomposition(object):
         return [loop for loop in self.background.inners
                 if not boundary_corners(loop)]
 
-    def _mesh_from_faces(self, faces):
+    def _mesh_from_faces(self, faces: list[list[list[float]]]) -> Any:
         """A coarse mesh from faces given as lists of corner points.
 
         Corners are welded by rounded coordinate, the same resolution
@@ -1295,7 +1351,7 @@ class FieldDecomposition(object):
         mesh, _dropped = mesh_from_faces(faces, CoarsePseudoQuadMesh)
         return mesh
 
-    def edges_to_curves(self):
+    def edges_to_curves(self) -> dict[tuple[int, int], list[list[float]]]:
         """``{(u, v): polyline}`` for densification.
 
         Separatrices are CURVED. Chording each coarse edge straight would throw
@@ -1404,7 +1460,13 @@ class FieldDecomposition(object):
         self.edit_notes['edges'] = tally
         return out
 
-    def _arc_is_one_edge(self, arc, pa, pb, corners):
+    def _arc_is_one_edge(
+        self,
+        arc: list[list[float]],
+        pa: list[float],
+        pb: list[float],
+        corners: list[list[float]],
+    ) -> bool:
         """Is this boundary arc ONE edge of the layout, or several?
 
         The boundary branch of :meth:`edges_to_curves` assumes that an edge with
@@ -1480,7 +1542,7 @@ class FieldDecomposition(object):
             return False
         return True
 
-    def _warped_curve(self, pa, pb, claimed):
+    def _warped_curve(self, pa: list[float], pb: list[float], claimed: set[int]) -> list[list[float]] | None:
         """The traced separatrix this edge came from, moved onto its endpoints.
 
         Only ever reached on an edited layout: on a generated one every edge
@@ -1555,7 +1617,7 @@ class FieldDecomposition(object):
 
     # ------------------------------------------------------------------
 
-    def _build(self):
+    def _build(self) -> tuple[list[list[list[float]]], list[list[list[float]]], dict[str, Any]]:
         """The polyline network, as a PLANAR ARRANGEMENT.
 
         ``build_network`` snaps and splits, but it leaves polylines crossing in
@@ -1580,7 +1642,7 @@ class FieldDecomposition(object):
             self._network = (boundary, others, info)
         return self._network
 
-    def report(self):
+    def report(self) -> dict[str, Any]:
         boundary, others, info = self._build()
         out = dict(info)
         out.update(self.field.report())

@@ -28,6 +28,15 @@ it here is why this package can keep vertex and face keys entirely private.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import Iterable
+from typing import Sequence
+
+if TYPE_CHECKING:
+    from compas.datastructures import Mesh
 
 
 __all__ = [
@@ -55,7 +64,7 @@ class SelectorError(ValueError):
     """A region selector this module does not understand."""
 
 
-def vertex_handle(xyz, precision=PRECISION):
+def vertex_handle(xyz: Sequence[float], precision: int = PRECISION) -> str:
     """``[x, y, z]`` as a stable, readable name.
 
     Returns
@@ -69,14 +78,14 @@ def vertex_handle(xyz, precision=PRECISION):
     return pattern.format(xyz[0] + 0.0, xyz[1] + 0.0, xyz[2] + 0.0)
 
 
-def handles_of(mesh, vertices=None):
+def handles_of(mesh: Mesh, vertices: Iterable[Any] | None = None) -> dict[Any, str]:
     """``{vertex key: handle}`` for the given vertices, or for all of them."""
     keys = list(mesh.vertices()) if vertices is None else list(vertices)
     return dict((key, vertex_handle(mesh.vertex_coordinates(key)))
                 for key in keys)
 
 
-def _parse(handle):
+def _parse(handle: Any) -> list[float] | None:
     """A handle back to ``[x, y, z]``. ``None`` if it is not one."""
     if not isinstance(handle, str):
         return None
@@ -92,7 +101,7 @@ def _parse(handle):
         return None
 
 
-def resolve(mesh, handle):
+def resolve(mesh: Mesh, handle: str) -> tuple[Any, str]:
     """Find the vertex a handle names.
 
     Exact first -- a handle that still names its vertex resolves with no search.
@@ -136,7 +145,7 @@ def resolve(mesh, handle):
                               vertex_handle(mesh.vertex_coordinates(best))))
 
 
-def _distance(a, b):
+def _distance(a: Sequence[float], b: Sequence[float]) -> float:
     return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
 
 
@@ -144,11 +153,11 @@ def _distance(a, b):
 # regions
 # ==============================================================================
 
-def _boundary_vertices(mesh):
+def _boundary_vertices(mesh: Mesh) -> set:
     return set(mesh.vertices_on_boundary())
 
 
-def _singular_vertices(mesh):
+def _singular_vertices(mesh: Mesh) -> set:
     """Irregular interior vertices and poles.
 
     Prefers the mesh's own :meth:`is_vertex_singular`, which
@@ -167,7 +176,7 @@ def _singular_vertices(mesh):
                if key not in boundary and len(mesh.vertex_neighbors(key)) != 4)
 
 
-def _grow(mesh, seed, rings):
+def _grow(mesh: Mesh, seed: Iterable[Any], rings: int) -> set:
     """``seed`` plus ``rings`` rings of neighbours around it."""
     out = set(seed)
     frontier = set(seed)
@@ -180,14 +189,14 @@ def _grow(mesh, seed, rings):
     return out
 
 
-def _face_min_angle(mesh, fkey):
+def _face_min_angle(mesh: Mesh, fkey: Any) -> float:
     from compas_singular.framefield.quality import face_angles
     points = [mesh.vertex_coordinates(key) for key in mesh.face_vertices(fkey)]
     angles = face_angles(points)
     return min(angles) if angles else 180.0
 
 
-def select(mesh, selector):
+def select(mesh: Mesh, selector: dict[str, Any] | str) -> tuple[set, str]:
     """Resolve a region selector to a set of vertex keys.
 
     Parameters
@@ -293,7 +302,7 @@ def select(mesh, selector):
         "'worst_faces', 'singularities' or 'handles'".format(kind))
 
 
-def describe_selector(selector):
+def describe_selector(selector: dict[str, Any] | str | Any) -> str:
     """A short phrase for a selector, for the history. Never raises."""
     if isinstance(selector, str):
         return selector

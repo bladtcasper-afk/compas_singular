@@ -1,6 +1,7 @@
 from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
+from __future__ import annotations
 
 from math import cos
 from math import pi
@@ -19,7 +20,7 @@ __all__ = [
 ]
 
 
-def circle_evaluate(t, r, z=0):
+def circle_evaluate(t: float, r: float, z: float = 0) -> list[float]:
     """Evaluate a circle of radius ``r`` centred on the origin at parameter ``t``.
 
     Parameters
@@ -45,7 +46,7 @@ def circle_evaluate(t, r, z=0):
     return [r * cos(t), r * sin(t), z]
 
 
-def archimedean_spiral_evaluate(t, a, b, z=0):
+def archimedean_spiral_evaluate(t: float, a: float, b: float, z: float = 0) -> list[float]:
     """Evaluate an archimedean spiral ``r = a + b * theta`` at parameter ``t``.
 
     Parameters
@@ -72,19 +73,19 @@ def archimedean_spiral_evaluate(t, a, b, z=0):
     return [b * t * cos(t + a), b * t * sin(t + a), z]
 
 
-def line_array(n, d, anchor=[0.0, 0.0, 0.0]):
+def line_array(n: int, d: float, anchor: list[float] = [0.0, 0.0, 0.0]) -> list[list[float]]:
     return [add_vectors(anchor, [i * d, 0.0, 0.0]) for i in range(n)]
 
 
-def rectangular_array(nx, ny, dx, dy, anchor=[0.0, 0.0, 0.0]):
+def rectangular_array(nx: int, ny: int, dx: float, dy: float, anchor: list[float] = [0.0, 0.0, 0.0]) -> list[list[float]]:
     return [add_vectors(anchor, [x * dx, y * dy, 0.0]) for y in range(ny) for x in range(nx)]
 
 
-def circular_array(n, r, anchor=[0.0, 0.0, 0.0]):
+def circular_array(n: int, r: float, anchor: list[float] = [0.0, 0.0, 0.0]) -> list[list[float]]:
     return [add_vectors(anchor, circle_evaluate(2 * pi * float(i) / float(n), r)) for i in range(n)]
 
 
-def spiral_array(n, d, anchor=[0.0, 0.0, 0.0]):
+def spiral_array(n: int, d: float, anchor: list[float] = [0.0, 0.0, 0.0]) -> list[list[float]]:
     # spiral parameters set to respect d spacing between consecutive points and consecutive spiral elements
     a, b = 0, d / (2 * pi)
     ts = [pi * b]

@@ -26,6 +26,12 @@ What is new with the scene object:
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import Any
+from typing import Callable
+from typing import Iterable
+from typing import Sequence
 
 import Rhino  # type: ignore
 import rhinoscriptsyntax as rs  # type: ignore
@@ -47,12 +53,12 @@ from compas_singular.rhino.mesh_ui import unlock
 __all__ = ['RhinoSingularMeshObject']
 
 
-def _selection(flag, everything):
+def _selection(flag: bool | Sequence[Any] | None, everything: Callable[[], Iterable[Any]]) -> list[Any]:
     """compas's ``show_*`` convention: ``True`` is all of them, a list is those."""
     return list(everything()) if flag is True else list(flag or [])
 
 
-def _boundary_vertices(mesh):
+def _boundary_vertices(mesh: Any) -> set[int]:
     """Every vertex with a faceless halfedge -- the set, without walking a loop.
 
     NOT ``mesh.vertices_on_boundaries()``: that walks each boundary as a loop,
@@ -88,7 +94,14 @@ class RhinoSingularMeshObject(RUIMeshObject):
         per face. The permanent display; nothing on it is picked.
     """
 
-    def __init__(self, special=(), edge_shape=None, colors=None, joined=False, **kwargs):
+    def __init__(
+        self,
+        special: Sequence[int] = (),
+        edge_shape: Callable[[int, int], Sequence[Sequence[float]] | None] | None = None,
+        colors: dict[str, tuple[int, int, int]] | None = None,
+        joined: bool = False,
+        **kwargs: Any,
+    ) -> None:
         super(RhinoSingularMeshObject, self).__init__(**kwargs)
         self.special = special
         self.edge_shape = edge_shape
@@ -96,7 +109,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
         self.joined = joined
         self._forget()
 
-    def _forget(self):
+    def _forget(self) -> None:
         """Empty every guid map. Touches nothing in the document."""
         self._guids = []
         self._guid_mesh = None
@@ -114,11 +127,11 @@ class RhinoSingularMeshObject(RUIMeshObject):
     # clear and draw
     # --------------------------------------------------------------------------
 
-    def layers(self):
+    def layers(self) -> list[str]:
         """Every layer this object draws on. Only it draws there."""
         return [self.layer] if self.layer else []
 
-    def clear(self):
+    def clear(self) -> None:
         """Everything on this object's layers, and every guid map with it.
 
         Not their sublayers: ``QuadMesh`` has ``Edited``, ``Smoothened`` and
@@ -128,11 +141,11 @@ class RhinoSingularMeshObject(RUIMeshObject):
             compas_rhino.layers.clear_layer(layer, include_children=False, purge=False)
         self._forget()
 
-    def redraw_faces(self):
+    def redraw_faces(self) -> None:
         """The whole object: compas's ``clear_faces`` would leave face labels behind."""
         self.redraw()
 
-    def draw(self):
+    def draw(self) -> list[Any]:
         """Faces if shown, then corners and edges. Everything, every time."""
         ensure_layer(self.layer)
         self._guids = []
@@ -151,7 +164,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
         sc.doc.Views.Redraw()
         return self.guids
 
-    def draw_joined_faces(self):
+    def draw_joined_faces(self) -> Any | None:
         """The faces as ONE welded mesh, n-gons kept -- what ``helpers.bake_mesh`` bakes.
 
         Vertex KEYS are mapped to positions explicitly: they only agree while the
@@ -171,7 +184,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
         self._guids.append(guid)
         return guid
 
-    def draw_faces(self):
+    def draw_faces(self) -> list[Any]:
         """compas's faces, one object each -- plus a report of any Rhino refused."""
         faces = _selection(self.show_faces, self.mesh.faces)
         guids = super(RhinoSingularMeshObject, self).draw_faces()
@@ -183,7 +196,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
                 len(refused), len(faces), ", ".join(str(face) for face in refused)))
         return guids
 
-    def draw_vertices(self):
+    def draw_vertices(self) -> list[Any]:
         vertices = _selection(self.show_vertices, self.mesh.vertices)
         if not vertices:
             return []
@@ -193,7 +206,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
                  for vkey in vertices]
         return [guid for guid in guids if guid]
 
-    def draw_edges(self):
+    def draw_edges(self) -> list[Any]:
         edges = _selection(self.show_edges, self.mesh.edges)
         guids, chorded, lost = [], [], []
         for u, v in edges:
@@ -209,7 +222,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
                 len(lost), ", ".join("{}-{}".format(*edge) for edge in lost)))
         return guids
 
-    def sync(self):
+    def sync(self) -> tuple[int, int]:
         """**Bring the drawing up to date with the mesh, replacing only what changed.**
 
         What :meth:`redraw` does, for a mesh that changes a little at a time and
@@ -271,20 +284,20 @@ class RhinoSingularMeshObject(RUIMeshObject):
         sc.doc.Views.Redraw()
         return len(stale), added
 
-    def _vertex_color_key(self, vkey, boundary, special):
+    def _vertex_color_key(self, vkey: int, boundary: Iterable[int], special: Iterable[int]) -> str:
         if vkey in special:
             return 'vertex.special'
         if vkey in boundary:
             return 'vertex.boundary'
         return 'vertex'
 
-    def _place(self, guid, color_key):
+    def _place(self, guid: Any, color_key: str) -> None:
         """Put a freshly added object on this layer, in its colour."""
         rs.ObjectLayer(guid, self.layer)
         rs.ObjectColor(guid, self.colors[color_key])
         self._guids.append(guid)
 
-    def _add_vertex(self, vkey, color_key):
+    def _add_vertex(self, vkey: int, color_key: str) -> Any | None:
         xyz = tuple(self.mesh.vertex_coordinates(vkey))
         guid = rs.AddPoint(Point3d(*xyz))
         if not guid:
@@ -294,7 +307,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
         self._drawn_vertices[vkey] = (guid, xyz, color_key)
         return guid
 
-    def _add_edge(self, u, v):
+    def _add_edge(self, u: int, v: int) -> Any | None:
         ends = (tuple(self.mesh.vertex_coordinates(u)), tuple(self.mesh.vertex_coordinates(v)))
         try:
             guid = rs.AddLine(Point3d(*ends[0]), Point3d(*ends[1]))
@@ -307,7 +320,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
         self._drawn_edges[frozenset((u, v))] = (guid, ends)
         return guid
 
-    def _add_shaped_edge(self, u, v, chorded):
+    def _add_shaped_edge(self, u: int, v: int, chorded: list[tuple[int, int]]) -> Any | None:
         """The edge as its shape, or ``None`` to fall back to the chord.
 
         ``rs.AddPolyline`` RAISES on points Rhino will not take, judged at the
@@ -334,7 +347,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
     # pick
     # --------------------------------------------------------------------------
 
-    def pick_vertex(self, message="Select a vertex", preselect=True):
+    def pick_vertex(self, message: str = "Select a vertex", preselect: bool = True) -> int | None:
         """A vertex key, or ``None`` on Esc. A miss re-prompts."""
         while True:
             guid = rs.GetObject(message, rs.filter.point, preselect=preselect)
@@ -345,13 +358,18 @@ class RhinoSingularMeshObject(RUIMeshObject):
                 return vkey
             print("Not a vertex of this mesh -- pick one of the points on {!r}.".format(self.layer))
 
-    def pick_vertex_or_finish(self, message="Select a vertex", preselect=True):
+    def pick_vertex_or_finish(self, message: str = "Select a vertex", preselect: bool = True) -> int | Any | None:
         """A vertex key, ``mesh_ui.FINISH`` on Enter, or ``None`` on Esc.
 
         For a picking LOOP where Enter means "stop, and use what I have" and Esc
         "abandon the whole pick". ``rs.GetObject`` collapses both to ``None``
         because it never turns on ``AcceptNothing``; the ``GetObject`` it wraps
         reports them as different results once it is.
+
+        **The pick is unselected before it is returned.** ``rs.GetObject`` does
+        that itself; a bare ``GetObject`` leaves the object selected, and with
+        preselect on the NEXT call in the loop takes it at once, without waiting
+        for a click -- the same corner, again and again, forever.
         """
         while True:
             go = Rhino.Input.Custom.GetObject()
@@ -366,12 +384,15 @@ class RhinoSingularMeshObject(RUIMeshObject):
                 return FINISH
             if result != Rhino.Input.GetResult.Object:
                 continue
-            vkey = self._guid_vertex.get(go.Object(0).ObjectId)
+            guid = go.Object(0).ObjectId
+            sc.doc.Objects.UnselectAll()
+            sc.doc.Views.Redraw()
+            vkey = self._guid_vertex.get(guid)
             if vkey is not None:
                 return vkey
             print("Not a vertex of this mesh -- pick one of the points on {!r}.".format(self.layer))
 
-    def pick_edge(self, message="Select an edge", preselect=True):
+    def pick_edge(self, message: str = "Select an edge", preselect: bool = True) -> tuple[tuple[int, int], Any] | None:
         """``((u, v), guid)``, or ``None`` on Esc. A miss re-prompts.
 
         The guid comes back too: picking a point ALONG the edge
@@ -386,33 +407,33 @@ class RhinoSingularMeshObject(RUIMeshObject):
                 return edge, guid
             print("Not an edge of this mesh -- pick one of the lines on {!r}.".format(self.layer))
 
-    def pick_face(self, message="Pick a face"):
+    def pick_face(self, message: str = "Pick a face") -> int | None:
         """One face key, or ``None`` on Esc. Only this object's faces can be picked."""
         guid = rs.GetObject(message, rs.filter.mesh, custom_filter=self._is_face)
         return self._guid_face.get(guid) if guid else None
 
-    def pick_faces(self, message="Pick faces, Enter when done"):
+    def pick_faces(self, message: str = "Pick faces, Enter when done") -> list[int] | None:
         """Face keys, or ``None`` on Esc. Click them one by one or drag a window."""
         guids = rs.GetObjects(message, rs.filter.mesh, custom_filter=self._is_face)
         if not guids:
             return None
         return [self._guid_face[guid] for guid in guids if guid in self._guid_face]
 
-    def _is_face(self, rhino_object, geometry, component_index):
+    def _is_face(self, rhino_object: Any, geometry: Any, component_index: Any) -> bool:
         return rhino_object.Id in self._guid_face
 
-    def select_vertices(self, message="Select a vertex"):
+    def select_vertices(self, message: str = "Select a vertex") -> list[int] | None:
         vkey = self.pick_vertex(message)
         return None if vkey is None else [vkey]
 
-    def select_edges(self, message="Select an edge"):
+    def select_edges(self, message: str = "Select an edge") -> list[tuple[int, int]] | None:
         picked = self.pick_edge(message)
         return None if picked is None else [picked[0]]
 
-    def select_faces(self, message="Pick faces, Enter when done"):
+    def select_faces(self, message: str = "Pick faces, Enter when done") -> list[int] | None:
         return self.pick_faces(message)
 
-    def closest_edge_point(self, point, tol=None):
+    def closest_edge_point(self, point: Any, tol: float | None = None) -> Any | None:
         """``point`` snapped onto one of THIS mesh's edges if it lies on one, else ``None``.
 
         Only this mesh's edges: any other curve in the document -- an input
@@ -438,7 +459,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
     # show the run picked so far
     # --------------------------------------------------------------------------
 
-    def show_path(self, vkeys, color=None):
+    def show_path(self, vkeys: Sequence[int], color: tuple[int, int, int] | None = None) -> None:
         """**Show the corners picked so far, by RECOLOURING their objects.**
 
         Not a line drawn on top: consecutive corners of a polyedge are joined by
@@ -483,7 +504,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
                 self._guid_path.append(guid)
         sc.doc.Views.Redraw()
 
-    def clear_path(self):
+    def clear_path(self) -> None:
         """Put back the colours :meth:`show_path` changed. Safe to call twice."""
         for guid, original in self._path_colors.items():
             if rs.IsObject(guid):
@@ -498,13 +519,13 @@ class RhinoSingularMeshObject(RUIMeshObject):
     # locks
     # --------------------------------------------------------------------------
 
-    def unlock(self):
+    def unlock(self) -> dict[str, Any]:
         """Unlock this layer, its parents and the objects on it. Hand the result to :meth:`relock`."""
         return unlock(self.layer, self._pickable_guids())
 
-    def relock(self, state):
+    def relock(self, state: dict[str, Any]) -> None:
         relock(state)
 
-    def _pickable_guids(self):
+    def _pickable_guids(self) -> list[Any]:
         return (list(self._guid_vertex) + list(self._guid_edge)
                 + list(self._guid_face) + list(self._guid_path))

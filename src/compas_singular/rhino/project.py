@@ -17,14 +17,22 @@ move an old document over (:mod:`compas_singular.rhino.legacy`).
 
 **Importing this module does nothing.** It reads no document, writes no settings
 and creates no layers. ``rhinoscriptsyntax`` is optional so the Rhino-free parts
-(``resolve_relax``, ``resolve_symmetry``, ``resolve_densities``, the layer names)
+(``resolve_relax``, ``resolve_field_symmetry``, ``resolve_densities``, the layer names)
 import headless; anything that touches the document raises there.
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import Any
+from typing import Sequence
+from typing import TYPE_CHECKING
 
 from compas_singular.settings import Settings
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import CoarsePseudoQuadMesh
 
 try:
     import rhinoscriptsyntax as rs
@@ -37,7 +45,9 @@ __all__ = [
     'get_settings',
     'set_settings',
     'resolve_relax',
-    'resolve_symmetry',
+    'resolve_field_symmetry',
+    'resolve_spacing',
+    'THESIS_ALPHA',
     'resolve_densities',
     'has_closed_guide',
     'ROOT',
@@ -49,7 +59,7 @@ __all__ = [
 ]
 
 
-def _require_rhino():
+def _require_rhino() -> None:
     if rs is None:
         raise RuntimeError("compas_singular.rhino.project: this function needs Rhino "
                            "(rhinoscriptsyntax is not importable here).")
@@ -62,15 +72,19 @@ def _require_rhino():
 #: Every setting at its default, as the dict :func:`get_settings` returns.
 DEFAULT_SETTINGS = Settings().model_dump()
 
+#: The ``alpha`` of thesis eq. 4.1, the default of both decompositions'
+#: ``from_boundary`` and of ``discretise_boundary``.
+THESIS_ALPHA = 0.04
 
-def get_settings():
+
+def get_settings() -> dict[str, Any]:
     """The session's settings, as a dict a command can change and hand to :func:`set_settings`."""
     _require_rhino()
     from compas_singular.rhino.session import RhinoSession
     return RhinoSession.current().settings.model_dump()
 
 
-def set_settings(settings):
+def set_settings(settings: dict[str, Any]) -> dict[str, Any]:
     """Store ``settings`` (a dict) in the session, and record it. Returns them as stored."""
     _require_rhino()
     from compas_singular.rhino.session import RhinoSession
@@ -80,7 +94,7 @@ def set_settings(settings):
     return session.settings.model_dump()
 
 
-def resolve_relax(settings, guides):
+def resolve_relax(settings: dict[str, Any], guides: Sequence[Any]) -> bool:
     """Whether to solve with diffusion + normalisation, for THIS input."""
     value = settings.get("relax", "auto")
     if isinstance(value, str):
@@ -91,7 +105,35 @@ def resolve_relax(settings, guides):
     return bool(value)
 
 
-def has_closed_guide():
+def resolve_spacing(settings: dict[str, Any], loops: Sequence[Sequence[Sequence[float]]] | None = None) -> float:
+    """The background spacing as a NUMBER, for THIS document.
+
+    ``triangulation_spacing`` is ``None`` by default: the decompositions then
+    take thesis eq. 4.1, ``alpha`` times the bounding-box diagonal, and a
+    number in the settings overrides it. Pass the SETTING, not this, to
+    ``FieldDecomposition.from_boundary`` / ``CrossField.mismatch`` -- they
+    resolve ``None`` themselves, against their own sampled loops. This is for
+    the Rhino side, which divides curves by a length before any loop exists.
+
+    ``loops`` are point lists to measure; without them the bounding box of the
+    curves on the Outer and Inner layers is used.
+    """
+    value = settings.get("triangulation_spacing")
+    if value is not None:
+        return float(value)
+    from compas_singular.geometry.polyline import bounding_box_diagonal
+    if loops is None:
+        _require_rhino()
+        guids = list(rs.ObjectsByLayer("Outer") or []) + list(rs.ObjectsByLayer("Inner") or [])
+        box = rs.BoundingBox(guids) if guids else None
+        if not box:
+            raise RuntimeError("No outer boundary selected -- the thesis spacing "
+                               "is measured on it. Set Background_Spacing instead.")
+        loops = [[[p.X, p.Y, p.Z] for p in box]]
+    return THESIS_ALPHA * bounding_box_diagonal(*loops)
+
+
+def has_closed_guide() -> bool:
     """Is any curve on the Guides layer closed? A closed guide is the one case
     measured where relaxation makes the layout WORSE (13 patches -> 1)."""
     _require_rhino()
@@ -101,8 +143,8 @@ def has_closed_guide():
     return False
 
 
-def resolve_symmetry(settings):
-    """The symmetry group to solve under, for THIS document.
+def resolve_field_symmetry(settings: dict[str, Any]) -> str | None:
+    """The symmetry group to solve the FIELD under, for THIS document.
 
     ``'auto'`` detects it from outer + holes + guides; JSON ``null`` disables it
     and takes the pre-2026-08-14 route. Kept next to ``resolve_relax`` because
@@ -110,7 +152,7 @@ def resolve_symmetry(settings):
     re-solve, and a different group there is a different layout under the
     user's edits.
     """
-    value = settings.get("symmetry", "auto")
+    value = settings.get("field_symmetry", "auto")
     if isinstance(value, str):
         value = value.strip().lower()
         if value in ("", "none", "off", "no", "false", "0"):
@@ -119,7 +161,7 @@ def resolve_symmetry(settings):
     return None if not value else "auto"
 
 
-def resolve_densities(coarse, settings, verbose=True):
+def resolve_densities(coarse: CoarsePseudoQuadMesh, settings: dict[str, Any], verbose: bool = True) -> bool:
     """The layout's saved densities if every strip has one; otherwise the global rule.
 
     Shared by step 5 (``CMD_densities``) and step 6 (``CMD_quad_mesh``). A layout
@@ -162,7 +204,7 @@ LAYER_DATA = {
     "Outer": (ROOT + "::InputBoundaries::Outer", (255, 0, 0)),
     "Inner": (ROOT + "::InputBoundaries::Inner", (0, 255, 0)),
     "Guides": (ROOT + "::InputBoundaries::Guides", (255, 127, 0)),
-    "PointFeatures": (ROOT + "::PointFeatures", (0, 255, 0)),
+    "PointFeatures": (ROOT + "::InputBoundaries::PointFeatures", (0, 255, 0)),
     "Skeleton": (ROOT + "::Skeleton", None),
     "Poles": (ROOT + "::Skeleton::Poles", None),
     "Polylines": (ROOT + "::Skeleton::Polylines", None),
@@ -178,7 +220,7 @@ LAYER_DATA = {
 }
 
 
-def layer_path(name):
+def layer_path(name: str) -> str:
     """The full ``::`` path of a project layer, by its short name in ``LAYER_DATA``.
 
     Use the full path, not the short name, with ``rhinoscriptsyntax``: a bare name
@@ -188,7 +230,7 @@ def layer_path(name):
     return LAYER_DATA[name][0]
 
 
-def ensure_layers():
+def ensure_layers() -> None:
     """Create every project layer that does not exist yet. Deletes nothing."""
     _require_rhino()
     for name, color in LAYER_DATA.values():
@@ -200,7 +242,7 @@ def ensure_layers():
 # the layout
 # ==============================================================================
 
-def read_layout(verbose=True):
+def read_layout(verbose: bool = True) -> CoarsePseudoQuadMesh:
     """**The session's coarse layout, as a COPY.**
 
     A copy because every caller changes it -- densities, patterns, snapped
@@ -230,7 +272,7 @@ def read_layout(verbose=True):
     return coarse
 
 
-def layout_polylines(coarse):
+def layout_polylines(coarse: CoarsePseudoQuadMesh) -> list[list[list[float]]]:
     """The polylines ``coarse``'s edges take their shape from (``shape_polylines``).
 
     A layout recorded before 2026-09-18 carries none; its polylines are still

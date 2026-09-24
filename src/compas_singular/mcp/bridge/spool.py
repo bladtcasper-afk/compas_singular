@@ -39,12 +39,14 @@ got to withdraw anything.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 import json
 import os
 import sys
 import tempfile
 import time
+from typing import Any
 
 
 __all__ = [
@@ -92,7 +94,7 @@ EXPIRY_GRACE = 2.0
 HEARTBEAT_SECONDS = 1.0
 
 
-def default_directory():
+def default_directory() -> str:
     """The per-user directory the spool lives in.
 
     ``$COMPAS_SINGULAR_MCP_SPOOL`` wins if set. Otherwise ``%LOCALAPPDATA%`` on
@@ -128,7 +130,7 @@ def default_directory():
     return os.path.join(root, 'compas_singular', 'mcp-spool')
 
 
-def spool_directory(directory=None):
+def spool_directory(directory: str | None = None) -> str:
     """The spool directory, created if it is not there yet.
 
     Parameters
@@ -156,7 +158,7 @@ def spool_directory(directory=None):
 # reading and writing, atomically
 # ==============================================================================
 
-def _write_json(path, payload):
+def _write_json(path: str, payload: Any) -> None:
     """Write ``payload`` to ``path`` so no reader can ever see it half-written."""
     folder = os.path.dirname(path)
     handle, temporary = tempfile.mkstemp(dir=folder, suffix='.tmp')
@@ -174,7 +176,7 @@ def _write_json(path, payload):
         raise
 
 
-def _read_json(path):
+def _read_json(path: str) -> Any:
     """``path`` decoded, or ``None`` if it is gone or not yet readable."""
     try:
         with open(path, 'r') as stream:
@@ -189,7 +191,7 @@ def _read_json(path):
 _COUNTER = [0]
 
 
-def new_id():
+def new_id() -> str:
     """A request id that sorts lexically into arrival order.
 
     Timestamp to the microsecond plus a process-local counter, because two posts
@@ -211,7 +213,7 @@ def new_id():
 # the server side
 # ==============================================================================
 
-def post(verb, args=None, directory=None, ttl=None):
+def post(verb: str, args: dict[str, Any] | None = None, directory: str | None = None, ttl: float | None = None) -> str:
     """Put a request on the spool and return its id.
 
     Parameters
@@ -241,7 +243,7 @@ def post(verb, args=None, directory=None, ttl=None):
     return request_id
 
 
-def wait(request_id, timeout=DEFAULT_TIMEOUT, directory=None):
+def wait(request_id: str, timeout: float = DEFAULT_TIMEOUT, directory: str | None = None) -> dict[str, Any]:
     """Poll for a response until it arrives or the deadline passes.
 
     **Never raises and never blocks past** ``timeout``. A deadline reached is a
@@ -310,7 +312,7 @@ def wait(request_id, timeout=DEFAULT_TIMEOUT, directory=None):
             'in_progress': in_progress, 'link': state, 'queued': queued}
 
 
-def _consume(path):
+def _consume(path: str) -> Any:
     """Read a response and delete it, so it is never replayed. ``None`` if absent."""
     payload = _read_json(path)
     if payload is not None:
@@ -321,7 +323,7 @@ def _consume(path):
     return payload
 
 
-def pending(directory=None):
+def pending(directory: str | None = None) -> list[str]:
     """The ids of requests posted and not yet taken, oldest first.
 
     Returns
@@ -341,7 +343,7 @@ def pending(directory=None):
 # the Rhino side
 # ==============================================================================
 
-def take(directory=None):
+def take(directory: str | None = None) -> tuple[str, str, dict[str, Any]] | None:
     """Claim the oldest request, atomically. ``None`` if there is nothing to do.
 
     The claim is a rename, so two callers cannot both get the same job: the
@@ -385,7 +387,7 @@ def take(directory=None):
     return None
 
 
-def answer(request_id, ok, result=None, error=None, directory=None):
+def answer(request_id: str, ok: bool, result: Any = None, error: str | None = None, directory: str | None = None) -> None:
     """Write the response and release the claim.
 
     The response is written BEFORE the claim is removed, so a crash between the
@@ -418,7 +420,7 @@ def answer(request_id, ok, result=None, error=None, directory=None):
 _LAST_BEAT = [0.0]
 
 
-def heartbeat(document=None, directory=None, force=False):
+def heartbeat(document: str | None = None, directory: str | None = None, force: bool = False) -> None:
     """Record that the link is alive, at most once a second.
 
     Rate-limited because this is called from Rhino's idle handler, which fires
@@ -447,7 +449,7 @@ def heartbeat(document=None, directory=None, force=False):
                        'started': started, 'last_seen': now})
 
 
-def clear_link(directory=None):
+def clear_link(directory: str | None = None) -> None:
     """Remove the heartbeat, so the server reports the link as detached."""
     folder = spool_directory(directory)
     try:
@@ -457,7 +459,7 @@ def clear_link(directory=None):
     _LAST_BEAT[0] = 0.0
 
 
-def link_state(directory=None):
+def link_state(directory: str | None = None) -> dict[str, Any] | None:
     """Who is attached, and how long ago they said so.
 
     Returns
@@ -482,7 +484,7 @@ def link_state(directory=None):
 # housekeeping
 # ==============================================================================
 
-def prune(max_age=DEFAULT_MAX_AGE, directory=None):
+def prune(max_age: float = DEFAULT_MAX_AGE, directory: str | None = None) -> int:
     """Delete requests, claims and responses older than ``max_age`` seconds.
 
     Litter from a crash on either side. The heartbeat is never pruned -- it is

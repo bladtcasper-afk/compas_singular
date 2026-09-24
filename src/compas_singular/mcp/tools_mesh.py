@@ -13,8 +13,11 @@ rely on a caller remembering to snapshot first, they take one, and report
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 import math
+from typing import Any
+from typing import TYPE_CHECKING
 
 from compas_singular.datastructures.mesh.smoothing import automated_boundary_constraints
 from compas_singular.datastructures.mesh.smoothing import boundary_constrained_smoothing
@@ -36,6 +39,11 @@ from compas_singular.mcp.handle import select
 from compas_singular.mcp.handle import vertex_handle
 from compas_singular.mcp.library import thresholds
 from compas_singular.mcp.registry import tool
+
+if TYPE_CHECKING:
+    from compas.datastructures import Mesh
+    from compas.geometry import Polyline
+    from compas_singular.mcp.session import MeshSession
 
 
 __all__ = []
@@ -68,7 +76,7 @@ Report what you actually see, including "nothing wrong" if that is the case. Do
 not restate the numbers; they are above."""
 
 
-def _needs_mesh(session):
+def _needs_mesh(session: MeshSession) -> dict[str, Any] | None:
     """A refusal when nothing is loaded, or ``None`` when there is."""
     if not session.loaded:
         return {'ok': False,
@@ -78,7 +86,7 @@ def _needs_mesh(session):
     return None
 
 
-def _failed(session, what, exc):
+def _failed(session: MeshSession, what: str, exc: Exception) -> dict[str, Any]:
     """Refuse a pass that RAISED after its snapshot, putting the mesh back first.
 
     The library may have moved vertices before it gave up, so returning a bare
@@ -91,14 +99,14 @@ def _failed(session, what, exc):
             'mesh_restored': bool(restored)}
 
 
-def _reading(session):
+def _reading(session: MeshSession) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     """The quality dict and its prose, together."""
     metrics = session.quality()
     told = describe(session.mesh, metrics, thresholds())
     return metrics, told
 
 
-def _improved(before, after):
+def _improved(before: dict[str, Any] | None, after: dict[str, Any] | None) -> tuple[dict[str, bool | None], bool, bool]:
     """Which of the three got better, and whether all of them did.
 
     The same three ``framefield.relax`` gates on. A pass that improves one and
@@ -120,7 +128,7 @@ def _improved(before, after):
     return flags, (bool(decided) and all(decided)), unchanged
 
 
-def _outcome(session, action, before, **detail):
+def _outcome(session: MeshSession, action: str, before: dict[str, Any] | None, **detail: Any) -> dict[str, Any]:
     """Measure, record and report a step that has just been applied."""
     after, told = _reading(session)
     # Whatever the numbers say, vertices were moved through: the last picture
@@ -193,7 +201,7 @@ def _outcome(session, action, before, **detail):
                            'it only to read a detail you could not otherwise.'},
     },
     read_only=True, idempotent=True, title='Inspect the mesh')
-def _t_inspect(session, low_angle=None, image=False, size=None):
+def _t_inspect(session: MeshSession, low_angle: float | None = None, image: bool = False, size: int | None = None) -> dict[str, Any]:
     refusal = _needs_mesh(session)
     if refusal:
         return refusal
@@ -235,7 +243,7 @@ def _t_inspect(session, low_angle=None, image=False, size=None):
     return payload
 
 
-def _singularity_handles(mesh, limit=24):
+def _singularity_handles(mesh: Mesh, limit: int = 24) -> dict[str, Any]:
     """Where the irregular vertices are, as handles. Truncated, and says so."""
     from compas_singular.mcp.handle import select as _select
     try:
@@ -257,7 +265,7 @@ def _singularity_handles(mesh, limit=24):
     'recover what you were doing. A step an undo took back is still listed, '
     'with undone=true -- it is what was tried and rejected.',
     read_only=True, idempotent=True, title='Session history')
-def _t_history(session):
+def _t_history(session: MeshSession) -> dict[str, Any]:
     steps = []
     for entry in session.history:
         steps.append({
@@ -290,7 +298,7 @@ def _t_history(session):
                            '"v:8.500,3.250,0.000", from a report.'},
     },
     required=('text',), title='Leave a remark')
-def _t_remark(session, text, about=None):
+def _t_remark(session: MeshSession, text: str, about: str | None = None) -> dict[str, Any]:
     if not (text or '').strip():
         return {'ok': False, 'reason': 'a remark needs some text'}
     if about is not None and session.loaded:
@@ -311,7 +319,7 @@ def _t_remark(session, text, about=None):
     properties={'label': {'type': 'string',
                           'description': 'What this point is, for the report.'}},
     title='Snapshot positions')
-def _t_snapshot(session, label=''):
+def _t_snapshot(session: MeshSession, label: str = '') -> dict[str, Any]:
     refusal = _needs_mesh(session)
     if refusal:
         return refusal
@@ -330,7 +338,7 @@ def _t_snapshot(session, label=''):
     'POSITION map but the topology has changed since -- a line edit on top of '
     'it that was not itself undone first.',
     destructive=True, title='Undo to last snapshot')
-def _t_undo(session):
+def _t_undo(session: MeshSession) -> dict[str, Any]:
     ok, detail = session.undo()
     if not ok:
         return {'ok': False, 'reason': detail}
@@ -373,7 +381,7 @@ def _t_undo(session):
                            'turning it on is what stops this pass working.'},
     },
     title='Relax (gated)')
-def _t_relax(session, seams='free', corner_angle=30.0, pin_singularities=False):
+def _t_relax(session: MeshSession, seams: str = 'free', corner_angle: float = 30.0, pin_singularities: bool = False) -> dict[str, Any]:
     refusal = _needs_mesh(session)
     if refusal:
         return refusal
@@ -439,8 +447,8 @@ def _t_relax(session, seams='free', corner_angle=30.0, pin_singularities=False):
                         'description': 'Pin the kink vertices. Default true.'},
     },
     title='Smooth, boundary sliding')
-def _t_smooth_boundary(session, kmax=100, damping=0.5, algorithm='centroid',
-                       corner_angle=30.0, fix_corners=True):
+def _t_smooth_boundary(session: MeshSession, kmax: int = 100, damping: float = 0.5, algorithm: str = 'centroid',
+                       corner_angle: float = 30.0, fix_corners: bool = True) -> dict[str, Any]:
     refusal = _needs_mesh(session)
     if refusal:
         return refusal
@@ -496,7 +504,7 @@ def _t_smooth_boundary(session, kmax=100, damping=0.5, algorithm='centroid',
                                  'outside the region. Default 3. Never 0.'},
     },
     required=('region',), title='Smooth a region')
-def _t_smooth_region(session, region, kmax=50, damping=0.5, blend=3):
+def _t_smooth_region(session: MeshSession, region: dict[str, Any] | str, kmax: int = 50, damping: float = 0.5, blend: int = 3) -> dict[str, Any]:
     refusal = _needs_mesh(session)
     if refusal:
         return refusal
@@ -530,7 +538,7 @@ def _t_smooth_region(session, region, kmax=50, damping=0.5, blend=3):
                     kmax=int(kmax), damping=float(damping), blend=int(blend))
 
 
-def _guide_points(curve):
+def _guide_points(curve: Polyline | Any) -> Any:
     """Plain points from a ``Polyline`` or an already-bare point list."""
     return getattr(curve, 'points', curve)
 
@@ -578,8 +586,8 @@ def _guide_points(curve):
                     'description': 'Between 0 and 1. Default 0.5.'},
     },
     title='Smooth to guide curves')
-def _t_smooth_guides(session, tolerance_factor=2.0, max_angle=30.0,
-                     hold='fixed', boundary='sliding', kmax=100, damping=0.5):
+def _t_smooth_guides(session: MeshSession, tolerance_factor: float = 2.0, max_angle: float = 30.0,
+                     hold: str = 'fixed', boundary: str = 'sliding', kmax: int = 100, damping: float = 0.5) -> dict[str, Any]:
     refusal = _needs_mesh(session)
     if refusal:
         return refusal
@@ -691,7 +699,7 @@ def _t_smooth_guides(session, tolerance_factor=2.0, max_angle=30.0,
                            'than an interior one. Default 100.'},
     },
     title='Relax (force density)')
-def _t_relax_fdm(session, fixed='corners', fixed_vertices=None, q_factor=100.0):
+def _t_relax_fdm(session: MeshSession, fixed: str = 'corners', fixed_vertices: list[str] | None = None, q_factor: float = 100.0) -> dict[str, Any]:
     refusal = _needs_mesh(session)
     if refusal:
         return refusal

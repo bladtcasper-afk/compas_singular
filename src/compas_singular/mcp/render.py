@@ -26,10 +26,20 @@ because where they sit is the thing smoothing cannot change.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 import base64
 import struct
 import zlib
+from typing import Any
+from typing import Sequence
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from compas.datastructures import Mesh
+    from compas.geometry import Polyline
+    from compas_singular.datastructures import CoarsePseudoQuadMesh
+    from compas_singular.mcp.session import MeshSession
 
 
 __all__ = ['LEGEND', 'COARSE_LEGEND', 'render_png', 'render_png_base64', 'scene',
@@ -133,19 +143,19 @@ GLYPH_CELL = 6
 class Raster(object):
     """An RGB byte buffer that can draw thick lines and discs, and emit a PNG."""
 
-    def __init__(self, width, height, background=WHITE):
+    def __init__(self, width: int, height: int, background: tuple[int, int, int] = WHITE) -> None:
         self.width = int(width)
         self.height = int(height)
         self.pixels = bytearray(bytes(background) * (self.width * self.height))
 
-    def _put(self, x, y, color):
+    def _put(self, x: int, y: int, color: tuple[int, int, int]) -> None:
         if 0 <= x < self.width and 0 <= y < self.height:
             i = (y * self.width + x) * 3
             self.pixels[i] = color[0]
             self.pixels[i + 1] = color[1]
             self.pixels[i + 2] = color[2]
 
-    def disc(self, centre, radius, color):
+    def disc(self, centre: Sequence[float], radius: float, color: tuple[int, int, int]) -> None:
         cx, cy = int(round(centre[0])), int(round(centre[1]))
         radius = int(round(radius))
         squared = radius * radius
@@ -154,7 +164,7 @@ class Raster(object):
                 if dx * dx + dy * dy <= squared:
                     self._put(cx + dx, cy + dy, color)
 
-    def ring(self, centre, radius, color, thickness=2):
+    def ring(self, centre: Sequence[float], radius: float, color: tuple[int, int, int], thickness: int = 2) -> None:
         cx, cy = int(round(centre[0])), int(round(centre[1]))
         radius = int(round(radius))
         outer = radius * radius
@@ -165,12 +175,12 @@ class Raster(object):
                 if inner <= d <= outer:
                     self._put(cx + dx, cy + dy, color)
 
-    def rect(self, x0, y0, x1, y1, color):
+    def rect(self, x0: float, y0: float, x1: float, y1: float, color: tuple[int, int, int]) -> None:
         for y in range(int(round(y0)), int(round(y1))):
             for x in range(int(round(x0)), int(round(x1))):
                 self._put(x, y, color)
 
-    def text(self, centre, text, color, cell=GLYPH_CELL):
+    def text(self, centre: Sequence[float], text: Any, color: tuple[int, int, int], cell: int = GLYPH_CELL) -> None:
         """Digits centred on a point, on a white box so they read over lines."""
         glyphs = [_GLYPHS[ch] for ch in str(text) if ch in _GLYPHS]
         if not glyphs:
@@ -190,7 +200,7 @@ class Raster(object):
                                   left + (col + 1) * cell, y0 + (row + 1) * cell,
                                   color)
 
-    def line(self, a, b, color, width=1):
+    def line(self, a: Sequence[float], b: Sequence[float], color: tuple[int, int, int], width: int = 1) -> None:
         """A thick segment, stamped along a DDA walk.
 
         Stamping a disc per step rather than computing coverage: at SCALE times
@@ -210,7 +220,7 @@ class Raster(object):
             else:
                 self._put(int(round(x)), int(round(y)), color)
 
-    def downsample(self, factor):
+    def downsample(self, factor: int) -> Raster:
         """Box-filter to 1/factor. This is where the anti-aliasing comes from."""
         if factor <= 1:
             return self
@@ -230,7 +240,7 @@ class Raster(object):
                 out._put(x, y, (r // area, g // area, b // area))
         return out
 
-    def to_png(self):
+    def to_png(self) -> bytes:
         """The buffer as PNG bytes: IHDR, one IDAT, IEND."""
         stride = self.width * 3
         raw = bytearray()
@@ -238,7 +248,7 @@ class Raster(object):
             raw.append(0)                      # filter type 0, none
             raw += self.pixels[y * stride:(y + 1) * stride]
 
-        def chunk(tag, payload):
+        def chunk(tag: bytes, payload: bytes) -> bytes:
             body = tag + payload
             return (struct.pack('>I', len(payload)) + body
                     + struct.pack('>I', zlib.crc32(body) & 0xffffffff))
@@ -254,7 +264,7 @@ class Raster(object):
 # what to draw
 # ==============================================================================
 
-def _mesh_edges(mesh):
+def _mesh_edges(mesh: Mesh) -> tuple[list[Any], list[Any]]:
     """``(interior, outline)`` edge lists, so the mesh's own border reads darker."""
     interior, outline = [], []
     for u, v in mesh.edges():
@@ -267,7 +277,7 @@ def _mesh_edges(mesh):
     return interior, outline
 
 
-def _singular_points(mesh):
+def _singular_points(mesh: Mesh) -> tuple[list[Any], list[Any]]:
     """Irregular interior vertices, and poles, separately.
 
     Poles are separate because a pole is what an input point feature is supposed
@@ -300,14 +310,14 @@ def _singular_points(mesh):
     return irregular, poles
 
 
-def _points_of(curve):
+def _points_of(curve: Polyline | Sequence[Any]) -> list[list[float]]:
     points = getattr(curve, 'points', None)
     if points is None:
         points = curve
     return [[float(p[0]), float(p[1])] for p in points]
 
 
-def scene(session):
+def scene(session: MeshSession) -> list[dict[str, Any]]:
     """The drawable layers, back to front.
 
     Walls and guides go UNDERNEATH the mesh deliberately: where the mesh sits on
@@ -351,11 +361,11 @@ def scene(session):
     return layers
 
 
-def _rounded(point):
+def _rounded(point: Sequence[float]) -> tuple[float, float]:
     return (round(point[0], 3), round(point[1], 3))
 
 
-def strip_representative_edge(coarse, skey):
+def strip_representative_edge(coarse: CoarsePseudoQuadMesh, skey: Any) -> tuple[Any, Any]:
     """The one edge a strip is named by: its first that is not collapsed.
 
     A strip that starts or ends at a pole carries a ``(u, u)`` edge there, and
@@ -369,7 +379,7 @@ def strip_representative_edge(coarse, skey):
     return edges[0]
 
 
-def coarse_scene(session):
+def coarse_scene(session: MeshSession) -> tuple[list[dict[str, Any]], dict[Any, str]]:
     """The coarse layout's drawable layers, and which colour each strip got.
 
     A coarse layout is addressed by strip, and a strip is the one thing a plain
@@ -449,7 +459,7 @@ def coarse_scene(session):
     return layers, strip_colors
 
 
-def _bounds(layers):
+def _bounds(layers: list[dict[str, Any]]) -> tuple[float, float, float, float] | None:
     xs, ys = [], []
     for layer in layers:
         if layer['kind'] == 'lines':
@@ -470,8 +480,8 @@ def _bounds(layers):
 # rendering
 # ==============================================================================
 
-def render_png(session, width=DEFAULT_SIZE, height=DEFAULT_SIZE, margin=0.06,
-               layers=None):
+def render_png(session: MeshSession, width: int = DEFAULT_SIZE, height: int = DEFAULT_SIZE, margin: float = 0.06,
+               layers: list[dict[str, Any]] | None = None) -> bytes | None:
     """The session's mesh and its inputs, as PNG bytes.
 
     Returns ``None`` when there is nothing to draw at all -- no mesh, no walls,
@@ -499,7 +509,7 @@ def render_png(session, width=DEFAULT_SIZE, height=DEFAULT_SIZE, margin=0.06,
     offset_x = (width * SCALE - (right - left) * scale) / 2.0
     offset_y = (height * SCALE - (top - bottom) * scale) / 2.0
 
-    def project(point):
+    def project(point: Sequence[float]) -> tuple[float, float]:
         # y is flipped: model space runs up, a raster runs down.
         return (offset_x + (point[0] - left) * scale,
                 (height * SCALE) - (offset_y + (point[1] - bottom) * scale))
@@ -527,7 +537,7 @@ def render_png(session, width=DEFAULT_SIZE, height=DEFAULT_SIZE, margin=0.06,
     return big.downsample(SCALE).to_png()
 
 
-def render_png_base64(session, width=DEFAULT_SIZE, height=DEFAULT_SIZE, layers=None):
+def render_png_base64(session: MeshSession, width: int = DEFAULT_SIZE, height: int = DEFAULT_SIZE, layers: list[dict[str, Any]] | None = None) -> str | None:
     """The PNG, base64 encoded for an MCP image content block. ``None`` if empty."""
     data = render_png(session, width=width, height=height, layers=layers)
     if data is None:

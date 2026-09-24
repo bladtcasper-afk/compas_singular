@@ -1,8 +1,11 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from __future__ import annotations
 
 import itertools
+from typing import Any
+from typing import Iterator
 
 from compas.topology import vertex_adjacency_from_edges
 
@@ -16,7 +19,7 @@ from compas_singular.topology import is_adjacency_two_colorable
 from compas_singular.utilities import are_items_in_list
 
 
-def delete_strips_preserving_boundaries(mesh, skeys):
+def delete_strips_preserving_boundaries(mesh: QuadMesh, skeys: list[int]) -> None:
     """Delete strips, refining first whatever would let a boundary collapse.
 
     Pre-splitting used to be a ``preserve_boundaries`` flag on ``delete_strips``
@@ -30,7 +33,7 @@ def delete_strips_preserving_boundaries(mesh, skeys):
     # Falsy covers both states that mean "do not split": ``None`` -- no strip
     # survives on that boundary to refine -- and ``{}`` -- nothing is at risk.
     if to_split:
-        split_strips(mesh, to_split)
+        split_strips(mesh, to_split, open_strip=False)
     delete_strips(mesh, skeys)
 
 
@@ -41,12 +44,12 @@ __all__ = [
 
 class TwoColourableProjection(object):
 
-    def __init__(self, quad_mesh):
+    def __init__(self, quad_mesh: QuadMesh) -> None:
         self.quad_mesh = quad_mesh
-        self.results = None
-        self.times = None
+        self.results: Any = None
+        self.times: Any = None
 
-    def projection_4(self, kmax=1):
+    def projection_4(self, kmax: int = 1) -> bool | None:
         """Projection of a coarse quad mesh to the closest two-colourable sub-spaces.
 
         Parameters
@@ -115,7 +118,7 @@ class TwoColourableProjection(object):
 
         self.results = results
 
-    def projection_1(self, kmax=1):
+    def projection_1(self, kmax: int = 1) -> bool | None:
         """Projection of a coarse quad mesh to the closest two-colourable sub-spaces.
 
         Parameters
@@ -196,7 +199,7 @@ class TwoColourableProjection(object):
 
         self.results = results
 
-    def projection_2(self, kmax=1):
+    def projection_2(self, kmax: int = 1) -> bool | None:
         """Projection of a coarse quad mesh to the closest two-colourable sub-spaces.
 
         Parameters
@@ -278,7 +281,7 @@ class TwoColourableProjection(object):
 
         self.results = results
 
-    def projection(self, kmax=1):
+    def projection(self, kmax: int = 1) -> Any:
         """Projection of a coarse quad mesh to the closest two-colourable sub-spaces.
 
         Parameters
@@ -365,7 +368,7 @@ class TwoColourableProjection(object):
 
         return self.results
 
-    def projection_0(self, kmax=1):
+    def projection_0(self, kmax: int = 1) -> bool | None:
         """Projection of a coarse quad mesh to the closest two-colourable sub-spaces.
 
         Parameters
@@ -471,15 +474,15 @@ class TwoColourableProjection(object):
     # results
     # --------------------------------------------------------------------------
 
-    def get_results(self):
+    def get_results(self) -> Any:
         return self.results
 
-    def two_coloured_meshes(self, kmax=1):
+    def two_coloured_meshes(self, kmax: int = 1) -> Iterator[QuadMesh]:
         self.projection_4(kmax)
         for strips, results in self.get_results().items():
             yield results[0]
 
-    def strip_deletions_yielding_two_colourability(self):
+    def strip_deletions_yielding_two_colourability(self) -> list[tuple[int, ...]]:
         out = []
         for combination, result in self.get_results().items():
             if type(result) == tuple:

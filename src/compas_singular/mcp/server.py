@@ -18,6 +18,9 @@ ever grows a socket transport, that assumption is the thing to revisit.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import Any
 
 from compas_singular.mcp import library
 from compas_singular.mcp import registry
@@ -73,20 +76,20 @@ allowed. Reading a hand-drawn skeleton back in is not exposed yet."""
 class Handler(object):
     """What :class:`~compas_singular.mcp.protocol.Dispatcher` asks for content."""
 
-    def __init__(self, session=None):
+    def __init__(self, session: MeshSession | None = None) -> None:
         self.session = session if session is not None else MeshSession()
 
     # -- tools ----------------------------------------------------------
 
-    def list_tools(self):
+    def list_tools(self) -> list[dict[str, Any]]:
         return registry.schemas()
 
-    def call_tool(self, name, arguments):
+    def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         return registry.call(self.session, name, arguments)
 
     # -- resources ------------------------------------------------------
 
-    def list_resources(self):
+    def list_resources(self) -> list[dict[str, Any]]:
         resources = list(library.list_resources())
         # The live journal is not a file, so the library cannot list it.
         resources.insert(0, {
@@ -98,22 +101,22 @@ class Handler(object):
         })
         return resources
 
-    def read_resource(self, uri):
+    def read_resource(self, uri: str) -> str | None:
         if uri == 'session://current':
             return self.render_session()
         return library.read_resource(uri)
 
     # -- prompts --------------------------------------------------------
 
-    def list_prompts(self):
+    def list_prompts(self) -> list[dict[str, Any]]:
         return library.list_prompts()
 
-    def get_prompt(self, name, arguments):
+    def get_prompt(self, name: str, arguments: dict[str, Any] | None) -> dict[str, Any] | None:
         return library.get_prompt(name, arguments)
 
     # -- the live journal -----------------------------------------------
 
-    def render_session(self):
+    def render_session(self) -> str:
         """The session as Markdown, so it survives a context compaction.
 
         Deliberately the same shape as a stored example, so what a model reads
@@ -169,7 +172,7 @@ class Handler(object):
         return '\n'.join(lines)
 
 
-def build(session=None):
+def build(session: MeshSession | None = None) -> Dispatcher:
     """A dispatcher wired to a handler. The one thing ``__main__`` needs."""
     handler = Handler(session)
     if not handler.list_tools():

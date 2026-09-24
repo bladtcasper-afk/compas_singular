@@ -47,6 +47,7 @@ Nothing in this module touches a mesh, a CAD package or any other part of
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 from math import atan2
 from math import radians
@@ -86,11 +87,11 @@ CORNER_ANGLE = radians(1.0)
 # small geometry, all XY
 # ----------------------------------------------------------------------------
 
-def _flat(point):
+def _flat(point: list[float]) -> list[float]:
     return [float(point[0]), float(point[1]), 0.0]
 
 
-def _clean(points):
+def _clean(points: list[list[float]]) -> list[list[float]]:
     """Point list, flattened to z = 0, with consecutive duplicates dropped."""
     out = []
     for point in points:
@@ -100,13 +101,13 @@ def _clean(points):
     return out
 
 
-def _shoelace(ring):
+def _shoelace(ring: list[list[float]]) -> float:
     """Twice the signed area of a closed ring whose last point is not repeated."""
     return sum(a[0] * b[1] - b[0] * a[1]
                for a, b in pairwise(list(ring) + list(ring[:1])))
 
 
-def _point_in_ring(point, ring):
+def _point_in_ring(point: list[float], ring: list[list[float]]) -> bool:
     """Ray casting in XY. ``ring`` is closed, its last point not repeated."""
     x, y = point[0], point[1]
     inside = False
@@ -121,7 +122,7 @@ def _point_in_ring(point, ring):
     return inside
 
 
-def _distance_to_segment(point, a, b):
+def _distance_to_segment(point: list[float], a: list[float], b: list[float]) -> float:
     """Shortest distance from ``point`` to the segment ``ab``."""
     abx, aby = b[0] - a[0], b[1] - a[1]
     length2 = abx * abx + aby * aby
@@ -132,7 +133,7 @@ def _distance_to_segment(point, a, b):
     return distance_point_point(point, [a[0] + abx * t, a[1] + aby * t, 0.0])
 
 
-def _intersect(p1, p2, p3, p4):
+def _intersect(p1: list[float], p2: list[float], p3: list[float], p4: list[float]) -> tuple[float, float] | None:
     """Parameters ``(t, u)`` where segments ``p1p2`` and ``p3p4`` meet, or ``None``.
 
     Collinear overlaps return ``None``: there is no single point to report, and a
@@ -151,7 +152,7 @@ def _intersect(p1, p2, p3, p4):
     return None
 
 
-def _crossing(p1, p2, p3, p4):
+def _crossing(p1: list[float], p2: list[float], p3: list[float], p4: list[float]) -> list[float] | None:
     """Where segments ``p1p2`` and ``p3p4`` meet, or ``None``."""
     hit = _intersect(p1, p2, p3, p4)
     if hit is None:
@@ -160,7 +161,7 @@ def _crossing(p1, p2, p3, p4):
     return [p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * t, 0.0]
 
 
-def _locate(points, point):
+def _locate(points: list[list[float]], point: list[float]) -> tuple[float, int, float]:
     """``(distance, segment, t)`` of the point of an open polyline nearest ``point``."""
     best = (float('inf'), 0, 0.0)
     for i, (a, b) in enumerate(pairwise(points)):
@@ -176,17 +177,17 @@ def _locate(points, point):
     return best
 
 
-def _bbox(points, pad):
+def _bbox(points: list[list[float]], pad: float) -> tuple[float, float, float, float]:
     xs = [p[0] for p in points]
     ys = [p[1] for p in points]
     return min(xs) - pad, min(ys) - pad, max(xs) + pad, max(ys) + pad
 
 
-def _overlap(a, b):
+def _overlap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> bool:
     return a[0] <= b[2] and b[0] <= a[2] and a[1] <= b[3] and b[1] <= a[3]
 
 
-def _xy(point):
+def _xy(point: list[float]) -> str:
     """A point as it should appear in an error message -- the user has to find it."""
     return '({:.3f}, {:.3f})'.format(point[0], point[1])
 
@@ -195,14 +196,14 @@ def _xy(point):
 # 0. reading a CAD polyline as edges
 # ----------------------------------------------------------------------------
 
-def _turn(a, b, c):
+def _turn(a: list[float], b: list[float], c: list[float]) -> float:
     """Absolute turning angle at ``b`` walking ``a -> b -> c``, in radians."""
     v1x, v1y = b[0] - a[0], b[1] - a[1]
     v2x, v2y = c[0] - b[0], c[1] - b[1]
     return abs(atan2(v1x * v2y - v1y * v2x, v1x * v2x + v1y * v2y))
 
 
-def split_at_corners(points, angle=CORNER_ANGLE):
+def split_at_corners(points: list[list[float]], angle: float = CORNER_ANGLE) -> list[list[list[float]]]:
     """Cut a POLYLINE into one piece per straight run -- at every vertex that turns.
 
     **Not part of** :func:`weld_network`'s **contract, and not called by it.** The
@@ -260,7 +261,7 @@ def split_at_corners(points, angle=CORNER_ANGLE):
     return pieces
 
 
-def _cut(points, cuts, closed, tol):
+def _cut(points: list[list[float]], cuts: list[tuple[int, float, list[float]]], closed: bool, tol: float) -> list[list[list[float]]]:
     """Cut one polyline at ``(segment, t, point)`` marks. Returns its pieces.
 
     Positions are compared by ARC LENGTH, so two marks at one place -- a crossing
@@ -322,7 +323,7 @@ def _cut(points, cuts, closed, tol):
     return pieces
 
 
-def split_at_junctions(polylines, tol=None, precision=None, points=()):
+def split_at_junctions(polylines: list[list[list[float]]], tol: float | None = None, precision: int | None = None, points: "list[list[float]] | tuple[list[float], ...]" = ()) -> tuple[list[list[list[float]]], list[int]]:
     """Split every polyline wherever another one MEETS it. ``(pieces, origin)``.
 
     **Not part of** :func:`weld_network`'s **contract, and not called by it** --
@@ -434,7 +435,7 @@ def split_at_junctions(polylines, tol=None, precision=None, points=()):
 # 1. the weld
 # ----------------------------------------------------------------------------
 
-def weld_network(polylines, precision=None):
+def weld_network(polylines: list[list[list[float]]], precision: int | None = None) -> tuple[list[list[float]], list[tuple[int, int, list[list[float]]]]]:
     """``(vertices, edges)`` from a drawn network. One polyline is one coarse edge.
 
     Parameters
@@ -507,7 +508,7 @@ def weld_network(polylines, precision=None):
 # 2. the checks
 # ----------------------------------------------------------------------------
 
-def check_network(vertices, edges, tol):
+def check_network(vertices: list[list[float]], edges: list[tuple[int, int, list[list[float]]]], tol: float) -> None:
     """Raise unless the drawn network is already a clean planar arrangement.
 
     Three ways a drawing is not one, each with a fix the user can make in seconds,
@@ -591,7 +592,7 @@ def check_network(vertices, edges, tol):
 
     parent = list(range(len(vertices)))
 
-    def root(x):
+    def root(x: int) -> int:
         while parent[x] != x:
             parent[x] = parent[parent[x]]
             x = parent[x]
@@ -606,7 +607,7 @@ def check_network(vertices, edges, tol):
         # Name the piece with the SMALLEST extent, not the fewest curves: a hole
         # drawn inside a square has as many curves as the square does, and it is
         # the hole that is loose. The piece that spans the drawing is the layout.
-        def extent(indices):
+        def extent(indices: list[int]) -> float:
             box = _bbox([p for i in indices for p in edges[i][2]], 0.0)
             return (box[2] - box[0]) * (box[3] - box[1])
 
@@ -623,7 +624,7 @@ def check_network(vertices, edges, tol):
 # 3. the face walk
 # ----------------------------------------------------------------------------
 
-def faces_from_network(vertices, edges, holes=None):
+def faces_from_network(vertices: list[list[float]], edges: list[tuple[int, int, list[list[float]]]], holes: list[list[float]] | None = None) -> list[list[int]]:
     """The domain's patches, as rings of corner indices wound counter-clockwise.
 
     The standard planar-subdivision walk: sort the half-edges leaving each corner by
@@ -667,7 +668,7 @@ def faces_from_network(vertices, edges, holes=None):
     for corner in leaving:
         leaving[corner].sort()
 
-    def ends(halfedge):
+    def ends(halfedge: tuple[int, int]) -> tuple[int, int, list[list[float]]]:
         i, direction = halfedge
         a, b, points = edges[i]
         return (a, b, points) if direction > 0 else (b, a, points[::-1])
@@ -712,7 +713,7 @@ def faces_from_network(vertices, edges, holes=None):
 # 4. the promise
 # ----------------------------------------------------------------------------
 
-def check_faces(faces, vertices, sides=(3, 4)):
+def check_faces(faces: list[list[int]], vertices: list[list[float]], sides: tuple[int, ...] = (3, 4)) -> None:
     """Raise unless every recovered patch has an allowed number of sides.
 
     A triangle is not a defect -- it becomes a pseudo-quad with a collapsed corner --

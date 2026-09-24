@@ -1,14 +1,19 @@
 from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
+from __future__ import annotations
 
 from math import pi
+from typing import TYPE_CHECKING
 
 from compas.geometry import subtract_vectors
 from compas.geometry import centroid_points_weighted
 
 from compas_singular.datastructures import mesh_move_by
 from compas_singular.geometry import circle_evaluate
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import QuadMesh
 
 
 __all__ = [
@@ -18,7 +23,7 @@ __all__ = [
 ]
 
 
-def interpolation_layout_two_meshes(interpolated_meshes, dx, dy):
+def interpolation_layout_two_meshes(interpolated_meshes: dict[QuadMesh, tuple[float, float]], dx: float, dy: float) -> None:
     position_to_meshes = {}
     for mesh, (a, b) in interpolated_meshes.items():
         d = a - b
@@ -33,7 +38,7 @@ def interpolation_layout_two_meshes(interpolated_meshes, dx, dy):
             mesh_move_by(mesh, subtract_vectors([d * dx, - j * dy, 0.0], centre))
 
 
-def interpolation_layout_primary(meshes, interpolated_meshes, radius):
+def interpolation_layout_primary(meshes: list[QuadMesh], interpolated_meshes: dict[QuadMesh, list[float]], radius: float) -> None:
     # sort input meshes and interpolating meshes
     ext_meshes = meshes
     int_meshes = []
@@ -60,7 +65,7 @@ def interpolation_layout_primary(meshes, interpolated_meshes, radius):
         mesh_move_by(mesh, subtract_vectors(mesh_to_xyz[mesh], centre))
 
 
-def interpolation_layout_secondary(interpolated_meshes, radius):
+def interpolation_layout_secondary(interpolated_meshes: dict[QuadMesh, list[float]], radius: float) -> None:
     cluster_meshes = {tuple(distance): [] for distance in interpolated_meshes.values()}
     for mesh, distance in interpolated_meshes.items():
         cluster_meshes[tuple(distance)].append(mesh)

@@ -14,13 +14,20 @@ pseudo-quad mesh saved here comes back knowing its poles. Writing
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 import os
+from typing import Any
+from typing import Sequence
+from typing import TYPE_CHECKING
 
 from compas_singular.mcp.describe import describe
 from compas_singular.mcp.library import thresholds
 from compas_singular.mcp.registry import tool
 from compas_singular.mcp.tools_rhino import unseen_refusal
+
+if TYPE_CHECKING:
+    from compas_singular.mcp.session import MeshSession
 
 
 __all__ = []
@@ -46,7 +53,7 @@ __all__ = []
                                 'items': {'type': 'number'}}}},
     },
     required=('path',), open_world=True, title='Load a mesh from a file')
-def _t_load_mesh(session, path, walls=None):
+def _t_load_mesh(session: MeshSession, path: str, walls: Sequence[Sequence[Sequence[float]]] | None = None) -> dict[str, Any]:
     if not os.path.isfile(path):
         return {'ok': False, 'reason': 'no file at {}'.format(path)}
     try:
@@ -99,7 +106,7 @@ def _t_load_mesh(session, path, walls=None):
         'path': {'type': 'string', 'description': 'Where to write the .json.'},
     },
     required=('path',), open_world=True, title='Save the mesh to a file')
-def _t_save_mesh(session, path):
+def _t_save_mesh(session: MeshSession, path: str) -> dict[str, Any]:
     if not session.loaded:
         return {'ok': False, 'reason': 'no mesh is loaded, so there is nothing '
                                        'to save'}

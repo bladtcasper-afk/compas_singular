@@ -69,6 +69,10 @@ outside the application.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import Sequence
+from typing import TYPE_CHECKING
 
 from compas.datastructures import mesh_conway_dual
 from compas.geometry import bestfit_plane
@@ -82,11 +86,14 @@ from compas.geometry import subtract_vectors
 
 from compas.tolerance import TOL
 
+if TYPE_CHECKING:
+    from compas.datastructures import Mesh
+
 
 __all__ = ["dual_mesh", "redistribute_blocks"]
 
 
-def dual_mesh(mesh, redistribute=True):
+def dual_mesh(mesh: Mesh, redistribute: bool = True) -> Mesh:
     """The dual of a mesh, with its boundary closed by a layer of quads.
 
     Parameters
@@ -107,7 +114,7 @@ def dual_mesh(mesh, redistribute=True):
     index = {TOL.geometric_key(xyz): i for i, xyz in enumerate(vertices)}
 
     #Extent to the boundary
-    def add(xyz):
+    def add(xyz: Sequence[float]) -> int:
         gkey = TOL.geometric_key(xyz)
         if gkey not in index:
             index[gkey] = len(vertices)
@@ -152,7 +159,7 @@ def dual_mesh(mesh, redistribute=True):
     return out
 
 
-def _is_oriented(faces):
+def _is_oriented(faces: Sequence[Sequence[int]]) -> bool:
     """True if no directed halfedge is claimed twice -- the orientability test.
 
     Two faces claiming ``(u, v)`` the same way round are wound against each
@@ -172,7 +179,7 @@ def _is_oriented(faces):
 # evening out the block sizes
 # ----------------------------------------------------------------------------
 
-def redistribute_blocks(dual, primal, project=True):
+def redistribute_blocks(dual: Mesh, primal: Mesh, project: bool = True) -> Mesh:
     """Even out the block sizes of a dual, in place.
 
     The raw dual puts its boundary on the primal's edge MIDPOINTS, so the outer
@@ -249,7 +256,7 @@ def redistribute_blocks(dual, primal, project=True):
     gkey_vertex = {TOL.geometric_key(dual.vertex_coordinates(v)): v
                    for v in dual.vertices()}
 
-    def at(xyz):
+    def at(xyz: Sequence[float]) -> int | None:
         return gkey_vertex.get(TOL.geometric_key(xyz))
 
     # A boundary chain rides the primal OUTLINE, not its own chords: on a wall
@@ -330,7 +337,7 @@ def redistribute_blocks(dual, primal, project=True):
     return dual
 
 
-def _respaced(stops):
+def _respaced(stops: Sequence[float]) -> list[float]:
     """New positions along a chain for its interior points, evening the gaps.
 
     ``stops`` are the arc positions of the chain's points, so the gaps between
@@ -353,7 +360,7 @@ def _respaced(stops):
     return out
 
 
-def _point_at(polyline, lengths, distance):
+def _point_at(polyline: Sequence[Sequence[float]], lengths: Sequence[float], distance: float) -> list[float]:
     """The point at ``distance`` along a polyline of known segment lengths."""
     for i, length in enumerate(lengths):
         if distance <= length or i == len(lengths) - 1:
@@ -364,7 +371,9 @@ def _point_at(polyline, lengths, distance):
     return list(polyline[-1])
 
 
-def _boundary_chains(primal, gkey_vertex):
+def _boundary_chains(
+    primal: Mesh, gkey_vertex: dict[str, int]
+) -> list[tuple[list[int], list[Sequence[float]]]]:
     """Each primal boundary arc, as ``(dual vertices, primal outline points)``.
 
     The dual vertices run corner, edge midpoint, ..., edge midpoint, corner. The
@@ -401,7 +410,7 @@ def _boundary_chains(primal, gkey_vertex):
     return chains
 
 
-def _strips(primal):
+def _strips(primal: Mesh) -> list[tuple[list[int], tuple[Sequence[float], Sequence[float]]]]:
     """Open primal strips, as ``(faces, (start midpoint, end midpoint))``.
 
     A strip is the run of quads reached by stepping across opposite edges. Only
@@ -441,14 +450,14 @@ def _strips(primal):
     return strips
 
 
-def _face_of(mesh, edge):
+def _face_of(mesh: Mesh, edge: tuple[int, int]) -> int | None:
     for fkey in mesh.edge_faces(edge):
         if fkey is not None:
             return fkey
     return None
 
 
-def _opposite_edge(mesh, fkey, edge):
+def _opposite_edge(mesh: Mesh, fkey: int, edge: tuple[int, int]) -> tuple[int, int] | None:
     """The edge of a quad facing ``edge``; None if the face is not a quad."""
     vertices = mesh.face_vertices(fkey)
     if len(vertices) != 4:
@@ -460,7 +469,7 @@ def _opposite_edge(mesh, fkey, edge):
     return None
 
 
-def _creased_faces(mesh, tol=1e-9):
+def _creased_faces(mesh: Mesh, tol: float = 1e-9) -> set[int]:
     """Faces with a non-coplanar face in their 1-ring -- where a fold shows."""
     normals = {fkey: mesh.face_normal(fkey) for fkey in mesh.faces()}
     creased = set()
@@ -474,7 +483,7 @@ def _creased_faces(mesh, tol=1e-9):
     return creased
 
 
-def _is_planar(mesh, tol=None):
+def _is_planar(mesh: Mesh, tol: float | None = None) -> bool:
     points = [mesh.vertex_coordinates(v) for v in mesh.vertices()]
     if len(points) < 4:
         return True
@@ -485,7 +494,7 @@ def _is_planar(mesh, tol=None):
     return all(distance_point_plane(point, plane) <= tol for point in points)
 
 
-def _project(point, mesh, candidates):
+def _project(point: Sequence[float], mesh: Mesh, candidates: Sequence[int]) -> tuple[Sequence[float], int]:
     """Closest point on a local patch of faces; also returns the winning face."""
     best, best_distance, best_face = point, None, candidates[0]
     for fkey in candidates:
@@ -500,7 +509,9 @@ def _project(point, mesh, candidates):
     return best, best_face
 
 
-def _closest_on_triangle(point, a, b, c):
+def _closest_on_triangle(
+    point: Sequence[float], a: Sequence[float], b: Sequence[float], c: Sequence[float]
+) -> Sequence[float]:
     """Closest point of triangle abc to point, in its interior or on an edge."""
     ab = subtract_vectors(b, a)
     ac = subtract_vectors(c, a)
@@ -522,7 +533,9 @@ def _closest_on_triangle(point, a, b, c):
     return best
 
 
-def _barycentric(point, a, ab, ac):
+def _barycentric(
+    point: Sequence[float], a: Sequence[float], ab: Sequence[float], ac: Sequence[float]
+) -> tuple[float, float]:
     d00 = dot_vectors(ab, ab)
     d01 = dot_vectors(ab, ac)
     d11 = dot_vectors(ac, ac)

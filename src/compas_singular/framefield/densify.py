@@ -113,12 +113,15 @@ wanted.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 from math import atan2
 from math import cos
 from math import degrees
 from math import pi
 from math import sin
+from typing import Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.sparse import coo_matrix
@@ -129,6 +132,11 @@ from compas.itertools import pairwise
 from compas.tolerance import TOL
 from compas_singular.datastructures import meshes_join_and_weld
 from compas_singular.datastructures import PseudoQuadMesh
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import CoarsePseudoQuadMesh
+    from compas_singular.framefield.field import CrossField
+    from compas_singular.framefield.trace import Tracer
 
 
 __all__ = ['field_densification', 'FieldSampler', 'relax_patch',
@@ -216,12 +224,12 @@ class FieldSampler(object):
     :func:`_unwrap`'s job, not this one's.
     """
 
-    def __init__(self, field, tracer):
+    def __init__(self, field: CrossField, tracer: Tracer) -> None:
         self.field = field
         self.tracer = tracer
         self.mesh = field.background.mesh
 
-    def theta(self, point, hint=None):
+    def theta(self, point: Any, hint: Any = None) -> tuple[float | None, int | None]:
         """``(theta, fkey)``, or ``(None, None)`` if the point is unreachable."""
         found = self.tracer.locate(point, hint)
         if found is None:
@@ -231,7 +239,7 @@ class FieldSampler(object):
         fkey, bary = found
         return self.field.angle_in_face(fkey, bary), fkey
 
-    def _nearest(self, point):
+    def _nearest(self, point: Any) -> tuple[int, tuple[float, float, float]] | None:
         """Closest background face, for a node that fell outside the domain.
 
         A Coons interior can bulge a hair past a concave boundary arc. Rather
@@ -262,7 +270,7 @@ class FieldSampler(object):
 # the patch solver
 # ------------------------------------------------------------------
 
-def _unwrap(grid, sampler):
+def _unwrap(grid: np.ndarray, sampler: FieldSampler) -> np.ndarray | None:
     """A CONTINUOUS ``i``-family angle over the patch, or ``None``.
 
     ``angle_in_face`` returns the cross angle folded into one period, which
@@ -297,7 +305,7 @@ def _unwrap(grid, sampler):
 
     theta = np.zeros((n, m))
 
-    def branch(value, reference):
+    def branch(value: float, reference: float) -> float:
         return value + PERIOD * round((reference - value) / PERIOD)
 
     seed = atan2(grid[1, 0][1] - grid[0, 0][1], grid[1, 0][0] - grid[0, 0][0])
@@ -311,7 +319,13 @@ def _unwrap(grid, sampler):
     return theta
 
 
-def _solve(grid, coons, theta, stiffness, tikhonov):
+def _solve(
+    grid: np.ndarray,
+    coons: np.ndarray,
+    theta: np.ndarray,
+    stiffness: float,
+    tikhonov: float,
+) -> np.ndarray | None:
     """One least-squares solve for the interior, boundary held fixed.
 
     Three kinds of row:
@@ -348,7 +362,7 @@ def _solve(grid, coons, theta, stiffness, tikhonov):
     rows, cols, vals, rhs = [], [], [], []
     weights = []
 
-    def add(row, i, j, sign, nx, ny, w):
+    def add(row: int, i: int, j: int, sign: float, nx: float, ny: float, w: float) -> None:
         """+/- (nx, ny) . x[i][j], to the free columns or to the right side."""
         if (i, j) in free:
             k = free[i, j]
@@ -358,7 +372,7 @@ def _solve(grid, coons, theta, stiffness, tikhonov):
         else:
             rhs[row] -= sign * w * (nx * grid[i, j][0] + ny * grid[i, j][1])
 
-    def edge(ia, ja, ib, jb):
+    def edge(ia: int, ja: int, ib: int, jb: int) -> None:
         """One alignment row for the step (ia, ja) -> (ib, jb)."""
         # The family this step belongs to decides which arm it follows: an i
         # step follows e1 = theta, a j step follows e2 = theta + 90 degrees.
@@ -441,7 +455,7 @@ def _solve(grid, coons, theta, stiffness, tikhonov):
     return out
 
 
-def _measure(grid, coons):
+def _measure(grid: np.ndarray, coons: np.ndarray) -> tuple[float, float, float, int]:
     """``(min_angle, max_angle, aspect_max, folds)`` of a relaxed patch.
 
     ``folds`` counts quads whose orientation flipped relative to their Coons
@@ -469,7 +483,7 @@ def _measure(grid, coons):
     return lo, hi, aspect, folds
 
 
-def _accepts(grid, coons, spend):
+def _accepts(grid: np.ndarray, coons: np.ndarray, spend: bool) -> bool:
     """**The rule that lets tier 2 and tier 3 coexist.**
 
     Nothing may fold, ever. Past that there are two regimes, and which one a
@@ -517,14 +531,14 @@ def _accepts(grid, coons, spend):
             and aspect <= max(PATCH_MAX_ASPECT, ref_aspect))
 
 
-def _signed_area(points):
+def _signed_area(points: Any) -> float:
     total = 0.0
     for a, b in pairwise(list(points) + list(points[:1])):
         total += a[0] * b[1] - b[0] * a[1]
     return 0.5 * total
 
 
-def _angles(points):
+def _angles(points: Any) -> list[float]:
     out = []
     k = len(points)
     for i in range(k):
@@ -541,9 +555,18 @@ def _angles(points):
     return out
 
 
-def relax_patch(ab, bc, dc, ad, sampler, iterations=ITERATIONS,
-                tikhonov=TIKHONOV, stiffness=STIFFNESS, guard=True,
-                spend=False):
+def relax_patch(
+    ab: list[list[float]],
+    bc: list[list[float]],
+    dc: list[list[float]],
+    ad: list[list[float]],
+    sampler: FieldSampler,
+    iterations: int = ITERATIONS,
+    tikhonov: float = TIKHONOV,
+    stiffness: tuple[float, ...] = STIFFNESS,
+    guard: bool = True,
+    spend: bool = False,
+) -> tuple[list[list[float]], list[list[int]], str, dict[str, Any]]:
     """**The field-aware replacement for** ``discrete_coons_patch``.
 
     Same signature, same vertex order -- ``i * m + j`` -- so it drops into the
@@ -634,10 +657,18 @@ def relax_patch(ab, bc, dc, ad, sampler, iterations=ITERATIONS,
 # the densification itself
 # ------------------------------------------------------------------
 
-def field_densification(coarse, field, tracer, edges_to_curves=None,
-                        iterations=ITERATIONS, tikhonov=TIKHONOV,
-                        stiffness=STIFFNESS, guard=True, spend=False,
-                        field_aware=True):
+def field_densification(
+    coarse: CoarsePseudoQuadMesh,
+    field: CrossField,
+    tracer: Tracer,
+    edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None,
+    iterations: int = ITERATIONS,
+    tikhonov: float = TIKHONOV,
+    stiffness: tuple[float, ...] = STIFFNESS,
+    guard: bool = True,
+    spend: bool = False,
+    field_aware: bool = True,
+) -> tuple[Any, dict[str, Any]]:
     """**Densify a coarse layout with the field steering patch interiors.**
 
     A drop-in for ``CoarsePseudoQuadMesh.densification`` -- same strip

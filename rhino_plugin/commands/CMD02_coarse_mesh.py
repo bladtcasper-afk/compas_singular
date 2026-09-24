@@ -13,7 +13,8 @@ from compas_singular.algorithms import SkeletonDecomposition
 from compas_singular.framefield.field_decomposition import FieldDecomposition
 from compas_singular.rhino.helpers import clear_layer, read_boundary_loops, read_boundaries
 from compas_singular.rhino.coarse_curves import coarse_edges_to_curves, snap_corners_to_walls
-from compas_singular.rhino.project import get_settings, resolve_relax, resolve_symmetry
+from compas_singular.rhino.project import get_settings, resolve_relax, resolve_field_symmetry
+from compas_singular.rhino.project import resolve_spacing, layer_path
 from compas_singular.rhino.session import RhinoSession
 from compas_singular.symmetry import Domain
 
@@ -50,7 +51,7 @@ def coarse_from_field(settings, outer, inners, guides):
         mode=settings["guide_alignment"],
         target_length=settings["triangulation_spacing"],
         relax=resolve_relax(settings, guides),
-        symmetry=resolve_symmetry(settings))
+        symmetry=resolve_field_symmetry(settings))
     print(decomposition.field.report())
     # Print the group: a smaller group than the drawing suggests means the
     # layout is ALLOWED to be less symmetric, and nothing downstream complains.
@@ -95,7 +96,8 @@ def coarse_from_skeleton(settings, outer, inners, line_features, point_features)
         outer,
         inner_boundaries=inners,
         polyline_features=line_features,
-        point_features=point_features)
+        point_features=point_features,
+        target_length=settings["triangulation_spacing"])
 
     coarse_mesh = decomposition.coarse_mesh()
     # ``decomposition.polylines`` rather than a second ``decomposition_polylines()``
@@ -112,12 +114,34 @@ def coarse_from_skeleton(settings, outer, inners, line_features, point_features)
     return coarse_mesh, skeleton, None
 
 
+#Point features are not an input of the frame-field method. The ignored points go here.
+IGNORED_POINTS_LAYER = "PointFeaturesIgnored"
+
+
+def remove_point_features():
+    """Move every point feature off ``PointFeatures``, and say so.
+
+    Returns the point features the field route builds with: none.
+    """
+    ids = rs.ObjectsByLayer(layer_path("PointFeatures")) or []
+    if not ids:
+        return []
+    layer = layer_path("Problem") + "::" + IGNORED_POINTS_LAYER
+    if not rs.IsLayer(layer):
+        rs.AddLayer(IGNORED_POINTS_LAYER, color=(90, 90, 90), parent=layer_path("Problem"))
+    rs.ObjectLayer(ids, layer)
+    print("point features are NOT an input of the FrameField method: {} point(s) "
+          "moved from '{}' to '{}', not deleted. Move them back to use them on "
+          "the Skeleton route.".format(len(ids), layer_path("PointFeatures"), layer))
+    return []
+
+
 def main():
     settings = get_settings()
     #Finding an checking of boundaries
-    outer, inners, guides, point_features = read_boundaries(
-        spacing=settings["triangulation_spacing"])
-    wall_sampling = settings["triangulation_spacing"] * WALL_SAMPLING_FACTOR
+    spacing = resolve_spacing(settings)
+    outer, inners, guides, point_features = read_boundaries(spacing=spacing)
+    wall_sampling = spacing * WALL_SAMPLING_FACTOR
 
     coarse_mesh, skeleton, field = None, None, None
     while True:
@@ -129,6 +153,8 @@ def main():
                 settings, outer, inners, guides, point_features)
             break
         elif mode == "framefield":
+            if point_features:
+                point_features = remove_point_features()
             coarse_mesh, skeleton, field = coarse_from_field(settings, outer, inners, guides)
             break
         elif mode == "exit":

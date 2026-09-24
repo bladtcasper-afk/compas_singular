@@ -1,6 +1,9 @@
 from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
+from __future__ import annotations
+
+from typing import Any
 
 
 __all__ = [
@@ -12,7 +15,7 @@ __all__ = [
 ]
 
 
-def list_split(l, indices):
+def list_split(l: list[Any], indices: list[int]) -> list[list[Any]]:
     """Split list at given indices.
     Closed lists have the same first and last elements.
     If the list is closed, splitting wraps around if the first or last index is not in the indices to split.
@@ -61,7 +64,7 @@ def list_split(l, indices):
     return split_lists
 
 
-def sublist_from_to_items_in_closed_list(l, from_item, to_item):
+def sublist_from_to_items_in_closed_list(l: list[Any], from_item: Any, to_item: Any) -> list[Any] | None:
     """Return sublist between oe item to another.
 
     Parameters
@@ -92,7 +95,7 @@ def sublist_from_to_items_in_closed_list(l, from_item, to_item):
             return sublist
 
 
-def are_items_in_list(items, l):
+def are_items_in_list(items: list[Any], l: list[Any]) -> bool:
     """Check if items are in a list.
 
     Parameters
@@ -114,7 +117,7 @@ def are_items_in_list(items, l):
     return True
 
 
-def common_items(l1, l2):
+def common_items(l1: list[Any], l2: list[Any]) -> list[Any]:
     """Return common items in two lists.
 
     Parameters
@@ -133,7 +136,7 @@ def common_items(l1, l2):
     return [item for item in l1 if item in l2]
 
 
-def remove_isomorphism_in_integer_list(l):
+def remove_isomorphism_in_integer_list(l: list[int]) -> list[int]:
     # remove isomorphisms in list (open or closed)
     # interpreted as a polyedge
 

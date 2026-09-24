@@ -1,8 +1,11 @@
 from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
+from __future__ import annotations
 
 import itertools as it
+from typing import Any
+from typing import TYPE_CHECKING
 
 from compas_singular.datastructures import delete_strip
 from compas_singular.datastructures import delete_strips
@@ -12,31 +15,34 @@ from compas_singular.datastructures import add_strips
 from compas_singular.algorithms.isomorphism import are_meshes_isomorphic
 from compas_singular.algorithms.isomorphism import matches_between_ismorphic_meshes
 
+if TYPE_CHECKING:
+    from compas_singular.datastructures import QuadMesh
+
 
 __all__ = []
 
 
 class Mapper(object):
 
-    def __init__(self, meshes):
+    def __init__(self, meshes: list[QuadMesh]) -> None:
         self.meshes = meshes
         self.submesh = None
         self.maps = None
 
-    def get_meshes(self):
+    def get_meshes(self) -> list[QuadMesh]:
         return self.meshes
 
-    def get_submesh(self):
+    def get_submesh(self) -> QuadMesh | None:
         return self.submesh
 
-    def get_maps(self):
+    def get_maps(self) -> dict[QuadMesh, dict[QuadMesh, Any]] | None:
         return self.maps
 
-    def compute_submesh(self):
+    def compute_submesh(self) -> QuadMesh:
         self.submesh = find_submesh_between_n_meshes(self.get_meshes())
         return self.submesh
 
-    def compute_maps(self):
+    def compute_maps(self) -> dict[QuadMesh, dict[QuadMesh, Any]]:
         meshes = self.get_meshes()
         submesh = self.get_submesh()
         maps = {mesh: {submesh: self.map_mesh_to_submesh(mesh)} for mesh in meshes}
@@ -45,7 +51,7 @@ class Mapper(object):
         # self.maps = maps
         return self.maps
 
-    def map_mesh_to_submesh(self, mesh):
+    def map_mesh_to_submesh(self, mesh: QuadMesh) -> dict[int, int]:
         submesh = self.get_submesh()
         mesh_to_map_mesh = {vkey: vkey for vkey in mesh.vertices()}
         strips_to_delete = submesh_and_distance_and_deletion_rules_between_2_meshes(mesh, submesh)[0][2][mesh]
@@ -59,7 +65,7 @@ class Mapper(object):
         mesh_to_submesh = {mesh_key: match_0[map_mesh_key] for mesh_key, map_mesh_key in mesh_to_map_mesh.items()}
         return mesh_to_submesh
 
-    def reverse_map_mesh_to_submesh(self, mesh):
+    def reverse_map_mesh_to_submesh(self, mesh: QuadMesh) -> dict[int, list[int]]:
         submesh = self.get_submesh()
         mesh_to_submesh = self.get_maps()[mesh][submesh]
         submesh_to_mesh = {vkey: [] for vkey in mesh_to_submesh.values()}
@@ -67,12 +73,12 @@ class Mapper(object):
             submesh_to_mesh[submesh_key].append(mesh_key)
         return submesh_to_mesh
 
-    def map_from_mesh_to_mesh(self, mesh_0, mesh_1):
+    def map_from_mesh_to_mesh(self, mesh_0: QuadMesh, mesh_1: QuadMesh) -> dict[int, int]:
         submesh = self.get_submesh()
         maps = self.get_maps()
         return {key: maps[submesh][mesh_1][item] for key, item in maps[mesh_0][submesh].items()}
 
-    def map_polyedge_from_mesh_to_mesh(self, polyedge, mesh_0, mesh_1):
+    def map_polyedge_from_mesh_to_mesh(self, polyedge: list[int], mesh_0: QuadMesh, mesh_1: QuadMesh) -> list[int]:
         vkey_map = self.map_from_mesh_to_mesh(mesh_0, mesh_1)
         return [vkey_map[vkey] for vkey in polyedge]
 
@@ -81,7 +87,7 @@ class Mapper(object):
 # --------------------------------------------------------------------------
 
 
-def distance_and_deletion_rules_between_2_meshes(mesh_i, mesh_j):
+def distance_and_deletion_rules_between_2_meshes(mesh_i: QuadMesh, mesh_j: QuadMesh) -> list[tuple[int, dict[QuadMesh, tuple[int, ...]]]] | None:
     # get the distance between two meshes by testing combinations for deleting an increasing number of strips
     # until strip graphs are isomorphic, and mesh graphs as well in a second step, due to the limited data in strip graphs
     # isomoprhism comparison differentiate close strips and boundary edges
@@ -138,14 +144,14 @@ def distance_and_deletion_rules_between_2_meshes(mesh_i, mesh_j):
             return results
 
 
-def submesh_and_distance_and_deletion_rules_between_2_meshes(mesh_i, mesh_j):
+def submesh_and_distance_and_deletion_rules_between_2_meshes(mesh_i: QuadMesh, mesh_j: QuadMesh) -> tuple[QuadMesh, int, dict[QuadMesh, tuple[int, ...]]]:
     distance, deletion_rules = distance_and_deletion_rules_between_2_meshes(mesh_i, mesh_j)
     submesh = mesh_i.copy()
     delete_strips(submesh, deletion_rules[mesh_i])
     return submesh, distance, deletion_rules
 
 
-def submesh_and_distance_and_deletion_rules_between_n_meshes(meshes):
+def submesh_and_distance_and_deletion_rules_between_n_meshes(meshes: list[QuadMesh]) -> tuple[QuadMesh, dict[QuadMesh, int], dict[QuadMesh, tuple[int, ...]]]:
     submesh = find_submesh_between_n_meshes(meshes)
     distances_to_submesh = {}
     deletion_rules_to_submesh = {}
@@ -157,7 +163,7 @@ def submesh_and_distance_and_deletion_rules_between_n_meshes(meshes):
     return submesh, distances_to_submesh, deletion_rules_to_submesh
 
 
-def find_submesh_between_n_meshes(meshes):
+def find_submesh_between_n_meshes(meshes: list[QuadMesh]) -> QuadMesh:
     # find common submesh to n meshes starting with the first mesh and deleting strips after comparisons wit the other ones
     submesh = meshes[0].copy()
     for mesh in meshes[1:]:
@@ -166,14 +172,14 @@ def find_submesh_between_n_meshes(meshes):
     return submesh
 
 
-def polyedge_from_mesh_to_submesh(polyedge, mesh, submesh, match_mesh_to_submesh):
+def polyedge_from_mesh_to_submesh(polyedge: list[int], mesh: QuadMesh, submesh: QuadMesh, match_mesh_to_submesh: dict[int, int]) -> None:
     # or from supermesh to mesh
     trans_mesh = mesh.copy()
     old_vkeys_to_new_vkeys = delete_strip(trans_mesh, skey)
     submesh_polyedge = [match_mesh_to_submesh[old_vkeys_to_new_vkeys[vkey]] if vkey in old_vkeys_to_new_vkeys else vkey for vkey in polyedge]
 
 
-def add_strip_to_other_mesh_via_submesh(mesh, skey, submesh, supermesh, match_mesh_to_submesh):
+def add_strip_to_other_mesh_via_submesh(mesh: QuadMesh, skey: int, submesh: QuadMesh, supermesh: QuadMesh, match_mesh_to_submesh: dict[int, int]) -> None:
     mesh_polyedge = mesh.strip_side_polyedges(skey)[0]
     mesh_submesh = mesh.copy()
     old_vkeys_to_new_vkeys = delete_strip(mesh_submesh, skey)
@@ -181,7 +187,7 @@ def add_strip_to_other_mesh_via_submesh(mesh, skey, submesh, supermesh, match_me
     super_mesh_polyedge
 
 
-def reverse_deletion_to_deletion_rules(mesh, submesh, strips_to_delete):
+def reverse_deletion_to_deletion_rules(mesh: QuadMesh, submesh: QuadMesh, strips_to_delete: list[int]) -> dict[int, list[int]]:
     skey_to_polyedge = {skey: mesh.strip_side_polyedges(skey)[0] for skey in strips_to_delete}
     trimmed_mesh = mesh.copy()
     for skey in strips_to_delete:
@@ -197,7 +203,7 @@ def reverse_deletion_to_deletion_rules(mesh, submesh, strips_to_delete):
     return skey_to_polyedge
 
 
-def interpolation(meshes):
+def interpolation(meshes: list[QuadMesh]) -> int:
     for mesh in meshes:
         mesh.collect_strips()
     # get common mesh to all other meshes

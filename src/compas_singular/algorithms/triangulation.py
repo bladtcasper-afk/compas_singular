@@ -1,11 +1,16 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from __future__ import annotations
+
+from typing import Any
+from typing import Callable
 
 from compas.geometry import is_point_in_polygon_xy
 from compas.geometry import delaunay_triangulation as delaunay_from_points
 from compas.geometry import distance_point_point
 from compas.geometry import intersection_segment_segment_xy
+from compas.geometry import Polyline
 from compas.datastructures.graph.operations.join import graph_polylines
 from compas.datastructures.mesh.operations.weld import mesh_unweld_edges
 from compas.itertools import pairwise
@@ -26,7 +31,7 @@ __all__ = [
 ]
 
 
-def as_points(curve, close=None):
+def as_points(curve: Polyline | list, close: bool | None = None) -> list[list[float]]:
     """Coerce one curve to a list of ``[x, y, z]``.
 
     Accepts a :class:`compas.geometry.Polyline`, anything else exposing
@@ -67,7 +72,7 @@ def as_points(curve, close=None):
     return points
 
 
-def as_curves(curves, close=None):
+def as_curves(curves: Polyline | list | None, close: bool | None = None) -> list[list[list[float]]]:
     """Coerce one curve, or a list of curves, to a list of lists of ``[x, y, z]``.
 
     A single curve is wrapped in a list, so ``polyline_features=my_polyline``
@@ -103,7 +108,7 @@ def as_curves(curves, close=None):
         return [as_points(curve, close) for curve in curves]
 
 
-def weld_polyline_features(polyline_features):
+def weld_polyline_features(polyline_features: list[list[list[float]]]) -> list[list[list[float]]]:
     """Weld feature polylines into chains that share their junctions.
 
     This is what :meth:`compas_singular.rhino.RhinoSurface.discrete_mapping`
@@ -141,7 +146,7 @@ def weld_polyline_features(polyline_features):
         [(u, v) for polyline in polyline_features for u, v in pairwise(polyline)]))
 
 
-def arrange_polyline_features(polyline_features, tol=1e-9):
+def arrange_polyline_features(polyline_features: list[list[list[float]]], tol: float = 1e-9) -> list[list[list[float]]]:
     """Put a vertex where two curve features cross.
 
     A feature is embedded by cutting the Delaunay along it, and a cut can only
@@ -217,7 +222,13 @@ def arrange_polyline_features(polyline_features, tol=1e-9):
     return out
 
 
-def boundary_triangulation(outer_boundary, inner_boundaries, polyline_features=[], point_features=[], delaunay=None):
+def boundary_triangulation(
+    outer_boundary: Polyline | list,
+    inner_boundaries: list,
+    polyline_features: Polyline | list = [],
+    point_features: list = [],
+    delaunay: Callable[..., Any] | None = None,
+) -> Mesh:
     """Generate Delaunay triangulation between a planar outer boundary and planar inner boundaries. All vertices lie the boundaries.
 
     Thesis S4.2.1: the surface is triangulated "using points on the boundaries as

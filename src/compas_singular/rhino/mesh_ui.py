@@ -19,6 +19,11 @@ Two things in here are not obvious and were each a bug first:
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+
+from typing import Any
+from typing import Callable
+from typing import Sequence
 
 
 try:
@@ -79,7 +84,11 @@ DENSITY_COLOR_LOW = (198, 219, 239)
 DENSITY_COLOR_HIGH = (8, 48, 107)
 
 
-def density_colors(strip_densities, low=DENSITY_COLOR_LOW, high=DENSITY_COLOR_HIGH):
+def density_colors(
+    strip_densities: dict[Any, float],
+    low: tuple[int, int, int] = DENSITY_COLOR_LOW,
+    high: tuple[int, int, int] = DENSITY_COLOR_HIGH,
+) -> dict[Any, tuple[int, int, int]]:
     """``{skey: (r, g, b)}``, a blue darkening with density, RELATIVE to this layout.
 
     The lightest shade goes to the smallest density present and the darkest to
@@ -97,7 +106,7 @@ def density_colors(strip_densities, low=DENSITY_COLOR_LOW, high=DENSITY_COLOR_HI
         out[skey] = tuple(int(round(low[i] + (high[i] - low[i]) * t)) for i in range(3))
     return out
 
-def _require_rhino():
+def _require_rhino() -> None:
     if not RHINO:
         raise RuntimeError(
             'compas_singular.rhino.mesh_ui needs Rhino. The editing operations '
@@ -108,7 +117,7 @@ def _require_rhino():
 # layers
 # ----------------------------------------------------------------------
 
-def ensure_layer(path, color=None):
+def ensure_layer(path: str, color: tuple[int, int, int] | None = None) -> str:
     """Create a ``::`` layer path, parents first, and return the full path.
 
     ``rs.AddLayer`` does not create intermediate parents, and ``bake_mesh``'s
@@ -126,7 +135,7 @@ def ensure_layer(path, color=None):
     return path
 
 
-def unlock(layer, guids=()):
+def unlock(layer: str, guids: Sequence[Any] = ()) -> dict[str, Any]:
     """Unlock a layer, every parent of it, and the given objects.
 
     Returns what was locked, to hand back to :func:`relock`. Layer lock and
@@ -150,7 +159,7 @@ def unlock(layer, guids=()):
     return state
 
 
-def relock(state):
+def relock(state: dict[str, Any]) -> None:
     """Put back exactly what :func:`unlock` took off, and nothing else."""
     _require_rhino()
     for guid in state.get('objects', []):
@@ -165,7 +174,7 @@ def relock(state):
 # asking
 # ----------------------------------------------------------------------
 
-def ask(message, options, default=None):
+def ask(message: str, options: Sequence[str], default: str | None = None) -> str:
     """A command-line menu. Returns the answer lowercased, or ``''`` on Esc.
 
     Lowercased because every caller compares against a lowercase name, and
@@ -177,14 +186,16 @@ def ask(message, options, default=None):
     return (answer or '').lower()
 
 
-def ask_integer(message, default, minimum=None, maximum=None):
+def ask_integer(
+    message: str, default: int, minimum: int | None = None, maximum: int | None = None
+) -> int | None:
     """``rs.GetInteger``, returning ``None`` on Esc rather than a surprise."""
     _require_rhino()
     value = rs.GetInteger(message, default, minimum, maximum)
     return None if value is None else int(value)
 
 
-def refuse(title, message):
+def refuse(title: str, message: str) -> None:
     """Tell the user why nothing happened, in a DIALOG.
 
     Rhino's command line shows one line and the next prompt overwrites it, so a
@@ -199,7 +210,13 @@ def refuse(title, message):
 # dragging
 # ----------------------------------------------------------------------
 
-def drag_point(prompt, start, neighbours=(), project=None, colors=None):
+def drag_point(
+    prompt: str,
+    start: Sequence[float],
+    neighbours: Sequence[Sequence[float]] = (),
+    project: Callable[[Sequence[float]], Sequence[float]] | None = None,
+    colors: dict[str, tuple[int, int, int]] | None = None,
+) -> list[float] | None:
     """Drag one point with a live preview. ``[x, y, 0.0]``, or ``None`` on Esc.
 
     Parameters
@@ -223,7 +240,7 @@ def drag_point(prompt, start, neighbours=(), project=None, colors=None):
     color = Color.FromArgb(*colors['preview'])
     neighbours = [list(point) for point in neighbours]
 
-    def _at(x, y):
+    def _at(x: float, y: float) -> Sequence[float]:
         xyz = [x, y, 0.0]
         return project(xyz) if project is not None else xyz
 
@@ -232,7 +249,7 @@ def drag_point(prompt, start, neighbours=(), project=None, colors=None):
     gp.SetBasePoint(Point3d(*start), True)
     gp.Constrain(Rhino.Geometry.Plane.WorldXY, False)
 
-    def on_dynamic_draw(sender, e):
+    def on_dynamic_draw(sender: Any, e: Any) -> None:
         cp = e.CurrentPoint
         point = Point3d(*_at(cp.X, cp.Y))
         for nbr in neighbours:

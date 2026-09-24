@@ -20,6 +20,7 @@ without Rhino present; ``requires=["Rhino"]`` keeps it from running there.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
 
 from compas.plugins import plugin
 
@@ -28,7 +29,7 @@ __all__ = ['register_scene_objects_rhino', 'ensure_registered']
 
 
 @plugin(category='factories', pluggable_name='register_scene_objects', requires=['Rhino'])
-def register_scene_objects_rhino():
+def register_scene_objects_rhino() -> None:
     from compas.scene.context import register
 
     from compas_singular.datastructures import CoarsePseudoQuadMesh
@@ -43,7 +44,7 @@ def register_scene_objects_rhino():
     register(QuadMesh, RhinoDenseObject, context='Rhino')
 
 
-def ensure_registered():
+def ensure_registered() -> None:
     """compas's own scene objects, then ours from THIS import. Safe to call every time."""
     from compas.scene.context import ITEM_SCENEOBJECT
     from compas.scene.context import register_scene_objects

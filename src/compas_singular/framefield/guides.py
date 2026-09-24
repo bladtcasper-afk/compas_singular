@@ -63,10 +63,17 @@ edge families, so there is nothing to call along or across. They are counted sep
 rather than silently dropped, for the same reason ``quality.py`` never reconstitutes the
 phantom fourth corner.
 """
+from __future__ import annotations
+
 from math import acos
 from math import degrees
+from typing import Any
+from typing import TYPE_CHECKING
 
 from compas_singular.geometry.polyline import closest_on_polyline
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import Mesh
 
 
 __all__ = ['guide_metrics', 'format_guide_metrics']
@@ -79,7 +86,7 @@ STEEP = 12.0
 ACROSS_TOLERANCE = 15.0
 
 
-def _median(values):
+def _median(values: list[float]) -> float | None:
     s = sorted(values)
     k = len(s)
     if not k:
@@ -87,13 +94,16 @@ def _median(values):
     return s[k // 2] if k % 2 else 0.5 * (s[k // 2 - 1] + s[k // 2])
 
 
-def _acute(u, v):
+def _acute(u: tuple[float, float], v: tuple[float, float]) -> float:
     """Angle between two directions ignoring sense, in degrees: 0 to 90."""
     d = abs(u[0] * v[0] + u[1] * v[1])
     return degrees(acos(max(-1.0, min(1.0, d))))
 
 
-def _nearest_on_polyline(point, polyline):
+def _nearest_on_polyline(
+    point: list[float],
+    polyline: list[list[float]],
+) -> tuple[float, tuple[float, float] | None]:
     """``(distance, unit tangent)`` of the closest point of a polyline, or ``(inf, None)``.
 
     The tangent is the direction of the segment the point landed on, which is
@@ -109,7 +119,7 @@ def _nearest_on_polyline(point, polyline):
     return distance, (abx / length, aby / length)
 
 
-def _families(points):
+def _families(points: list[list[float]]) -> list[tuple[float, float]] | None:
     """Mean direction of a quad's two opposite edge families, or ``None``.
 
     ``(v0 v1, v2 v3)`` is one family and ``(v1 v2, v3 v0)`` the other. Directions are
@@ -143,7 +153,7 @@ def _families(points):
     return out
 
 
-def guide_metrics(mesh, guides, steep=STEEP):
+def guide_metrics(mesh: Mesh, guides: list[list[Any]], steep: float = STEEP) -> dict[str, Any]:
     """**How well a mesh carries its guides**, as numbers rather than a verdict.
 
     Parameters
@@ -237,13 +247,13 @@ def guide_metrics(mesh, guides, steep=STEEP):
     }
 
 
-def format_guide_metrics(metrics):
+def format_guide_metrics(metrics: dict[str, Any]) -> str:
     """One line of the numbers from :func:`guide_metrics`, for a harness to print."""
     if not metrics['faces']:
         return 'guide unseen (0 faces{})'.format(
             ', {} poles'.format(metrics['poles']) if metrics['poles'] else '')
 
-    def num(value, fmt='{:5.1f}'):
+    def num(value: float | None, fmt: str = '{:5.1f}') -> str:
         return '  -- ' if value is None else fmt.format(value)
 
     out = 'faces {:3d} | along {} deg | across {} deg, {}% within {:.0f}'.format(
