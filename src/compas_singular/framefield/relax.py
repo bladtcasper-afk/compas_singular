@@ -6,13 +6,13 @@ from __future__ import annotations
 
 from math import cos
 from math import radians
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Sequence
-from typing import TYPE_CHECKING
 
 import numpy as np
-from compas.tolerance import TOL
 
+from compas.tolerance import TOL
 from compas_singular.geometry.polyline import closest_on_polyline
 
 if TYPE_CHECKING:
@@ -63,7 +63,7 @@ class _Curve(object):
         return self.cumulative[index] + t * span
 
     def project_many(self, points: list[list[float]]) -> list[tuple[list[float] | None, float]]:
-        """:meth:`project` for many points, with the same results."""
+        """``project`` for many points, with the same results."""
         if not points or not len(self._a):
             return [self.project(p) for p in points]
         p = np.asarray([[x[0], x[1], x[2]] for x in points], dtype=float)
@@ -124,7 +124,7 @@ def _singularities(mesh: Mesh) -> set[int]:
 
 
 def _boundary_curves(mesh: Mesh) -> list[tuple[list[int], _Curve]]:
-    """The mesh's own boundary loops, as closed :class:`_Curve` objects."""
+    """The mesh's own boundary loops, as closed ``_Curve`` objects."""
     curves = []
     for loop in mesh.vertices_on_boundaries():
         keys = list(loop)
@@ -150,7 +150,7 @@ def relaxation_constraints(
     Returns
     -------
     (dict, set)
-        ``chains`` maps a :class:`_Curve` to the ordered vertices sliding on
+        ``chains`` maps a ``_Curve`` to the ordered vertices sliding on
         it; ``pinned`` is the set of vertices that may not move.
     """
     pinned = set(_singularities(mesh)) if pin_singularities else set()
@@ -302,7 +302,7 @@ def relax_mesh(
         ``FieldDecomposition.densify_stats['seam_edge']``. Needed for ``seams``
         other than ``'free'``.
     edges_to_curves : dict, optional
-        ``{(u, v): [point, ...]}``, from :meth:`FieldDecomposition.edges_to_curves`.
+        ``{(u, v): [point, ...]}``, from ``FieldDecomposition.edges_to_curves``.
     corner_angle : float, optional
         Kink angle, in degrees, past which a boundary vertex is a pinned corner.
     schedule : sequence[(int, float)], optional

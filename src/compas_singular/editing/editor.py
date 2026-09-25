@@ -4,19 +4,18 @@ Holds the working copy and the walls, moves a vertex, undoes, and deletes a stri
 Design notes: ``design_notes/editing.md``.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 from compas_singular.datastructures.mesh_quad.grammar.add_strip import split_strips
 from compas_singular.datastructures.mesh_quad.grammar.delete_strip import collateral_strip_deletions
 from compas_singular.datastructures.mesh_quad.grammar.delete_strip import delete_strip as _grammar_delete_strip
-from compas_singular.datastructures.mesh_quad.grammar.delete_strip import (
-    strips_to_split_to_prevent_boundary_collapse)
+from compas_singular.datastructures.mesh_quad.grammar.delete_strip import strips_to_split_to_prevent_boundary_collapse
 from compas_singular.datastructures.mesh_quad.grammar.delete_strip import total_boundary_deletions
 from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import BoundaryLoop
 from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import mean_edge_length
@@ -29,7 +28,7 @@ __all__ = ['MeshEditor', 'boundary_vertex_set']
 
 
 def boundary_vertex_set(mesh: "QuadMesh") -> set[int]:
-    """Every vertex with a faceless halfedge. See :meth:`MeshEditor.boundary_vertices`."""
+    """Every vertex with a faceless halfedge. See ``MeshEditor.boundary_vertices``."""
     out = set()
     for u, nbrs in mesh.halfedge.items():
         for v, fkey in nbrs.items():
@@ -44,11 +43,11 @@ class MeshEditor(object):
 
     Parameters
     ----------
-    mesh : :class:`compas_singular.datastructures.QuadMesh`
-        The mesh to edit. Kept as :attr:`target`; the editing happens on a copy.
+    mesh : compas_singular.datastructures.QuadMesh
+        The mesh to edit. Kept as ``target``; the editing happens on a copy.
     walls : list, optional
         The domain walls, as point lists, closed polylines or
-        :class:`BoundaryLoop` instances. A boundary vertex that moves is projected
+        ``BoundaryLoop`` instances. A boundary vertex that moves is projected
         back onto the nearest one, so nudging the edge of the mesh does not eat
         the outline. Without walls a moved boundary vertex is left where it was
         put.
@@ -65,7 +64,7 @@ class MeshEditor(object):
         The working copy. Replaced wholesale by every topological operation that
         succeeds, so hold the editor, not the mesh.
     walls : list
-        The domain walls as :class:`BoundaryLoop` instances.
+        The domain walls as ``BoundaryLoop`` instances.
     last_reason : str
         Why the last operation was refused. Empty when nothing was.
     """
@@ -112,7 +111,7 @@ class MeshEditor(object):
         #: still matches the separatrix it was traced from exactly, so there is
         #: nothing to warp and trying would only risk a wrong match.
         self.edited = False
-        #: One entry per completed edit, oldest first -- see :meth:`push_undo`.
+        #: One entry per completed edit, oldest first -- see ``push_undo``.
         self._undo_stack = []
 
     # ------------------------------------------------------------------
@@ -171,6 +170,8 @@ class MeshEditor(object):
         (bool, int, int)
             Whether it holds, the counted number of open strips, and ``E - 2F``.
 
+        Notes
+        -----
         Collected on a COPY, so calling it never leaves strip data on a mesh the
         caller did not ask to have it.
         """
@@ -216,7 +217,7 @@ class MeshEditor(object):
         return self._accept(moved=vkey, xyz=point, projected=projected)
 
     def _as_point(self, xyz: list[float]) -> list[float]:
-        """``xyz`` as three floats, flattened onto z = 0 when :attr:`PLANAR`."""
+        """``xyz`` as three floats, flattened onto z = 0 when ``PLANAR``."""
         point = list(xyz)
         while len(point) < 3:
             point.append(0.0)
@@ -228,7 +229,7 @@ class MeshEditor(object):
     # ------------------------------------------------------------------
 
     def snapshot(self) -> None:
-        """Make the current mesh the state :meth:`reset` returns to."""
+        """Make the current mesh the state ``reset`` returns to."""
         self._snapshot = self.mesh.copy()
 
     def reset(self) -> tuple[bool, dict[str, Any]]:
@@ -242,21 +243,21 @@ class MeshEditor(object):
     # undo -- one step back, not all the way to the start
     # ------------------------------------------------------------------
     #
-    # :meth:`reset` answers "throw away this whole round of edits"; this
+    # ``reset`` answers "throw away this whole round of edits"; this
     # answers "that last one, not the others". A front end that acts on a pick
     # immediately -- deleting the strip the moment it is clicked, say, rather
     # than asking first -- needs this to make an accidental pick cheap to walk
     # back, without losing everything edited before it.
 
     def _state(self) -> dict[str, Any]:
-        """Everything :meth:`undo` needs to put back. A subclass with more
+        """Everything ``undo`` needs to put back. A subclass with more
         state than the mesh (a curve map, a dirty flag) extends this and
-        :meth:`_restore` together, never one without the other."""
+        ``_restore`` together, never one without the other."""
         return {'mesh': self.mesh.copy(), 'edited': self.edited,
                 'last_deletion': dict(self.last_deletion)}
 
     def _restore(self, state: dict[str, Any]) -> None:
-        """The inverse of :meth:`_state`."""
+        """The inverse of ``_state``."""
         self.mesh = state['mesh']
         self.edited = state['edited']
         self.last_deletion = state['last_deletion']
@@ -266,12 +267,12 @@ class MeshEditor(object):
         self._undo_stack.append(self._state())
 
     def discard_last_undo(self) -> None:
-        """Drop the most recent :meth:`push_undo` snapshot -- nothing changed."""
+        """Drop the most recent ``push_undo`` snapshot -- nothing changed."""
         if self._undo_stack:
             self._undo_stack.pop()
 
     def undo(self) -> tuple[bool, dict[str, Any]]:
-        """Put back the mesh as it was before the last :meth:`push_undo`. ``(ok, notes)``.
+        """Put back the mesh as it was before the last ``push_undo``. ``(ok, notes)``.
 
         Refuses with nothing to restore rather than silently doing nothing, so
         a front end can tell "undid something" from "there was nothing left".
@@ -305,7 +306,7 @@ class MeshEditor(object):
         return work.edge_strip(tuple(edge))
 
     def _empty_plan(self, reason: str = '') -> dict[str, Any]:
-        """A deletion plan with nothing done yet: every key :meth:`plan_strip_deletion` publishes."""
+        """A deletion plan with nothing done yet: every key ``plan_strip_deletion`` publishes."""
         return {'ok': False, 'reason': reason, 'skey': None, 'faces': 0,
                 'collateral': [], 'boundaries_lost': [], 'to_split': {},
                 'can_preserve': True,
@@ -322,7 +323,7 @@ class MeshEditor(object):
     ) -> tuple["QuadMesh | None", dict[str, Any]]:
         """Delete a strip (by ``edge`` or ``skey``) on a copy. ``(mesh or None, info)``.
 
-        Shared by :meth:`plan_strip_deletion` and :meth:`remove_strip` so they cannot disagree.
+        Shared by ``plan_strip_deletion`` and ``remove_strip`` so they cannot disagree.
         """
         info = self._empty_plan()
 
@@ -440,7 +441,7 @@ class MeshEditor(object):
         preserve_boundaries: bool = False,
         skey: int | None = None,
     ) -> tuple[bool, dict[str, Any]]:
-        """Delete the strip through ``edge`` (or ``skey``), on a copy adopted only if it passes :meth:`_gate`. ``(ok, notes)``.
+        """Delete the strip through ``edge`` (or ``skey``), on a copy adopted only if it passes ``_gate``. ``(ok, notes)``.
 
         Collapses the band and welds its sides; it does not dissolve the picked line.
         """
@@ -459,7 +460,7 @@ class MeshEditor(object):
     # ------------------------------------------------------------------
 
     def _transplant(self, source: "QuadMesh", carry_strip_data: bool = False) -> "QuadMesh":
-        """Make :attr:`target` become ``source`` in place, keeping the caller's reference.
+        """Make ``target`` become ``source`` in place, keeping the caller's reference.
 
         Strip data is carried only when ``carry_strip_data``; a rebuild renumbers strips.
         """

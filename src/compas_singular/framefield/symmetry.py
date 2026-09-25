@@ -11,7 +11,6 @@ from compas_singular.framefield.background import _jitter
 from compas_singular.framefield.background import inside_domain
 from compas_singular.framefield.field import CrossField
 
-
 __all__ = ['Symmetry', 'STEPS', 'interior_points', 'symmetrise',
            'snap_singularities', 'project_clusters', 'invariance',
            'field_invariance', 'singularity_orbits']
@@ -46,9 +45,9 @@ class Symmetry(object):
     ----------
     centre : [x, y, z]
     elements : list[tuple]
-        A subset of :data:`ELEMENTS`, always containing the identity.
+        A subset of ``ELEMENTS``, always containing the identity.
     steps : tuple[str]
-        Which of :data:`STEPS` to apply.
+        Which of ``STEPS`` to apply.
     """
 
     def __init__(
@@ -80,7 +79,7 @@ class Symmetry(object):
         return len(self.elements) < 2
 
     def apply(self, g: tuple[int, int, int, int, bool, str], point: list[float]) -> list[float]:
-        """``g`` applied to a point, about :attr:`centre`."""
+        """``g`` applied to a point, about ``centre``."""
         a, b, c, d = g[0], g[1], g[2], g[3]
         x, y = point[0] - self.centre[0], point[1] - self.centre[1]
         return [a * x + b * y + self.centre[0], c * x + d * y + self.centre[1], 0.0]
@@ -214,7 +213,7 @@ def interior_points(
 # ----------------------------------------------------------------------
 
 def symmetrise(field: CrossField, symmetry: Symmetry, tol: float = 1e-9) -> CrossField:
-    """Group-average ``u`` as a new :class:`CrossField`; follow with :func:`snap_singularities`."""
+    """Group-average ``u`` as a new ``CrossField``; follow with ``snap_singularities``."""
     mesh = field.background.mesh
     grid = {}
     for vkey in mesh.vertices():

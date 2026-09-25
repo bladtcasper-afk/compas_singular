@@ -1,13 +1,12 @@
 from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
 from typing import TYPE_CHECKING
 
 from compas.topology import vertex_adjacency_from_edges
 from compas.topology import vertex_coloring
-
 from compas_singular.topology import is_adjacency_two_colorable
 
 if TYPE_CHECKING:

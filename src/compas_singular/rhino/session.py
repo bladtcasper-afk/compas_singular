@@ -1,32 +1,30 @@
 """The session of one Rhino document, stored inside the document and undone with Rhino's Ctrl+Z.
 
-Commands edit a copy, assign it back, then call :meth:`RhinoSession.record`.
+Commands edit a copy, assign it back, then call ``RhinoSession.record``.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
 import uuid
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 import compas
-
-from compas_singular.session import SingularSession
-
 from compas_singular.rhino import document
+from compas_singular.session import SingularSession
 
 if TYPE_CHECKING:
     from compas.scene import Scene
 
 try:
-    import scriptcontext as sc
+    import scriptcontext as sc # type: ignore  # noqa: I001
 except ImportError:
     sc = None
 
 try:
-    import rhinoscriptsyntax as rs
+    import rhinoscriptsyntax as rs # type: ignore  # noqa: I001
 except ImportError:
     rs = None
 
@@ -42,13 +40,13 @@ def display_options() -> dict[str, dict[str, Any]]:
                        poles_layer=layer_path('Poles'),
                        curves_layer=layer_path('EdgeCurves'),
                        polylines_layer=layer_path('Polylines')),
-        'dense': dict(layer=layer_path('QuadMesh'), show_faces=True, joined=True,
+        'dense': dict(layer=layer_path('Dense'), show_faces=True, joined=True,
                       show_vertices=False, show_edges=False),
     }
 
 
 class RhinoSession(SingularSession):
-    """A :class:`~compas_singular.session.SingularSession` stored in a Rhino document.
+    """A ``compas_singular.session.SingularSession`` stored in a Rhino document.
 
     Attributes
     ----------
@@ -79,7 +77,7 @@ class RhinoSession(SingularSession):
     @property
     def scene(self) -> Scene:
         """The compas ``Scene`` that draws this session's items. Never saved: it
-        is rebuilt from the items (see :mod:`compas_singular.session`)."""
+        is rebuilt from the items (see ``compas_singular.session``)."""
         if self._scene is None:
             from compas.scene import Scene
 

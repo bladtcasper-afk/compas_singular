@@ -107,8 +107,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
     def clear(self) -> None:
         """Everything on this object's layers, and every guid map with it.
 
-        Not their sublayers: ``QuadMesh`` has ``Edited``, ``Smoothened`` and
-        ``Dual`` under it, which belong to other commands.
+        Not their sublayers, which belong to other commands.
         """
         for layer in self.layers():
             compas_rhino.layers.clear_layer(layer, include_children=False, purge=False)
@@ -426,7 +425,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
         sc.doc.Views.Redraw()
 
     def clear_path(self) -> None:
-        """Put back the colours :meth:`show_path` changed. Safe to call twice."""
+        """Put back the colours ``show_path`` changed. Safe to call twice."""
         for guid, original in self._path_colors.items():
             if rs.IsObject(guid):
                 rs.ObjectColor(guid, original)
@@ -441,7 +440,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
     # --------------------------------------------------------------------------
 
     def unlock(self) -> dict[str, Any]:
-        """Unlock this layer, its parents and the objects on it. Hand the result to :meth:`relock`."""
+        """Unlock this layer, its parents and the objects on it. Hand the result to ``relock``."""
         return unlock(self.layer, self._pickable_guids())
 
     def relock(self, state: dict[str, Any]) -> None:

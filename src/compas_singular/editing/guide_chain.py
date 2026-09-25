@@ -4,22 +4,21 @@ The chain is the longest run of one polyedge that stays near and parallel to the
 Design notes: ``design_notes/editing.md``.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
 from math import cos
 from math import degrees
 from math import radians
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Iterable
 from typing import Sequence
-from typing import TYPE_CHECKING
 
 from compas.geometry import Point
 from compas.geometry import Polyline
 from compas.geometry import angle_vectors
-
 from compas_singular.datastructures.mesh.smoothing import closest_point_on_constraint
 from compas_singular.datastructures.mesh.smoothing import mesh_boundary_loops
 from compas_singular.datastructures.mesh.smoothing import mesh_boundary_polylines
@@ -102,15 +101,15 @@ _TOL = 1e-9
 class GuideCurve(object):
     """A guide curve as a polyline with an arc-length table and, optionally, the curve itself.
 
-    Chains are chosen on the samples; :meth:`closest_point` lands on ``curve`` when given.
+    Chains are chosen on the samples; ``closest_point`` lands on ``curve`` when given.
 
     Parameters
     ----------
-    points : sequence[point] | :class:`compas.geometry.Polyline`
+    points : sequence[point] | compas.geometry.Polyline
         The guide, already discretised. Consecutive duplicates are dropped.
-    curve : :class:`compas.geometry.Curve`, optional
+    curve : compas.geometry.Curve, optional
         The curve ``points`` were sampled from -- from ``compas_rhino``'s
-        ``curve_to_compas``, from ``compas_occ``, a :class:`~compas.geometry.Circle`, ...
+        ``curve_to_compas``, from ``compas_occ``, a ``compas.geometry.Circle``, ...
         It must lie where the samples do. Default is None: vertices land on the samples.
 
     Attributes
@@ -121,7 +120,7 @@ class GuideCurve(object):
         The total arc length of the samples.
     closed : bool
         Whether the first and last point coincide.
-    curve : :class:`compas.geometry.Curve` | None
+    curve : compas.geometry.Curve | None
         The curve a vertex lands on, if one was given.
 
     Raises
@@ -188,7 +187,7 @@ class GuideCurve(object):
         return distance, t, tangent
 
     def closest_point(self, point: list[float]) -> list[float] | None:
-        """The closest point on the guide (on :attr:`curve` if set), usable as a smoothing constraint."""
+        """The closest point on the guide (on ``curve`` if set), usable as a smoothing constraint."""
         if self.curve is not None:
             return closest_point_on_constraint(self.curve, point)
         return self._closest(point)[0]
@@ -382,10 +381,10 @@ def guide_chain(
 
     Parameters
     ----------
-    mesh : :class:`compas_singular.datastructures.QuadMesh`
-        The dense quad mesh. A :class:`QuadMesh`, not a plain
-        :class:`compas.datastructures.Mesh`: the polyedges are what this selects from.
-    guide : :class:`GuideCurve` | sequence[point]
+    mesh : compas_singular.datastructures.QuadMesh
+        The dense quad mesh. A ``QuadMesh``, not a plain
+        ``compas.datastructures.Mesh``: the polyedges are what this selects from.
+    guide : GuideCurve | sequence[point]
         The guide curve, already discretised.
     tolerance : float, optional
         How far off the guide a chain vertex may sit. Default is
@@ -406,7 +405,7 @@ def guide_chain(
           a measurement can show what that costs; it is not a setting to use.
 
     polyedges : list, optional
-        The result of :func:`collect_polyedges` for this mesh, if it has already been
+        The result of ``collect_polyedges`` for this mesh, if it has already been
         collected. Default is None, in which case it is collected here.
 
     Returns
@@ -536,11 +535,11 @@ def attach_chain(
 
     Parameters
     ----------
-    mesh : :class:`compas.datastructures.Mesh`
+    mesh : compas.datastructures.Mesh
         The mesh. NOT modified -- the moves are returned, not applied.
     chain : list[int]
         The vertices to attach.
-    guide : :class:`GuideCurve` | sequence[point]
+    guide : GuideCurve | sequence[point]
         The guide to attach them to.
     hold : {'fixed', 'sliding'}, optional
         How an INTERIOR vertex is held once it is on the guide. ``'fixed'`` pins it where
@@ -556,7 +555,7 @@ def attach_chain(
         are absent: they do not move.
         ``{vertex: constraint}`` -- what holds each vertex of the chain, ready to be
         merged into the constraints of
-        :func:`~compas_singular.datastructures.constrained_smoothing`.
+        ``compas_singular.datastructures.constrained_smoothing``.
     """
     guide = _as_guide(guide)
     if boundary_curves is None:
@@ -584,11 +583,11 @@ def chain_quality(mesh: "QuadMesh", chain: list[int], guide: "GuideCurve | Itera
 
     Parameters
     ----------
-    mesh : :class:`compas_singular.datastructures.QuadMesh`
+    mesh : compas_singular.datastructures.QuadMesh
         The mesh the chain was selected on, unmodified.
     chain : list[int]
-        The chain, as returned by :func:`guide_chain`.
-    guide : :class:`GuideCurve` | sequence[point]
+        The chain, as returned by ``guide_chain``.
+    guide : GuideCurve | sequence[point]
         The guide it was selected for.
 
     Returns

@@ -102,7 +102,7 @@ def load_mesh():
 
     def on_quad_layer(rhobj, geometry, component_index):
         layer = rs.ObjectLayer(rhobj)
-        return layer == quad_layer or rs.IsLayerChildOf(layer, quad_layer)
+        return layer == quad_layer or rs.IsLayerChildOf(quad_layer, layer)
 
     guid = rs.GetObject(
         message="Pick the mesh to edit, from 'QuadMesh' or a sublayer",
@@ -312,10 +312,9 @@ def add_line():
         if picked is None:
             return changed
         edge, _guid = picked
-        # ``relax=True`` explicitly: the grammar creates the new row with ZERO
-        # width, and the editor no longer opens it for you. Without this the
-        # strip is invisible here and the mesh bakes with coincident corners.
-        ok, notes = edit(lambda: editor.add_line(edge, relax=True))
+        # The editor opens the new row by the grammar's exact rule; only its
+        # own vertices move, and those on a wall stay on it.
+        ok, notes = edit(lambda: editor.add_line(edge))
         if not ok:
             mesh_ui.refuse("Add line", "No strip was added.\n\n{}".format(notes["error"]))
             continue

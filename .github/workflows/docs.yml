@@ -1,25 +1,45 @@
 name: docs
-
 on:
   push:
     branches:
       - main
-    tags:
-      - "v*"
   pull_request:
     branches:
       - main
-
 permissions:
   contents: write
-
 jobs:
-  docs:
+  # A broken page or docstring fails the PR, not the deploy on main.
+  check:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: compas-dev/compas-actions.docs@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          doc_url: https://bladtcasper-afk.github.io/compas_singular/
-          python: "3.12"
-          test_docs: false
+          python-version: 3.x
+      - run: pip install .[dev,docs]
+      - run: mkdocs build --strict
+
+  deploy:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Git Credentials
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
+      - uses: actions/cache@v4
+        with:
+          key: mkdocs-material-${{ env.cache_id }}
+          path: ~/.cache
+          restore-keys: |
+            mkdocs-material-
+      - run: pip install .[dev,docs]
+      # Replaces the whole gh-pages branch, the old Sphinx latest/ folder included.
+      - run: mkdocs gh-deploy --force

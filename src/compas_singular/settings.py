@@ -9,7 +9,6 @@ from pydantic import AliasChoices
 from pydantic import BaseModel
 from pydantic import Field
 
-
 __all__ = ['Settings']
 
 

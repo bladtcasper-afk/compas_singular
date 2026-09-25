@@ -1,15 +1,14 @@
 from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
-from typing import Callable
 from typing import TYPE_CHECKING
+from typing import Callable
 
-from compas_singular.datastructures.mesh.operations import mesh_move_vertices_by
 # from .coloring import quad_mesh_polyedge_2_coloring
-
 from compas.itertools import pairwise
+from compas_singular.datastructures.mesh.operations import mesh_move_vertices_by
 
 if TYPE_CHECKING:
     from compas_singular.datastructures import QuadMesh

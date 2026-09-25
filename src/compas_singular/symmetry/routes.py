@@ -29,7 +29,7 @@ def route_name(decomposition: Any) -> str:
 
 
 def domain_of(decomposition: Any) -> Domain:
-    """The :class:`~.domain.Domain` a decomposition was built from."""
+    """The ``.domain.Domain`` a decomposition was built from."""
     from compas_singular.symmetry.domain import Domain
     inputs = getattr(decomposition, 'inputs', None) or {}
     if not inputs.get('outer_boundary'):

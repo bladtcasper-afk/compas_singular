@@ -1,14 +1,14 @@
 """Make a mesh all-quad again after surgery, from the mesh, walls and poles alone (no field).
 
-Main entry points: :func:`solve_non_quad_faces`, :func:`topological_quad_split`, :func:`densifiable`.
+Main entry points: ``solve_non_quad_faces``, ``topological_quad_split``, ``densifiable``.
 """
 
 from __future__ import annotations
 
+from math import pi
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Sequence
-from typing import TYPE_CHECKING
-from math import pi
 
 from compas.geometry import angle_vectors
 from compas.geometry import distance_point_point
@@ -160,7 +160,7 @@ def _fan(fv: list[int]) -> list[list[int]]:
 
 
 def _best_fan(fv: list[int], coords: list[list[float]]) -> list[list[int]] | None:
-    """The valid rotation of :func:`_fan` with the largest minimum angle, or ``None``."""
+    """The valid rotation of ``_fan`` with the largest minimum angle, or ``None``."""
     n = len(fv)
     whole = _signed_area([coords[v] for v in fv])
     best = None

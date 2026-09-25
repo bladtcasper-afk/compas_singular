@@ -1,16 +1,15 @@
 from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
 import os
 from typing import Any
 
 from compas.datastructures import Mesh
-from compas.geometry import centroid_points
-from compas.geometry import angle_points
 from compas.geometry import Point
-
+from compas.geometry import angle_points
+from compas.geometry import centroid_points
 
 __all__ = ['Mesh']
 
@@ -66,7 +65,7 @@ class Mesh(Mesh):
     # in 2.3 kB.
 
     def save_to_json(self, filepath: str, pretty: bool = False) -> str:
-        """Write the mesh and its :attr:`attributes` to ``filepath``, creating the folder. Returns ``filepath``.
+        """Write the mesh and its ``attributes`` to ``filepath``, creating the folder. Returns ``filepath``.
 
         Parameters
         ----------
@@ -87,7 +86,7 @@ class Mesh(Mesh):
 
     @classmethod
     def load_from_json(cls, filepath: str, default: Any = None) -> Any:
-        """Construct a mesh from what :meth:`save_to_json` wrote; the class comes from the file.
+        """Construct a mesh from what ``save_to_json`` wrote; the class comes from the file.
 
         Digit-string strip keys are turned back into ints.
 
@@ -139,11 +138,6 @@ class Mesh(Mesh):
 
     def boundaries(self) -> list[list[int]]:
         """Collect the mesh boundaries as lists of vertices.
-
-        Parameters
-        ----------
-        mesh : Mesh
-            Mesh.
 
         Returns
         -------
@@ -217,9 +211,6 @@ class Mesh(Mesh):
 
     def vertex_centroid(self) -> list[float]:
         """Calculate the centroid of the mesh vertices.
-
-        Parameters
-        ----------
 
         Returns
         -------

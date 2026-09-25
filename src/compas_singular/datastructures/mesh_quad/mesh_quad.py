@@ -1,28 +1,26 @@
 from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
+from math import floor
+from operator import itemgetter
 from typing import Any
 from typing import Callable
 from typing import Iterator
 
-from math import floor
-from operator import itemgetter
-
+from compas.geometry import Brep
+from compas.geometry import Point
+from compas.geometry import Polygon
+from compas.geometry import Polyline
 from compas.geometry import centroid_points
-from compas.geometry import Polyline, Brep, Point, Polygon
 from compas.itertools import pairwise
-
+from compas_singular.datastructures.mesh import Mesh
 from compas_singular.datastructures.mesh_quad.grammar.add_strip import add_strip
 from compas_singular.datastructures.mesh_quad.grammar.add_strip import add_strips
 from compas_singular.datastructures.mesh_quad.grammar.delete_strip import delete_strip
 from compas_singular.datastructures.mesh_quad.grammar.delete_strip import delete_strips
 from compas_singular.utilities import list_split
-
-
-from compas_singular.datastructures.mesh import Mesh
-
 
 __all__ = ['QuadMesh']
 
@@ -147,8 +145,8 @@ class QuadMesh(Mesh):
 
         Returns
         -------
-        (w, x) : tuple, None
-            The opposite edge.
+        tuple or None
+            The opposite edge ``(w, x)``.
             None if (u, v) is a boundary halfedge, i.e. has no face, or if its face
             is not a quad.
         """
@@ -279,9 +277,9 @@ class QuadMesh(Mesh):
 
         Parameters
         ----------
-        u : int
+        u0 : int
             The identifier of the edge start.
-        v : int
+        v0 : int
             The identifier of the edge end.
         both_sides : bool, optional
             Whether to walk in both directions from the seed halfedge. Default is
@@ -292,7 +290,7 @@ class QuadMesh(Mesh):
             Default is False, which returns the reversed polyedge whenever the walk
             reaches an extremity on the first side, i.e. the seed direction is lost.
         strict : bool, optional
-            Passed to :meth:`vertex_opposite_vertex`. Default is False.
+            Passed to ``vertex_opposite_vertex``. Default is False.
 
         Returns
         -------
@@ -337,7 +335,7 @@ class QuadMesh(Mesh):
         Parameters
         ----------
         strict : bool, optional
-            Passed to :meth:`vertex_opposite_vertex`. Default is False.
+            Passed to ``vertex_opposite_vertex``. Default is False.
 
         Returns
         -------
@@ -482,7 +480,7 @@ class QuadMesh(Mesh):
         Parameters
         ----------
         strict : bool, optional
-            Passed to :meth:`vertex_opposite_vertex`. Default is False.
+            Passed to ``vertex_opposite_vertex``. Default is False.
 
         Returns
         -------
@@ -648,9 +646,9 @@ class QuadMesh(Mesh):
 
         Parameters
         ----------
-        u : int
+        u0 : int
             The identifier of the edge start.
-        v : int
+        v0 : int
             The identifier of the edge end.
         both_sides : bool, optional
             Whether to walk in both directions from the seed halfedge. Default is
@@ -744,26 +742,26 @@ class QuadMesh(Mesh):
     def add_strip(self, polyedge: list[int], open_strip: bool = True, project: Callable[[list[float]], list[float]] | None = None) -> tuple[int, dict[int, tuple[int, int]]]:
         """Add a strip along ``polyedge``. ``(new strip key, {old vertex: pair})``.
 
-        See :mod:`~compas_singular.datastructures.mesh_quad.grammar.add_strip`.
+        See ``compas_singular.datastructures.mesh_quad.grammar.add_strip``.
         """
         return add_strip(self, polyedge, open_strip=open_strip, project=project)
 
     def add_strips(self, polyedges: list[list[int]], open_strip: bool = True, project: Callable[[list[float]], list[float]] | None = None) -> list[int]:
         """Add a strip along each polyedge. The new strip keys.
 
-        ``open_strip`` and ``project`` as in :meth:`add_strip`.
+        ``open_strip`` and ``project`` as in ``add_strip``.
         """
         return add_strips(self, polyedges, open_strip=open_strip, project=project)
 
     def delete_strip(self, skey: int) -> dict[int, int]:
         """Delete the strip ``skey``, welding its sides. ``{old vertex: the vertex it merged into}``.
 
-        See :mod:`~compas_singular.datastructures.mesh_quad.grammar.delete_strip`.
+        See ``compas_singular.datastructures.mesh_quad.grammar.delete_strip``.
         """
         return delete_strip(self, skey)
 
     def delete_strips(self, skeys: list[int]) -> None:
-        """Delete several strips. See :meth:`delete_strip`."""
+        """Delete several strips. See ``delete_strip``."""
         return delete_strips(self, skeys)
 
     def is_strip_closed(self, skey: int) -> bool:
@@ -879,10 +877,8 @@ class QuadMesh(Mesh):
 
         Parameters
         ----------
-        old_vkey : hashable
-            The old vertex key.
-        new_vkey : hashable
-            The new vertex key.
+        fkey : int
+            The face to remove from every strip.
 
         """
 

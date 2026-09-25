@@ -11,7 +11,6 @@ from typing import Any
 from compas.geometry import distance_point_point
 from compas.geometry import intersection_segment_segment_xy
 from compas.itertools import pairwise
-
 from compas_singular.framefield.constraints import PERIOD
 from compas_singular.framefield.field import CrossField
 from compas_singular.framefield.field import wrap_to_period
@@ -21,7 +20,6 @@ from compas_singular.geometry.polyline import closest_on_polyline
 from compas_singular.geometry.polyline import loop_arc_lengths
 from compas_singular.geometry.polyline import signed_area
 
-
 __all__ = ['Tracer', 'Separatrix']
 
 
@@ -29,11 +27,11 @@ __all__ = ['Tracer', 'Separatrix']
 Separatrix = namedtuple('Separatrix', 'points source sink reason')
 
 #: Two cut sites whose field alignment differs by less than this are equally
-#: aligned, and :meth:`Tracer._cut_launches_from` picks between them on arc
+#: aligned, and ``Tracer._cut_launches_from`` picks between them on arc
 #: length instead.
 ALIGN_TIE = 0.02
 
-#: Probe circles :meth:`Tracer.launch_directions` tries, as ``(radius as a
+#: Probe circles ``Tracer.launch_directions`` tries, as ``(radius as a
 #: multiple of the background spacing, samples per lap)``, in order. One circle
 #: is not reliable: too small and it sits where ``|u| -> 0`` and the angle is
 #: noise, too large and it leaves the domain or swallows a neighbour, and too
@@ -71,7 +69,7 @@ class _Trail(object):
 
 
 class Tracer(object):
-    """Traces the separatrices of a :class:`CrossField`.
+    """Traces the separatrices of a ``CrossField``.
 
     Parameters
     ----------
@@ -114,7 +112,7 @@ class Tracer(object):
 
     def locate(self, point: list[float], hint: int | None = None) -> tuple[int, tuple[float, float, float]] | None:
         """Containing face and barycentric coordinates, or ``None``. See
-        :meth:`PointLocator.locate`."""
+        ``PointLocator.locate``."""
         return self.locator.locate(point, hint)
 
     def direction_at(

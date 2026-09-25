@@ -169,7 +169,7 @@ class SymmetryGroup(object):
     # ------------------------------------------------------------------
 
     def apply(self, element: Element, point: Sequence[float]) -> list[float]:
-        """``element`` applied to a point, about :attr:`centre`."""
+        """``element`` applied to a point, about ``centre``."""
         a, b, c, d = element.matrix
         x, y = point[0] - self.centre[0], point[1] - self.centre[1]
         z = point[2] if len(point) > 2 else 0.0

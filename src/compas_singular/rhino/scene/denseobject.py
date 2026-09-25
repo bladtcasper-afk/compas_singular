@@ -13,7 +13,7 @@ __all__ = ['RhinoDenseObject']
 
 
 class RhinoDenseObject(RhinoSingularMeshObject):
-    """A dense mesh as pickable points and lines, updated with :meth:`sync` rather than a full redraw."""
+    """A dense mesh as pickable points and lines, updated with ``sync`` rather than a full redraw."""
 
     def __init__(self, **kwargs: Any) -> None:
         kwargs.setdefault('show_faces', False)

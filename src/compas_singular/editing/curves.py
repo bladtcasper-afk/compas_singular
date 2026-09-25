@@ -3,15 +3,14 @@
 The match is anchored on the end that did not move.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from compas.geometry import distance_point_point
 from compas.itertools import pairwise
-
 from compas_singular.editing.rebuild import warp_polyline
 
 if TYPE_CHECKING:

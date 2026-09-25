@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 from math import ceil
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 from compas.geometry import cross_vectors
 from compas.geometry import delaunay_triangulation
@@ -11,8 +11,7 @@ from compas.geometry import distance_point_point
 from compas.geometry import length_vector
 from compas.geometry import normalize_vector
 from compas.geometry import subtract_vectors
-
-from compas_singular.datastructures import Mesh   # has .boundaries(); compas core does not
+from compas_singular.datastructures import Mesh  # has .boundaries(); compas core does not
 from compas_singular.geometry.polyline import bounding_box_diagonal
 from compas_singular.geometry.polyline import discretise_boundary
 from compas_singular.geometry.polyline import near_loop
@@ -82,9 +81,9 @@ def interior_grid(
     margin : float, optional
         Clearance from the walls, as a fraction of ``target_length``, so the
         grid does not crowd the wall into slivers.
-    symmetry : :class:`framefield.symmetry.Symmetry`, optional
+    symmetry : framefield.symmetry.Symmetry, optional
         When given and non-trivial, a grid exactly invariant under the group
-        replaces this one -- see :func:`symmetry.interior_points`. The plain
+        replaces this one -- see ``symmetry.interior_points``. The plain
         grid is not: its jitter and its anchoring both ignore the symmetry.
 
     Returns
@@ -122,7 +121,7 @@ class BackgroundMesh(object):
 
     Attributes
     ----------
-    mesh : :class:`compas_singular.datastructures.Mesh`
+    mesh : compas_singular.datastructures.Mesh
         The triangulation. All faces have positive area in XY.
     outer : list[[x, y, z]]
         The discretised outer boundary, open (no repeated last point).
@@ -181,12 +180,12 @@ class BackgroundMesh(object):
         target_length : float, optional
             Edge length, for the walls and the interior grid alike. Defaults to
             ``alpha`` times the bounding-box diagonal (thesis eq. 4.1, see
-            :func:`discretise_boundary`).
+            ``discretise_boundary``).
         margin : float, optional
             Interior points' clearance from the walls, as a fraction of
             ``target_length``.
-        symmetry : :class:`framefield.symmetry.Symmetry`, optional
-            Passed to :func:`interior_grid`.
+        symmetry : framefield.symmetry.Symmetry, optional
+            Passed to ``interior_grid``.
         alpha : float, optional
             ``target_length`` as a fraction of the diagonal, when not given.
         d_min : int, optional

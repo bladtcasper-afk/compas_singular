@@ -1,25 +1,22 @@
-from __future__ import print_function
 from __future__ import absolute_import
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
 from typing import Any
 from typing import Sequence
 
-import rhinoscriptsyntax as rs
+import compas_rhino
+import rhinoscriptsyntax as rs  # type: ignore  # noqa: I001
+from compas_rhino.geometry import RhinoSurface
 
 from compas.datastructures import Mesh
 from compas.datastructures import Network
 from compas.datastructures.graph.operations.join import graph_polylines
-from compas.geometry import distance_point_point
 from compas.geometry import angle_vectors
+from compas.geometry import distance_point_point
 from compas.itertools import pairwise
-
-import compas_rhino
-from compas_rhino.geometry import RhinoSurface
-
 from compas_singular.rhino.geometry.curve import RhinoCurve
-
 
 __all__ = ["RhinoSurface"]
 

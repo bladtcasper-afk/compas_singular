@@ -7,8 +7,8 @@ from __future__ import annotations
 from math import atan2
 from math import cos
 from math import sin
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 import numpy as np
 from scipy.sparse import coo_matrix
@@ -17,8 +17,8 @@ from scipy.sparse.linalg import spsolve
 from compas.geometry import discrete_coons_patch
 from compas.itertools import pairwise
 from compas.tolerance import TOL
-from compas_singular.datastructures import meshes_join_and_weld
 from compas_singular.datastructures import PseudoQuadMesh
+from compas_singular.datastructures import meshes_join_and_weld
 from compas_singular.framefield.constraints import PERIOD
 
 if TYPE_CHECKING:
@@ -68,7 +68,7 @@ class FieldSampler(object):
     ----------
     field : CrossField
     locator : PointLocator, optional
-        Defaults to ``field.locator()``. A :class:`Tracer` is accepted too.
+        Defaults to ``field.locator()``. A ``Tracer`` is accepted too.
     """
 
     def __init__(self, field: CrossField, locator: Any = None) -> None:
@@ -96,9 +96,9 @@ class FieldSampler(object):
         return self.field.angle_in_face(fkey, bary), fkey
 
     def thetas(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """:meth:`theta` along a sequence of points, each hinted by the one before.
+        """``theta`` along a sequence of points, each hinted by the one before.
 
-        Exactly the values a loop over :meth:`theta` gives, computed in bulk.
+        Exactly the values a loop over ``theta`` gives, computed in bulk.
 
         Returns
         -------
@@ -346,7 +346,7 @@ def _accepts(measured: tuple[float, float, float, int],
     Parameters
     ----------
     measured, reference : tuple
-        :func:`_measure` of the relaxed grid and of the Coons grid.
+        ``_measure`` of the relaxed grid and of the Coons grid.
     """
     lo, hi, aspect, folds = measured
     if folds:
@@ -421,13 +421,13 @@ def relax_patch(
         Held fixed.
     sampler : FieldSampler
     iterations, tikhonov, stiffness : optional
-        See :data:`ITERATIONS`, :data:`TIKHONOV`, :data:`STIFFNESS`.
+        See ``ITERATIONS``, ``TIKHONOV``, ``STIFFNESS``.
     guard : bool, optional
         ``False`` takes the first stiffness that settles without asking whether
         the patch is usable. For measuring the trade-off only.
     spend : bool, optional
         Whether element quality may be spent to buy alignment. See
-        :func:`_accepts`.
+        ``_accepts``.
     early_exit : bool, optional
         When quality may not be spent, try the STIFFEST setting first -- the one
         closest to Coons, so the likeliest to pass -- and keep the Coons
@@ -519,11 +519,11 @@ def field_densification(
         Strips collected and densities set.
     field : CrossField
     locator : PointLocator, optional
-        Defaults to ``field.locator()``. A :class:`Tracer` is accepted too.
+        Defaults to ``field.locator()``. A ``Tracer`` is accepted too.
     edges_to_curves : dict, optional
         ``{(u, v): polyline}``. An edge missing from it densifies as a chord.
     iterations, tikhonov, stiffness, guard, spend, early_exit : optional
-        Passed to :func:`relax_patch`.
+        Passed to ``relax_patch``.
     field_aware : bool, optional
         ``False`` reproduces ``discrete_coons_patch`` exactly, for A/B tests.
 
@@ -531,12 +531,12 @@ def field_densification(
     -------
     (mesh, dict)
         The dense mesh, and counts: ``patches``; ``relaxed``, ``guarded`` and
-        ``flat`` (from :func:`relax_patch`); ``poles`` (pseudo-quads, kept
+        ``flat`` (from ``relax_patch``); ``poles`` (pseudo-quads, kept
         Coons); ``coons`` (patches left Coons because ``field_aware`` is off);
         ``stiffness`` (per relaxed patch) and ``folds``. ``seam_edge`` maps the
         geometric key of every patch-boundary node to ``(u, v, index)`` -- the
         coarse edge it lies on and its position along it -- which
-        :func:`relax.relax_mesh` needs to slide seam nodes without reordering
+        ``relax.relax_mesh`` needs to slide seam nodes without reordering
         them.
     """
     edge_strip = {}

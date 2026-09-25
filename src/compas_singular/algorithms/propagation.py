@@ -1,7 +1,7 @@
 from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
 from math import pi
 from math import radians
@@ -11,7 +11,6 @@ from compas.geometry import angle_vectors
 from compas.geometry import discrete_coons_patch
 from compas.geometry import length_vector
 from compas.geometry import subtract_vectors
-
 from compas_singular.utilities import list_split
 
 if TYPE_CHECKING:
@@ -30,8 +29,8 @@ __all__ = [
 def quadrangulate_mesh(mesh: Mesh, sources: list[int]) -> None:
     """Quadrangulate the faces of a mesh by adding edges from vertex sources.
 
-    Returns
-    -------
+    Parameters
+    ----------
     mesh : Mesh
         A mesh to quadrangulate.
     sources : list
@@ -39,7 +38,7 @@ def quadrangulate_mesh(mesh: Mesh, sources: list[int]) -> None:
 
     References
     ----------
-    .. [1] Oval et al., *Feature-based Topology Finding of Patterns for Shell Structures*. Automation in Construction. 2019.
+    1. Oval et al., *Feature-based Topology Finding of Patterns for Shell Structures*. Automation in Construction. 2019.
 
     """
     sources_to_visit = sources[:]

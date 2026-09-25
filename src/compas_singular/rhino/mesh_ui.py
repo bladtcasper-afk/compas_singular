@@ -3,25 +3,25 @@
 Previews show the projected point, and refusals go in a dialog, not a print.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
 from typing import Any
 from typing import Callable
 from typing import Sequence
 
-
 try:
-    import rhinoscriptsyntax as rs
-    import Rhino
-    from Rhino.Geometry import Line
-    from Rhino.Geometry import Point3d
+    import Rhino # type: ignore  # noqa: I001
+    import rhinoscriptsyntax as rs # type: ignore  # noqa: I001
+    from Rhino.Geometry import Line  # type: ignore  # noqa: I001
+    from Rhino.Geometry import Point3d  # type: ignore  # noqa: I001
+
     # ``from System.Drawing.Color import FromArgb`` is an IronPython idiom and
     # raises under Rhino 8's CPython, where Color is a class and not a module.
     # It raised at the END of this block, so everything above it stayed bound
     # and the failure only surfaced later as ``NameError: FromArgb``.
-    from System.Drawing import Color
+    from System.Drawing import Color  # type: ignore  # noqa: I001
     RHINO = True
 except ImportError:  # importable outside Rhino, so the package still imports
     RHINO = False
@@ -111,7 +111,7 @@ def ensure_layer(path: str, color: tuple[int, int, int] | None = None) -> str:
 
 
 def unlock(layer: str, guids: Sequence[Any] = ()) -> dict[str, Any]:
-    """Unlock a layer, all its parents, and the given objects; returns what was locked for :func:`relock`."""
+    """Unlock a layer, all its parents, and the given objects; returns what was locked for ``relock``."""
     _require_rhino()
     parts = layer.split('::')
     state = {'layers': {}, 'objects': []}
@@ -129,7 +129,7 @@ def unlock(layer: str, guids: Sequence[Any] = ()) -> dict[str, Any]:
 
 
 def relock(state: dict[str, Any]) -> None:
-    """Put back exactly what :func:`unlock` took off, and nothing else."""
+    """Put back exactly what ``unlock`` took off, and nothing else."""
     _require_rhino()
     for guid in state.get('objects', []):
         if rs.IsObject(guid):

@@ -9,17 +9,17 @@ from dataclasses import dataclass
 from math import cos
 from math import sin
 from numbers import Number
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
-from compas.data import Data
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import factorized
 from scipy.sparse.linalg import spsolve
 
-from compas_singular.framefield.constraints import Constraint
+from compas.data import Data
 from compas_singular.framefield.constraints import PERIOD
+from compas_singular.framefield.constraints import Constraint
 from compas_singular.framefield.constraints import from_boundary
 from compas_singular.framefield.constraints import representation
 from compas_singular.geometry.polyline import signed_area
@@ -33,14 +33,14 @@ if TYPE_CHECKING:
 __all__ = ['CrossField', 'FieldInputs', 'field_provenance', 'wrap_to_period']
 
 
-#: Bumped when the layout of :meth:`CrossField.save_to_json` changes in a way a
+#: Bumped when the layout of ``CrossField.save_to_json`` changes in a way a
 #: reader has to notice. Newer files are refused rather than guessed at.
 JSON_VERSION = 1
 
 #: Written into every file and checked on load.
 JSON_TYPE = 'compas_singular.framefield.CrossField'
 
-#: Coordinate rounding for :attr:`CrossField.inputs`: well below anything
+#: Coordinate rounding for ``CrossField.inputs``: well below anything
 #: geometric, coarse enough to absorb the last-bit noise of a CAD round trip.
 #: **Changing it makes every stored field report its outline changed.**
 COORDINATE_DIGITS = 9
@@ -89,7 +89,7 @@ def _describe_difference(before: dict[str, Any] | None, after: dict[str, Any] | 
 
 @dataclass
 class FieldInputs(object):
-    """Everything a field is solved from, with the defaults; see :meth:`CrossField.from_boundary`."""
+    """Everything a field is solved from, with the defaults; see ``CrossField.from_boundary``."""
 
     outer_boundary: Any
     inner_boundaries: Any = None
@@ -136,8 +136,8 @@ class FieldInputs(object):
 
 
 def field_provenance(*args: Any, **kwargs: Any) -> dict[str, Any]:
-    """:meth:`FieldInputs.provenance` of the inputs given, which are
-    :meth:`CrossField.from_boundary`'s."""
+    """``FieldInputs.provenance`` of the inputs given, which are
+    ``CrossField.from_boundary``'s."""
     return FieldInputs(*args, **kwargs).provenance()
 
 
@@ -172,8 +172,8 @@ class CrossField(Data):
     snap_report : dict
         What the snapping did.
     inputs : dict or None
-        :meth:`FieldInputs.provenance` of what this field was solved from;
-        ``None`` for a field built through :meth:`solve` directly.
+        ``FieldInputs.provenance`` of what this field was solved from;
+        ``None`` for a field built through ``solve`` directly.
     """
 
     def __init__(
@@ -457,7 +457,7 @@ class CrossField(Data):
         }
 
     def report(self) -> dict[str, Any]:
-        """:meth:`poincare_hopf` plus the solve's diagnostics.
+        """``poincare_hopf`` plus the solve's diagnostics.
 
         ``min_magnitude`` and ``mean_magnitude`` are only informative when the
         field is not relaxed -- relaxation pins every magnitude to 1.
@@ -499,7 +499,7 @@ class CrossField(Data):
             Guide curves -- cables, force lines. A LIST of curves; a lone curve
             is accepted too.
         mode : {'perpendicular', 'tangent'}, optional
-            See :func:`constraints.from_curves`.
+            See ``constraints.from_curves``.
         target_length : float, optional
             Background spacing -- not the quad size.
         guide_weight : float, optional
@@ -519,8 +519,8 @@ class CrossField(Data):
         Returns
         -------
         CrossField
-            With :attr:`guides`, :attr:`symmetry`, :attr:`singularity_points`,
-            :attr:`snap_report` and :attr:`inputs` set.
+            With ``guides``, ``symmetry``, ``singularity_points``,
+            ``snap_report`` and ``inputs`` set.
         """
         # imported here: ``background`` and ``symmetry`` import this module
         from compas_singular.framefield.background import BackgroundMesh
@@ -621,7 +621,7 @@ class CrossField(Data):
 
     @property
     def __data__(self) -> dict[str, Any]:
-        """compas ``Data``: the :meth:`save_to_json` payload, so a field can
+        """compas ``Data``: the ``save_to_json`` payload, so a field can
         travel inside a larger document (a session) and come back exactly."""
         return self.__jsondata__()
 
@@ -630,7 +630,7 @@ class CrossField(Data):
         return cls.__from_jsondata__(data)
 
     def __jsondata__(self) -> dict[str, Any]:
-        """The payload :meth:`save_to_json` writes: plain types plus one Mesh."""
+        """The payload ``save_to_json`` writes: plain types plus one Mesh."""
         symmetry = None
         if self.symmetry is not None:
             symmetry = {'centre': [float(c) for c in self.symmetry.centre],
@@ -664,10 +664,10 @@ class CrossField(Data):
 
     @classmethod
     def load_from_json(cls, filepath: str, default: Any = None) -> CrossField | Any:
-        """**Read a field back.** The inverse of :meth:`save_to_json`.
+        """**Read a field back.** The inverse of ``save_to_json``.
 
         Does NOT check that the field still belongs to your domain -- ask
-        :meth:`mismatch` straight afterwards, every time.
+        ``mismatch`` straight afterwards, every time.
 
         Parameters
         ----------
@@ -690,7 +690,7 @@ class CrossField(Data):
 
     @classmethod
     def __from_jsondata__(cls, data: dict[str, Any]) -> CrossField:
-        """Rebuild from :meth:`__jsondata__`'s payload."""
+        """Rebuild from ``__jsondata__``'s payload."""
         from compas_singular.framefield.background import BackgroundMesh
         from compas_singular.framefield.symmetry import ELEMENTS
         from compas_singular.framefield.symmetry import Symmetry
@@ -765,7 +765,7 @@ class CrossField(Data):
             Whether element quality may be spent on alignment. Defaults to
             whether this field has guides.
         **kwargs
-            Passed to :func:`densify.field_densification`.
+            Passed to ``densify.field_densification``.
 
         Returns
         -------

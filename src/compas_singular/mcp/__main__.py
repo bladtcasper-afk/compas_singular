@@ -3,7 +3,7 @@
 Speaks MCP on stdin and stdout and nothing else. Every diagnostic goes to
 stderr, where an MCP client shows it as server log output; anything written to
 stdout that is not a protocol frame breaks the session, which is why
-:func:`~compas_singular.mcp.protocol.serve` rebinds ``sys.stdout`` before it
+``compas_singular.mcp.protocol.serve`` rebinds ``sys.stdout`` before it
 reads the first line.
 
 Run it by hand to check the wiring::
@@ -25,7 +25,8 @@ from compas_singular.mcp.server import build
 def main(argv: Sequence[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if '--version' in argv:
-        sys.stderr.write('compas_singular.mcp 0.1.0\n')
+        from compas_singular import __version__
+        sys.stderr.write('compas_singular.mcp {}\n'.format(__version__))
         return 0
     if '--help' in argv or '-h' in argv:
         sys.stderr.write((__doc__ or '') + '\n')

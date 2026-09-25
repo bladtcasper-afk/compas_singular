@@ -1,6 +1,6 @@
 """Name mesh places by rounded position (handles) instead of vertex keys, which edits renumber.
 
-Regions are selected by description via :func:`select`, never enumerated.
+Regions are selected by description via ``select``, never enumerated.
 """
 from __future__ import absolute_import
 from __future__ import division

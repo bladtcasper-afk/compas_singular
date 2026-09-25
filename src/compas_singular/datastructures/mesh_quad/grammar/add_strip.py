@@ -40,9 +40,9 @@ def add_strips(mesh: QuadMesh, polyedges: list[list[int]], open_strip: bool = Tr
     polyedges : list[list[int]]
         Polyedges, each a list of vertex keys.
     open_strip : bool, optional
-        Open each new strip by :func:`open_added_strip`. Default ``True``.
+        Open each new strip by ``open_added_strip``. Default ``True``.
     project : callable, optional
-        Passed on to :func:`open_added_strip`.
+        Passed on to ``open_added_strip``.
 
     Returns
     -------
@@ -65,7 +65,7 @@ def add_strips(mesh: QuadMesh, polyedges: list[list[int]], open_strip: bool = Tr
 
 
 def add_strip(mesh: QuadMesh, polyedge: list[int], open_strip: bool = True, project: Callable[[list[float]], list[float]] | None = None) -> tuple[int, dict[int, tuple[int, int]]]:
-    """Add a strip along ``polyedge``, opened by :func:`open_added_strip` by default.
+    """Add a strip along ``polyedge``, opened by ``open_added_strip`` by default.
 
     The polyedge is consumed; self-crossing polyedges still raise in ``update_strip_data``.
 
@@ -78,7 +78,7 @@ def add_strip(mesh: QuadMesh, polyedge: list[int], open_strip: bool = True, proj
         Vertex keys in order, each joined to the next by an edge. Either closed,
         or with both ends on the boundary.
     open_strip : bool, optional
-        Give the new strip its width with :func:`open_added_strip`. Default
+        Give the new strip its width with ``open_added_strip``. Default
         ``True``. ``False`` is topology only: both copies of each vertex stay on
         top of the vertex they replace.
     project : callable, optional
@@ -231,7 +231,7 @@ def add_strip(mesh: QuadMesh, polyedge: list[int], open_strip: bool = True, proj
 
 
 def split_strip(mesh: QuadMesh, skey: int, n: int = 2, open_strip: bool = True, project: Callable[[list[float]], list[float]] | None = None) -> list[int]:
-    """Refine a strip into ``n`` strips. ``open_strip``/``project`` as in :func:`add_strip`.
+    """Refine a strip into ``n`` strips. ``open_strip``/``project`` as in ``add_strip``.
 
     Returns
     -------
@@ -244,7 +244,7 @@ def split_strip(mesh: QuadMesh, skey: int, n: int = 2, open_strip: bool = True, 
 
 
 def split_strips(mesh: QuadMesh, skey_to_n: dict[int, int], open_strip: bool = True, project: Callable[[list[float]], list[float]] | None = None) -> dict[int, list[int]]:
-    """Refine several strips. ``open_strip``/``project`` as in :func:`add_strip`.
+    """Refine several strips. ``open_strip``/``project`` as in ``add_strip``.
 
     Parameters
     ----------
@@ -306,11 +306,11 @@ def open_added_strip(
     Parameters
     ----------
     mesh : QuadMesh
-        The mesh after a topology-only :func:`add_strip`.
+        The mesh after a topology-only ``add_strip``.
     old_to_new : dict
         ``{old vertex: (copy, copy)}``, the second return value of ``add_strip``.
     sides : dict
-        :func:`polyedge_sides` of the polyedge, measured BEFORE ``add_strip``.
+        ``polyedge_sides`` of the polyedge, measured BEFORE ``add_strip``.
     on_boundary : iterable, optional
         Old vertices that were on the boundary.
     project : callable, optional
@@ -437,7 +437,7 @@ def strip_polyedge_update(mesh: QuadMesh, polyedge: list[int], vertex_modificati
         A polyedge, as a list of the OLD vertex keys.
     vertex_modifications : dict
         Old vertex keys pointing to the new ones that replaced them -- the
-        second return value of :func:`add_strip`.
+        second return value of ``add_strip``.
 
     Returns
     -------

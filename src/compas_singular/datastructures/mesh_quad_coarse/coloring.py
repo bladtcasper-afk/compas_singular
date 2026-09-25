@@ -1,14 +1,13 @@
 from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
 from typing import TYPE_CHECKING
 
 from compas.itertools import pairwise
-
-from compas_singular.datastructures.mesh_quad_coarse.mesh_quad_coarse import CoarseQuadMesh
 from compas_singular.datastructures.mesh_quad.coloring import quad_mesh_strip_2_coloring
+from compas_singular.datastructures.mesh_quad_coarse.mesh_quad_coarse import CoarseQuadMesh
 
 if TYPE_CHECKING:
     from compas_singular.datastructures import QuadMesh

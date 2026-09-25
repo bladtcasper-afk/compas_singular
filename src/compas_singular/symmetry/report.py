@@ -1,4 +1,4 @@
-"""What :func:`~.detect.find_symmetry` found, and the geometry to show it with."""
+"""What ``.detect.find_symmetry`` found, and the geometry to show it with."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -31,14 +31,14 @@ class SymmetryReport(object):
 
     Attributes
     ----------
-    group : :class:`~.group.SymmetryGroup`
+    group : .group.SymmetryGroup
         The largest group whose every element passed.
     centre : [x, y, z]
     keys : list[str]
         The names a script picks a unit by -- ``R90``, ``M45`` ...
     deviations : dict
         ``key -> (worst distance, (tag, point))`` for every element of
-        :attr:`group`. How far from exact the drawing is.
+        ``group``. How far from exact the drawing is.
     near_misses : list
         ``(key, worst distance, (tag, point))`` for elements that did NOT pass
         but came within the near-miss limit -- almost always a drawing slightly
@@ -47,7 +47,7 @@ class SymmetryReport(object):
     circle_like : bool
         Every tested rotation passed: the domain is (sampled from) a circle, and
         the reported order is only the highest one tested.
-    domain : :class:`~.domain.Domain`
+    domain : .domain.Domain
     """
 
     def __init__(

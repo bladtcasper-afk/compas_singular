@@ -12,7 +12,7 @@ set the options and press Enter to smooth::
     Region  Region  Blend  Boundary  FixedVertices  Guides  Iterations  Damping
 
 * **Algorithm** -- Area, Centroid, CenterOfMass or ForceDensity. A region is always
-  smoothed by area: ``smoothing_region`` has no other rule, because centroid equalises
+  smoothed by area: ``region_smoothing`` has no other rule, because centroid equalises
   edge lengths and fights the grading a mesh is meant to have.
 * **Boundary** -- Sliding runs every boundary vertex along its own outline with the
   corners pinned; Fixed pins the whole boundary; Free holds none of it, corners included,
@@ -60,7 +60,7 @@ from compas_singular.datastructures.mesh.smoothing import automated_boundary_con
 from compas_singular.datastructures.mesh.smoothing import constrained_smoothing
 from compas_singular.datastructures.mesh.smoothing import mesh_boundary_corners
 from compas_singular.datastructures.mesh.smoothing import relaxation
-from compas_singular.datastructures.mesh.smoothing import smoothing_region
+from compas_singular.datastructures.mesh.smoothing import region_smoothing
 from compas_singular.editing import GuideCurve
 from compas_singular.editing import attach_chain
 from compas_singular.editing import chain_quality
@@ -130,7 +130,7 @@ def grow(mesh, core, rings=1):
 def taper(mesh, core, blend):
     """Per-vertex damping weight: 1 in the core, falling to 0 outside the blend.
 
-    The same taper ``smoothing_region`` builds for itself. It is built here instead, so the
+    The same taper ``region_smoothing`` builds for itself. It is built here instead, so the
     region that is previewed is exactly the region that moves, and so fixed vertices can be
     given a weight of 0 inside it.
     """
@@ -301,7 +301,7 @@ def smooth_whole(mesh, algorithm="area", boundary="sliding", fixed=(), guides=()
                 "ForceDensity needs at least one fixed vertex and there is none: no fixed "
                 "boundary, no corners, no fixed vertices and no guides. Fix some vertices, "
                 "or set Boundary=Fixed or Sliding.")
-        relaxation(mesh, fixed="manual", fixed_vertices=sorted(pinned), q_factor=q_factor)
+        relaxation(mesh, fixed=sorted(pinned), q_factor=q_factor)
         return _report(attached, pinned, notes)
 
     # the constraints read the outline before any guide moves anything
@@ -364,16 +364,16 @@ def smooth_region(mesh, core, blend=DEFAULT_BLEND, boundary="sliding", fixed=(),
     pinned -= set(attached["constraints"])
     pinned |= fixed
 
-    # smoothing_region fixes a vertex whose weight is not positive, and only projects the
+    # region_smoothing fixes a vertex whose weight is not positive, and only projects the
     # constraints of the vertices it moves
     for vertex in pinned:
         if vertex in weights:
             weights[vertex] = 0.0
         constraints.pop(vertex, None)
 
-    # a dict, never None: None would make smoothing_region build sliding boundary
+    # a dict, never None: None would make region_smoothing build sliding boundary
     # constraints of its own, and a Fixed boundary would slide
-    smoothing_region(mesh, weights, kmax=kmax, damping=damping, constraints=constraints)
+    region_smoothing(mesh, weights, kmax=kmax, damping=damping, constraints=constraints)
     moving = len([vertex for vertex, weight in weights.items() if weight > 0.0])
     return _report(attached, set(vertex for vertex in pinned if vertex in weights), [],
                    core=len(core), moving=moving)
@@ -1050,13 +1050,13 @@ def main():
         print("Smoothing failed, nothing baked: {}: {}".format(type(exc).__name__, exc))
         return
 
-    rs.AddLayer("Smoothened", parent="QuadMesh")
-    rs.AddLayer(layer, parent="Smoothened")
+    rs.AddLayer("Smoothed", parent="QuadMesh")
+    rs.AddLayer(layer, parent="Smoothed")
     clear_layer(layer, clean_sublayers=True)
     bake_mesh(command.mesh, layer)
     print(summary)
     print_report(report, len(command.fixed), command.boundary)
-    print("  baked to Smoothened::{}.".format(layer))
+    print("  baked to Smoothed::{}.".format(layer))
 
 
 if __name__ == "__main__":

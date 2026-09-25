@@ -76,7 +76,7 @@ class Dispatcher(object):
     ----------
     handler : object
         Supplies the content. Every method is optional, and the ones present
-        decide what :meth:`capabilities` advertises:
+        decide what ``capabilities`` advertises:
 
         ``list_tools()`` -> ``[{name, description, inputSchema}, ...]``
         ``call_tool(name, arguments)`` -> ``dict``

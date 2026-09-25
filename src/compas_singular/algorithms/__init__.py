@@ -1,35 +1,4 @@
-"""
-********************************************************************************
-compas_singular.algorithms
-********************************************************************************
-
-.. currentmodule:: compas_singular.algorithms
-
-
-Decomposition
-=============
-
-Algorithm for decomposition of surfaces into coarse quad meshes. Optional point and curve features.
-
-.. autosummary::
-    :toctree: generated/
-    :nosignatures:
-
-    surface_discrete_mapping
-    boundary_triangulation
-    Skeleton
-    SkeletonDecomposition
-    DecompositionRemap
-
-
-Unused
-======
-
-``compas_singular.algorithms.unused`` holds thesis features no current workflow
-uses (interpolation layout, isomorphism, mapping, two-colouring). They are not
-imported here; import them from that subpackage explicitly.
-
-"""
+"""Decomposition of a domain into a coarse quad layout along its topological skeleton, and the propagation and triangulation helpers it uses."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

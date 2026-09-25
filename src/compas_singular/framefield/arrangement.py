@@ -5,12 +5,11 @@ Tiles walls, lands loose ends, splits at crossings and drops slivers, with share
 from __future__ import annotations
 
 from math import atan2
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 from compas.geometry import distance_point_point
 from compas.itertools import pairwise
-
 from compas_singular.geometry.polyline import closest_on_polyline
 from compas_singular.geometry.polyline import loop_arc_lengths
 from compas_singular.geometry.polyline import loop_parameter
@@ -228,7 +227,7 @@ def planar_arrangement(
         Updated in place with what the arrangement had to do.
     loops : list[list[[x, y, z]]]
         The domain's boundary loops, outer first. The walls are rebuilt from
-        these as a true partition (:func:`_partition_loop`).
+        these as a true partition (``_partition_loop``).
 
     Returns
     -------
@@ -531,7 +530,7 @@ def faces_from_arrangement(
     Parameters
     ----------
     boundary, others : list[list[[x, y, z]]]
-        The network, already through :func:`planar_arrangement`.
+        The network, already through ``planar_arrangement``.
     loops : list[list[[x, y, z]]]
         Domain boundary loops, outer first. Used only to test containment.
 

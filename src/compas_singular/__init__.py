@@ -1,22 +1,4 @@
-"""
-********************************************************************************
-compas_singular
-********************************************************************************
-
-.. currentmodule:: compas_singular
-
-
-.. toctree::
-    :maxdepth: 1
-
-    compas_singular.algorithms
-    compas_singular.datastructures
-    compas_singular.rhino
-    compas_singular.geometry
-    compas_singular.topology
-    compas_singular.utilities
-
-"""
+"""Topology finding of singularities in quad meshes."""
 from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division

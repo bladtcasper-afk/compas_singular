@@ -110,7 +110,7 @@ def find_symmetry(
     Parameters
     ----------
     outer, inners, guides, poles
-        The domain. Or pass ``domain`` (a :class:`Domain`) instead.
+        The domain. Or pass ``domain`` (a ``Domain``) instead.
     tol : float, optional
         Drawing precision: the largest distance at which an image still counts
         as landing on the input. Default ``1e-4`` times the bounding-box
@@ -128,7 +128,7 @@ def find_symmetry(
 
     Returns
     -------
-    :class:`SymmetryReport`
+    SymmetryReport
     """
     if domain is None:
         domain = Domain(outer, inners, guides, poles)

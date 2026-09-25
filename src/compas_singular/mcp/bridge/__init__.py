@@ -1,10 +1,4 @@
-"""********************************************************************************
-bridge
-********************************************************************************
-
-.. currentmodule:: compas_singular.mcp.bridge
-
-The wire to Rhino: a spool directory of JSON files, picked up by ``CMD_mcp_link`` on Rhino's main thread.
+"""The wire to Rhino: a spool directory of JSON files, picked up by ``CMD_mcp_link`` on Rhino's main thread.
 
 Imported by both sides, so standard library plus compas only.
 

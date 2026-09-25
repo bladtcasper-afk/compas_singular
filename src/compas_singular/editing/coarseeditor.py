@@ -1,27 +1,25 @@
 """Hand-editing a coarse quad layout, with no Rhino in it.
 
-:class:`CoarseEditor` moves corners and poles, divides strips (by a drawn curve or
+``CoarseEditor`` moves corners and poles, divides strips (by a drawn curve or
 a picked strip), adds and removes strips, and commits back into the layout.
 Design notes: ``design_notes/editing.md``.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Sequence
-from typing import TYPE_CHECKING
 
 from compas.geometry import closest_point_on_segment_xy
 from compas.geometry import distance_point_point
 from compas.geometry import intersection_segment_segment_xy
 from compas.geometry import is_point_in_polygon_xy
 from compas.itertools import pairwise
-
 from compas_singular.datastructures.mesh_quad.grammar.add_strip import add_strip as _grammar_add_strip
 from compas_singular.datastructures.mesh_quad.grammar.add_strip import is_polyedge_valid_for_strip_addition
-
 from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import coarse_edges_to_curves
 from compas_singular.editing.curves import warp_chorded_edges
 from compas_singular.editing.editor import MeshEditor
@@ -47,10 +45,10 @@ class CoarseEditor(MeshEditor):
 
     Parameters
     ----------
-    coarse : :class:`CoarsePseudoQuadMesh`
-        The layout to edit. Edited on a COPY; :meth:`commit` writes back into
+    coarse : CoarsePseudoQuadMesh
+        The layout to edit. Edited on a COPY; ``commit`` writes back into
         this object, keeping its identity.
-    field : :class:`CrossField`, optional
+    field : CrossField, optional
         Carried so a caller can densify with it afterwards, and used for its
         ``background`` when ``loops`` or ``snap_tol`` are not given. Never
         solved, never consulted by an edit.
@@ -63,7 +61,7 @@ class CoarseEditor(MeshEditor):
     polylines : list, optional
         The traced separatrices as plain point lists. Used to give the two
         halves of a curved edge their shape when a cut crosses it, and published
-        with the drawn curves through :attr:`all_polylines`.
+        with the drawn curves through ``all_polylines``.
     poles : list, optional
         Preferred pole positions for a rebuild. Defaults to the layout's own.
     snap_tol : float, optional
@@ -126,17 +124,17 @@ class CoarseEditor(MeshEditor):
         self.warp_scale = self._default_warp_scale(field)
         self.curves = {}
         self._snapshot_curves = {}
-        #: Set by :meth:`divide` alone. The strip grammar maintains its own strip
+        #: Set by ``divide`` alone. The strip grammar maintains its own strip
         #: data and preserves strip labels (thesis 5.3.3), so an added or deleted
         #: strip does not need the weld-and-repair that a face split does.
         self._topology_dirty = False
-        #: Whether :meth:`commit` has ever adopted a layout from this editor. The
+        #: Whether ``commit`` has ever adopted a layout from this editor. The
         #: replacement for the decomposition's ``_edited``, which a commit no
         #: longer sets -- and truer than inferring it from the last cut or
         #: deletion, which a moves-only commit leaves empty.
         self.committed = False
         self.last_cut = {}
-        #: Set by :meth:`move_pole`. Connectivity is unchanged, but the strips
+        #: Set by ``move_pole``. Connectivity is unchanged, but the strips
         #: through the relabelled pseudo-quads are not, so a commit must not
         #: carry the old strip data across.
         self._strips_stale = False
@@ -198,7 +196,7 @@ class CoarseEditor(MeshEditor):
     def locate(self, point: list[float]) -> tuple[str, int] | tuple[str, tuple[int, int], list[float]] | None:
         """Where a point sits on the layout: ``('vertex', vkey)``, ``('edge', (u, v), xyz)`` or ``None``.
 
-        Corners win over edges within :meth:`corner_tol`.
+        Corners win over edges within ``corner_tol``.
         """
         mesh = self.mesh
         tol = self.corner_tol()
@@ -788,7 +786,7 @@ class CoarseEditor(MeshEditor):
     def _divide_by_curve(self, points: list[list[float]], extend: bool | Any | None = None) -> tuple[bool, dict[str, Any]]:
         """Cut the layout with a drawn curve, on a copy adopted only if all-quad. ``(ok, notes)``.
 
-        Inserts new corners, so it marks the topology dirty and :meth:`commit` rebuilds.
+        Inserts new corners, so it marks the topology dirty and ``commit`` rebuilds.
 
         Parameters
         ----------
@@ -798,7 +796,7 @@ class CoarseEditor(MeshEditor):
         extend : bool or callable, optional
             What to do when the curve stops on an interior edge -- the case that
             leaves a five-sided patch behind. ``None`` refuses, ``True`` carries
-            the cut on to the boundary (:meth:`_extend_plan`), and a callable is
+            the cut on to the boundary (``_extend_plan``), and a callable is
             asked, with the number of ends that need it, and answers.
         """
         plan, reason = self._plan_cut(points)
@@ -819,7 +817,7 @@ class CoarseEditor(MeshEditor):
                     return self._refuse(reason)
 
         # **The structural check, before any geometry is touched.** A legal cut
-        # crosses exactly the patches of one strip -- see :meth:`divide`. When the
+        # crosses exactly the patches of one strip -- see ``divide``. When the
         # planned run is not a strip the cut is going to be refused anyway, but
         # by ``_check_quads`` counting sides on a mesh it already mutated, which
         # can only say "this patch came out with five sides". Saying it here says
@@ -1044,7 +1042,7 @@ class CoarseEditor(MeshEditor):
     def move_pole(self, pkey: int, vkey: int) -> tuple[bool, dict[str, Any]]:
         """Move the pole at ``pkey`` to corner ``vkey`` by relabelling its pseudo-quads. ``(ok, notes)``.
 
-        Strip data is not carried through a commit afterwards; see :meth:`pole_targets`.
+        Strip data is not carried through a commit afterwards; see ``pole_targets``.
         """
         face_pole = self.mesh.attributes.get('face_pole')
         if not face_pole:
@@ -1074,7 +1072,7 @@ class CoarseEditor(MeshEditor):
             work.attributes['face_pole'][fkey] = vkey
 
         # All-quad only: a relabel changes no connectivity, so it cannot change
-        # whether the layout is manifold -- and :meth:`_gate`'s refusal for that
+        # whether the layout is manifold -- and ``_gate``'s refusal for that
         # talks about deleting a strip.
         ok, reason = self._check_quads(work)
         if not ok:
@@ -1101,7 +1099,7 @@ class CoarseEditor(MeshEditor):
     # ------------------------------------------------------------------
 
     def snapshot(self) -> None:
-        """Make the current layout, curves and poles the state :meth:`reset` returns to."""
+        """Make the current layout, curves and poles the state ``reset`` returns to."""
         super(CoarseEditor, self).snapshot()
         self._snapshot_curves = dict(self.curves)
         self._snapshot_poles = None if self.poles is None else [list(p) for p in self.poles]

@@ -1,6 +1,6 @@
 """compas scene objects that draw and pick the session's coarse layout and dense mesh in Rhino.
 
-:func:`ensure_registered` fills the scene registry, also after a reload.
+``ensure_registered`` fills the scene registry, also after a reload.
 """
 from __future__ import absolute_import
 from __future__ import division

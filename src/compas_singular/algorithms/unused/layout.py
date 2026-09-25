@@ -1,14 +1,13 @@
-from __future__ import print_function
 from __future__ import absolute_import
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
 from math import pi
 from typing import TYPE_CHECKING
 
-from compas.geometry import subtract_vectors
 from compas.geometry import centroid_points_weighted
-
+from compas.geometry import subtract_vectors
 from compas_singular.datastructures import mesh_move_by
 from compas_singular.geometry import circle_evaluate
 

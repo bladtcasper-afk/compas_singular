@@ -1,10 +1,10 @@
 from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 from compas.geometry import cross_vectors
 from compas.geometry import dot_vectors
@@ -136,7 +136,7 @@ def trimesh_face_circle(mesh: Mesh, fkey: int) -> tuple[list[float], float, list
     ValueError
         If the triangle is flat. A flat triangle has no circumcircle, and the
         closed form below divides by its doubled squared area.
-        :func:`boundary_triangulation` deletes flat faces before any caller here
+        ``boundary_triangulation`` deletes flat faces before any caller here
         gets to walk them, so reaching this means one was built some other way.
     """
     vertices = mesh.face_vertices(fkey)

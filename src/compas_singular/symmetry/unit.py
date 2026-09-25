@@ -1,6 +1,6 @@
-""":class:`SymmetricUnit`: a coarse layout of one fundamental region, with its group and seams as plain data.
+"""``SymmetricUnit``: a coarse layout of one fundamental region, with its group and seams as plain data.
 
-:meth:`SymmetricUnit.check` requires seam junctions at corners and matching rotation seams.
+``SymmetricUnit.check`` requires seam junctions at corners and matching rotation seams.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -62,8 +62,8 @@ def _expand(self, cls: type, curves: dict[tuple[int, int], Any] | None = None) -
 # requires every base to be a compas ``Data`` class, so a plain mixin breaks
 # ``json_dump``.
 _SHARED = dict(symmetry=property(_symmetry, doc="The unit's plain-data symmetry record."),
-               group=property(_group, doc='The enforced :class:`SymmetryGroup`.'),
-               seams=property(_seams, doc='The seams, as :class:`~.cut.Seam` objects.'),
+               group=property(_group, doc='The enforced ``SymmetryGroup``.'),
+               seams=property(_seams, doc='The seams, as ``.cut.Seam`` objects.'),
                eps=property(_eps, doc='On-seam tolerance.'),
                _expand=_expand)
 
@@ -71,14 +71,14 @@ _SHARED = dict(symmetry=property(_symmetry, doc="The unit's plain-data symmetry 
 class SymmetricUnit(CoarsePseudoQuadMesh):
     """A coarse quad layout of one symmetric unit.
 
-    Build one with ``decomposition.symmetry_unit(...)`` or :func:`build_unit`.
+    Build one with ``decomposition.symmetry_unit(...)`` or ``build_unit``.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super(SymmetricUnit, self).__init__(*args, **kwargs)
         self.attributes.setdefault('symmetry', {})
         #: The unit's own cross field on the field route, else ``None``. Used by
-        #: :meth:`quad_mesh` unless another is passed. Not serialised.
+        #: ``quad_mesh`` unless another is passed. Not serialised.
         self.field = None
         #: The decomposition that meshed the unit. Not serialised.
         self.decomposition = None
@@ -323,7 +323,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
         return json.dumps([densities, patterns, corners])
 
     def quad_mesh(self, *args: Any, **kwargs: Any) -> SymmetricQuadUnit:
-        """Densify the unit into a :class:`SymmetricQuadUnit`, with the unit's own field by default."""
+        """Densify the unit into a ``SymmetricQuadUnit``, with the unit's own field by default."""
         self._require_ok('densify')
         kwargs.setdefault('field', self.field)
         if kwargs['field'] is not None and not args:
@@ -334,7 +334,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
         return self._wrap_dense(dense)
 
     def densification(self, *args: Any, **kwargs: Any) -> SymmetricQuadUnit:
-        """As ``CoarsePseudoQuadMesh.densification``; returns a :class:`SymmetricQuadUnit`."""
+        """As ``CoarsePseudoQuadMesh.densification``; returns a ``SymmetricQuadUnit``."""
         self._require_ok('densify')
         kwargs.setdefault('field', self.field)
         dense = super(SymmetricUnit, self).densification(*args, **kwargs)
@@ -360,7 +360,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
 
 
 class SymmetricQuadUnit(PseudoQuadMesh):
-    """The dense mesh of a symmetric unit. Made by :meth:`SymmetricUnit.quad_mesh`."""
+    """The dense mesh of a symmetric unit. Made by ``SymmetricUnit.quad_mesh``."""
 
     def __repr__(self) -> str:
         return '<SymmetricQuadUnit {}: {} faces, {} vertices>'.format(
@@ -432,19 +432,19 @@ def build_unit(
     seam: float | None = None,
     route: str | None = None,
 ) -> SymmetricUnit:
-    """Cut the unit for ``keys``, mesh it with ``mesher``, return a :class:`SymmetricUnit`.
+    """Cut the unit for ``keys``, mesh it with ``mesher``, return a ``SymmetricUnit``.
 
     Parameters
     ----------
     report : SymmetryReport
     mesher : callable
         ``mesher(outer, holes, guides, poles) -> (coarse, extras)``; see
-        :mod:`.routes`.
+        ``.routes``.
     keys : list[str], optional
         Symmetries to enforce, by key. Closed under composition. ``None`` is the
         whole detected group.
     centre, seam
-        See :func:`~.cut.cut_unit`.
+        See ``.cut.cut_unit``.
     """
     if isinstance(keys, str):
         keys = [keys]

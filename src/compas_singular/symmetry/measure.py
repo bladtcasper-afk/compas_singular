@@ -61,5 +61,5 @@ def point_invariance(points: Sequence[Sequence[float]], group: SymmetryGroup, to
 
 
 def mesh_invariance(mesh: Mesh, group: SymmetryGroup, tol: float | None = None) -> dict[str, Any]:
-    """:func:`point_invariance` of a mesh's vertices."""
+    """``point_invariance`` of a mesh's vertices."""
     return point_invariance([mesh.vertex_coordinates(v) for v in mesh.vertices()], group, tol)

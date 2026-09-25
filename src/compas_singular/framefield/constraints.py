@@ -9,12 +9,11 @@ from math import cos
 from math import pi
 from math import sin
 from numbers import Number
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 from compas.geometry import normalize_vector
 from compas.geometry import subtract_vectors
-
 from compas_singular.geometry.polyline import closest_on_polyline
 
 if TYPE_CHECKING:
@@ -106,7 +105,7 @@ def from_curves(
         Least-squares weight, or ``None`` for hard. Soft by default: a guide
         that disagrees with a wall should bend, not break the solve.
     skip_boundary : bool, optional
-        Leave boundary vertices to :func:`from_boundary`; the wall must win.
+        Leave boundary vertices to ``from_boundary``; the wall must win.
 
     Returns
     -------

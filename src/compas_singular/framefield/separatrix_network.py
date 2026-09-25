@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 from math import pi
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 from compas.geometry import angle_vectors
 from compas.geometry import distance_point_point
 from compas.geometry import subtract_vectors
 from compas.itertools import pairwise
-
 from compas_singular.geometry.polyline import closest_on_polyline
 from compas_singular.geometry.polyline import loop_arc_lengths
 from compas_singular.geometry.polyline import near_loop
@@ -55,7 +54,7 @@ def boundary_corners(
         to 1/25 of the loop.
     sharp : float, optional
         Turn above which a vertex is a corner regardless. Defaults to
-        :data:`SHARP_TURN`.
+        ``SHARP_TURN``.
 
     Returns
     -------
@@ -270,8 +269,8 @@ def build_network(
         Where each singularity is -- pass ``Tracer.singularity_positions()``, or
         the positions the traces launched from are lost. Face centroids when
         omitted.
-    symmetry : :class:`framefield.symmetry.Symmetry`, optional
-        Projects the end-clustering onto the group. See :func:`_cluster`.
+    symmetry : framefield.symmetry.Symmetry, optional
+        Projects the end-clustering onto the group. See ``_cluster``.
 
     Returns
     -------

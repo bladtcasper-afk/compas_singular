@@ -3,17 +3,16 @@
 Tolerances allow for the float32 round trip of a baked mesh. Design notes: ``design_notes/datastructures.md``.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from compas_singular.geometry.polyline import project_on_polyline
 from compas.geometry import distance_point_point
 from compas.itertools import pairwise
-
 from compas.tolerance import TOL
+from compas_singular.geometry.polyline import project_on_polyline
 
 if TYPE_CHECKING:
     from compas_singular.datastructures import CoarseQuadMesh
@@ -197,18 +196,18 @@ def _wall_arc(loops: list[BoundaryLoop], pa: list[float], pb: list[float], corne
 def snap_corners_to_walls(coarse: "CoarseQuadMesh | CoarsePseudoQuadMesh", loops: "list[list[list[float]]] | tuple[list[list[float]], ...]" = (), wall_tol: float | None = None) -> tuple[int, float]:
     """Move the layout's boundary corners onto the nearest wall, within ``wall_tol``. ``(moved, worst)``.
 
-    Mutates ``coarse``; call it before :func:`coarse_edges_to_curves`.
+    Mutates ``coarse``; call it before ``coarse_edges_to_curves``.
 
     Parameters
     ----------
-    coarse : :class:`CoarseQuadMesh` or :class:`CoarsePseudoQuadMesh`
+    coarse : CoarseQuadMesh or CoarsePseudoQuadMesh
         The layout. **Modified in place.**
     loops : list[list[[x, y, z]]], optional
         The domain walls, outer first, each closed -- the same ones handed to
-        :func:`coarse_edges_to_curves`.
+        ``coarse_edges_to_curves``.
     wall_tol : float, optional
         Largest move allowed. Defaults to a quarter of the mean coarse edge
-        length, matching :func:`coarse_edges_to_curves`.
+        length, matching ``coarse_edges_to_curves``.
 
     Returns
     -------
@@ -250,7 +249,7 @@ def coarse_edges_to_curves(coarse: "CoarseQuadMesh | CoarsePseudoQuadMesh", loop
 
     Parameters
     ----------
-    coarse : :class:`CoarseQuadMesh` or :class:`CoarsePseudoQuadMesh`
+    coarse : CoarseQuadMesh or CoarsePseudoQuadMesh
         The layout to densify. Read only.
     loops : list[list[[x, y, z]]], optional
         The domain walls, outer first, each closed. Sample them from the Rhino
@@ -267,7 +266,7 @@ def coarse_edges_to_curves(coarse: "CoarseQuadMesh | CoarsePseudoQuadMesh", loop
         lies on a CHORD of the wall, so on a tightly curved boundary it is a
         sagitta off it -- 0.03 for a 0.5 background on a 1-unit radius -- and
         the branch is already gated on the edge being topologically on the
-        layout boundary and on :func:`_arc_is_one_edge`.
+        layout boundary and on ``_arc_is_one_edge``.
     precision : int, optional
         Decimals for the geometric key of the traced branch. The default is
         COMPAS's own (3), which is far coarser than the single-precision error a

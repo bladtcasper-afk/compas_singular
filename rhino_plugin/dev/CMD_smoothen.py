@@ -11,7 +11,7 @@ from compas_singular.rhino.helpers import mesh_from_rhino
 from compas_singular.datastructures.mesh.smoothing import automated_boundary_constraints
 from compas_singular.datastructures.mesh.smoothing import constrained_smoothing
 from compas_singular.datastructures.mesh.smoothing import boundary_smoothing
-from compas_singular.datastructures.mesh.smoothing import smoothing_region
+from compas_singular.datastructures.mesh.smoothing import region_smoothing
 from compas_singular.datastructures.mesh.smoothing import relaxation
 from compas_singular.rhino.helpers import bake_mesh, clear_layer
 
@@ -151,7 +151,7 @@ def show_region(weight):
 # ---------------------------------------------------------------------------
 # mode
 # ---------------------------------------------------------------------------
-rs.AddLayer("Smoothened", parent="QuadMesh")
+rs.AddLayer("Smoothed", parent="QuadMesh")
 
 mode = rs.GetString(message="Smooth what?", defaultString="Whole",
                     strings=["Whole", "Region"])
@@ -183,7 +183,7 @@ if mode == "whole":
         if fixed == "manual":    
             fixed_vertices = pick_vertices("Pick vertices to constrain.")
 
-        mesh = relaxation(mesh, fixed=fixed, fixed_vertices=fixed_vertices, constraints=None, q_factor=10)
+        relaxation(mesh, fixed=fixed_vertices if fixed == "manual" else fixed, q_factor=10)
 
     else:
         kmax = rs.GetInteger(message="Iterations", number=100, minimum=1)
@@ -203,12 +203,12 @@ if mode == "whole":
 
     layer = {"area": "Area", "centroid": "Centroid",
              "centerofmass": "CenterOfMass", "forcedensity":"ForceDensity"}[algorithm]
-    rs.AddLayer(layer, parent="Smoothened")
+    rs.AddLayer(layer, parent="Smoothed")
     clear_layer(layer, clean_sublayers=True)
     bake_mesh(mesh, layer)
     print("smoothed: {}, boundary {}, {} iterations at damping {}.".format(
         layer, boundary_mode, kmax, damping))
-    print("baked to 'QuadMesh::Smoothened::{}' -- the original 'QuadMesh' is untouched.".format(layer))
+    print("baked to 'QuadMesh::Smoothed::{}' -- the original 'QuadMesh' is untouched.".format(layer))
     print("next: CMD_dual for the dual mesh, or run this again on the result if it still needs work.")
 
 
@@ -277,14 +277,14 @@ else:
         # the previewed weights are the ones that get relaxed, so the zone that moves
         # is exactly the zone that was shown; the boundary constraints are assembled
         # inside, and let a zone touching the outline slide along it
-        smoothing_region(mesh, weight, kmax=kmax, damping=damping)
+        region_smoothing(mesh, weight, kmax=kmax, damping=damping)
     finally:
         if rs.IsLayer(REGION_LAYER):
             rs.PurgeLayer(REGION_LAYER)
 
-    rs.AddLayer("Relaxed", parent="Smoothened")
+    rs.AddLayer("Relaxed", parent="Smoothed")
     bake_mesh(mesh, "Relaxed")
     print("relaxed {} vertices ({} core, blend {} rings).".format(
         len(weight), len(core), blend))
-    print("baked to 'QuadMesh::Smoothened::Relaxed' -- the original 'QuadMesh' is untouched.")
+    print("baked to 'QuadMesh::Smoothed::Relaxed' -- the original 'QuadMesh' is untouched.")
     print("next: CMD_dual for the dual mesh, or run this again on another zone.")

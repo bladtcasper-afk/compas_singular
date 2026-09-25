@@ -28,7 +28,7 @@ def delete_strips(mesh: QuadMesh, skeys: list[int]) -> None:
     """Delete several strips.
 
     Strip keys are re-checked as the deletions go, because deleting one strip can
-    delete others with it -- see :func:`collateral_strip_deletions`.
+    delete others with it -- see ``collateral_strip_deletions``.
     """
     for skey in skeys:
         if skey in list(mesh.strips()):

@@ -8,7 +8,7 @@ import rhinoscriptsyntax as rs
 import compas_rhino as cr
 
 from compas.scene import Scene
-from compas_singular.rhino.dual_mesh import dual_mesh
+from compas_singular.algorithms.dual_mesh import dual_mesh
 from compas_singular.rhino.helpers import read_mesh, bake_mesh, clear_layer
 from compas.datastructures import mesh_conway_dual
 from compas_singular.rhino.helpers import mesh_from_rhino

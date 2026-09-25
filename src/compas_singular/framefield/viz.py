@@ -1,14 +1,13 @@
 """compas_viewer scenes for the frame-field front end, one group per stage on an XY grid."""
 from __future__ import annotations
 
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 from compas.colors import Color
 from compas.datastructures import Graph
 from compas.geometry import Point
 from compas.geometry import Polyline
-
 from compas_singular.datastructures import QuadMesh
 
 if TYPE_CHECKING:
