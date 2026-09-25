@@ -1,32 +1,29 @@
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 from compas.datastructures.mesh.mesh import Mesh
 from compas.geometry import discrete_coons_patch
 from compas.itertools import pairwise
 from compas.tolerance import TOL
-
 from compas_singular.datastructures.mesh import meshes_join_and_weld
 from compas_singular.datastructures.mesh_quad_coarse import CoarseQuadMesh
-from compas_singular.datastructures.mesh_quad_coarse.coarse_network import (
-    DEFAULT_PRECISION,
-    check_faces,
-    check_network,
-    faces_from_network,
-    weld_network,
-)
+from compas_singular.datastructures.mesh_quad_coarse.coarse_network import DEFAULT_PRECISION
+from compas_singular.datastructures.mesh_quad_coarse.coarse_network import check_faces
+from compas_singular.datastructures.mesh_quad_coarse.coarse_network import check_network
+from compas_singular.datastructures.mesh_quad_coarse.coarse_network import faces_from_network
+from compas_singular.datastructures.mesh_quad_coarse.coarse_network import weld_network
+from compas_singular.datastructures.mesh_quad_coarse.patterns import PATTERNS
+from compas_singular.datastructures.mesh_quad_coarse.patterns import create_pattern
+from compas_singular.datastructures.mesh_quad_coarse.patterns import patch_divisions
+from compas_singular.datastructures.mesh_quad_coarse.patterns import pattern_morph
+from compas_singular.datastructures.mesh_quad_coarse.patterns import pattern_morph_triangle
+from compas_singular.datastructures.mesh_quad_coarse.patterns import reconcile_strip_densities
 from compas_singular.datastructures.mesh_quad_pseudo import PseudoQuadMesh
-from compas_singular.datastructures.mesh_quad_coarse.patterns import (
-    PATTERNS,
-    create_pattern,
-    patch_divisions,
-    pattern_morph,
-    pattern_morph_triangle,
-    reconcile_strip_densities,
-)
 
 if TYPE_CHECKING:
     from compas_singular.datastructures import QuadMesh

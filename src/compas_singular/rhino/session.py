@@ -3,30 +3,28 @@
 Commands edit a copy, assign it back, then call :meth:`RhinoSession.record`.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
 import uuid
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 import compas
-
-from compas_singular.session import SingularSession
-
 from compas_singular.rhino import document
+from compas_singular.session import SingularSession
 
 if TYPE_CHECKING:
     from compas.scene import Scene
 
 try:
-    import scriptcontext as sc
+    import scriptcontext as sc # type: ignore  # noqa: I001
 except ImportError:
     sc = None
 
 try:
-    import rhinoscriptsyntax as rs
+    import rhinoscriptsyntax as rs # type: ignore  # noqa: I001
 except ImportError:
     rs = None
 
@@ -42,7 +40,7 @@ def display_options() -> dict[str, dict[str, Any]]:
                        poles_layer=layer_path('Poles'),
                        curves_layer=layer_path('EdgeCurves'),
                        polylines_layer=layer_path('Polylines')),
-        'dense': dict(layer=layer_path('QuadMesh'), show_faces=True, joined=True,
+        'dense': dict(layer=layer_path('Dense'), show_faces=True, joined=True,
                       show_vertices=False, show_edges=False),
     }
 

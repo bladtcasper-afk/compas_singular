@@ -1,28 +1,26 @@
 from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
+from math import floor
+from operator import itemgetter
 from typing import Any
 from typing import Callable
 from typing import Iterator
 
-from math import floor
-from operator import itemgetter
-
+from compas.geometry import Brep
+from compas.geometry import Point
+from compas.geometry import Polygon
+from compas.geometry import Polyline
 from compas.geometry import centroid_points
-from compas.geometry import Polyline, Brep, Point, Polygon
 from compas.itertools import pairwise
-
+from compas_singular.datastructures.mesh import Mesh
 from compas_singular.datastructures.mesh_quad.grammar.add_strip import add_strip
 from compas_singular.datastructures.mesh_quad.grammar.add_strip import add_strips
 from compas_singular.datastructures.mesh_quad.grammar.delete_strip import delete_strip
 from compas_singular.datastructures.mesh_quad.grammar.delete_strip import delete_strips
 from compas_singular.utilities import list_split
-
-
-from compas_singular.datastructures.mesh import Mesh
-
 
 __all__ = ['QuadMesh']
 

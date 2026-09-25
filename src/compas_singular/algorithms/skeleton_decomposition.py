@@ -1,39 +1,41 @@
 from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
 from math import floor
+
 # from math import ceil
 from math import pi
 from operator import itemgetter
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Iterable
 from typing import Sequence
-from typing import TYPE_CHECKING
 
-from compas.geometry import Polyline
-# from compas.geometry import length_vector
-# from compas.geometry import length_vector_xy
-from compas.geometry import subtract_vectors
-from compas.geometry import angle_points
-from compas.geometry import angle_vectors
-from compas.geometry import angle_vectors_signed
-# from compas.geometry import cross_vectors
-from compas.geometry import centroid_points
-from compas.geometry import distance_point_point
+from compas.datastructures import Graph
 from compas.datastructures.graph.operations.join import graph_polylines
 from compas.datastructures.mesh.operations.insert import mesh_insert_vertex_on_edge
 from compas.datastructures.mesh.operations.substitute import mesh_substitute_vertex_in_faces
 from compas.datastructures.mesh.operations.weld import mesh_unweld_edges
+from compas.geometry import Polyline
+from compas.geometry import angle_points
+from compas.geometry import angle_vectors
+from compas.geometry import angle_vectors_signed
+
+# from compas.geometry import cross_vectors
+from compas.geometry import centroid_points
+from compas.geometry import distance_point_point
+
+# from compas.geometry import length_vector
+# from compas.geometry import length_vector_xy
+from compas.geometry import subtract_vectors
 from compas.itertools import pairwise
 from compas.itertools import window
 from compas.tolerance import TOL
-
 from compas_singular.algorithms import boundary_triangulation
-
+from compas_singular.algorithms.propagation import quadrangulate_faces
 from compas_singular.datastructures import CoarsePseudoQuadMesh
-from compas.datastructures import Graph
 from compas_singular.datastructures import Skeleton
 from compas_singular.datastructures import mesh_weld
 from compas_singular.datastructures import split_quad_in_pseudo_quads
@@ -42,8 +44,6 @@ from compas_singular.geometry import bounding_box_diagonal
 from compas_singular.geometry import discretise_boundary
 from compas_singular.geometry import discretise_line
 from compas_singular.utilities import list_split
-
-from compas_singular.algorithms.propagation import quadrangulate_faces
 
 if TYPE_CHECKING:
     from compas_singular.datastructures import CoarseQuadMesh
@@ -133,7 +133,7 @@ class SkeletonDecomposition(Skeleton):
         polyline_features : list[list[[x, y, z]]], optional
             Feature curves the decomposition must follow. See
             ``examples/000_testing.py`` for every benchmark stage by stage, and
-            ``HOW_IT_WORKS.md`` section 5 for what still does not work.
+            ``markdowns/HOW_IT_WORKS.md`` section 5 for what still does not work.
         point_features : list[[x, y, z]], optional
             Points the decomposition must pass through. They become the POLES of
             the layout, and :meth:`coarse_mesh` takes them from here.

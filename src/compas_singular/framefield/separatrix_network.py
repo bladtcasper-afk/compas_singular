@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 from math import pi
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 from compas.geometry import angle_vectors
 from compas.geometry import distance_point_point
 from compas.geometry import subtract_vectors
 from compas.itertools import pairwise
-
 from compas_singular.geometry.polyline import closest_on_polyline
 from compas_singular.geometry.polyline import loop_arc_lengths
 from compas_singular.geometry.polyline import near_loop

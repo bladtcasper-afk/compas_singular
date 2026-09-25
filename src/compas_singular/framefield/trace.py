@@ -11,7 +11,6 @@ from typing import Any
 from compas.geometry import distance_point_point
 from compas.geometry import intersection_segment_segment_xy
 from compas.itertools import pairwise
-
 from compas_singular.framefield.constraints import PERIOD
 from compas_singular.framefield.field import CrossField
 from compas_singular.framefield.field import wrap_to_period
@@ -20,7 +19,6 @@ from compas_singular.framefield.locator import PointLocator
 from compas_singular.geometry.polyline import closest_on_polyline
 from compas_singular.geometry.polyline import loop_arc_lengths
 from compas_singular.geometry.polyline import signed_area
-
 
 __all__ = ['Tracer', 'Separatrix']
 

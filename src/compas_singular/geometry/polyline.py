@@ -1,14 +1,13 @@
-from __future__ import print_function
 from __future__ import absolute_import
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
 from math import ceil
 
 from compas.geometry import distance_point_point
 from compas.geometry import distance_point_point_xy
 from compas.itertools import pairwise
-
 
 __all__ = [
     'bounding_box_diagonal',

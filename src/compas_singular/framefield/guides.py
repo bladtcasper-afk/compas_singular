@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from math import acos
 from math import degrees
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 from compas_singular.geometry.polyline import closest_on_polyline
 

@@ -1,13 +1,12 @@
-from __future__ import print_function
 from __future__ import absolute_import
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
 from typing import Sequence
 
-import rhinoscriptsyntax as rs
+import rhinoscriptsyntax as rs  # type: ignore  # noqa: I001
 from compas_rhino.geometry import RhinoCurve
-
 
 __all__ = [
     'RhinoCurve'

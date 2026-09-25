@@ -6,13 +6,12 @@ from __future__ import annotations
 
 import traceback
 import warnings
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 from compas.geometry import distance_point_point
 from compas.itertools import pairwise
 from compas.tolerance import TOL
-
 from compas_singular.datastructures import CoarsePseudoQuadMesh
 from compas_singular.editing.rebuild import coarse_from_skeleton
 from compas_singular.editing.rebuild import mesh_from_faces

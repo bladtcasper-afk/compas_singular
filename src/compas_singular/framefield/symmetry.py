@@ -11,7 +11,6 @@ from compas_singular.framefield.background import _jitter
 from compas_singular.framefield.background import inside_domain
 from compas_singular.framefield.field import CrossField
 
-
 __all__ = ['Symmetry', 'STEPS', 'interior_points', 'symmetrise',
            'snap_singularities', 'project_clusters', 'invariance',
            'field_invariance', 'singularity_orbits']

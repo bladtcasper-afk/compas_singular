@@ -7,8 +7,8 @@ from __future__ import annotations
 from math import atan2
 from math import cos
 from math import sin
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 import numpy as np
 from scipy.sparse import coo_matrix
@@ -17,8 +17,8 @@ from scipy.sparse.linalg import spsolve
 from compas.geometry import discrete_coons_patch
 from compas.itertools import pairwise
 from compas.tolerance import TOL
-from compas_singular.datastructures import meshes_join_and_weld
 from compas_singular.datastructures import PseudoQuadMesh
+from compas_singular.datastructures import meshes_join_and_weld
 from compas_singular.framefield.constraints import PERIOD
 
 if TYPE_CHECKING:

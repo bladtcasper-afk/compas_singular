@@ -3,23 +3,22 @@
 Nothing here imports Rhino; surfaces and curves are anything with ``closest_point``.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Sequence
-from typing import TYPE_CHECKING
 
 from compas.geometry import Point
 from compas.geometry import closest_point_in_cloud
 from compas.geometry import distance_point_point
-
 from compas_singular.datastructures.mesh.smoothing import closest_curve
-from compas_singular.datastructures.mesh.smoothing import split_loop_at_corners
 from compas_singular.datastructures.mesh.smoothing import closest_point_on_constraint
 from compas_singular.datastructures.mesh.smoothing import constrained_smoothing
 from compas_singular.datastructures.mesh.smoothing import mesh_boundary_loops
+from compas_singular.datastructures.mesh.smoothing import split_loop_at_corners
 
 if TYPE_CHECKING:
     from compas_singular.datastructures import Mesh

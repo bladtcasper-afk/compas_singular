@@ -5,10 +5,10 @@ Main entry points: :func:`solve_non_quad_faces`, :func:`topological_quad_split`,
 
 from __future__ import annotations
 
+from math import pi
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Sequence
-from typing import TYPE_CHECKING
-from math import pi
 
 from compas.geometry import angle_vectors
 from compas.geometry import distance_point_point

@@ -3,13 +3,13 @@
 Importing it does nothing, and the Rhino-free parts import headless.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Sequence
-from typing import TYPE_CHECKING
 
 from compas_singular.settings import Settings
 
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from compas_singular.datastructures import CoarsePseudoQuadMesh
 
 try:
-    import rhinoscriptsyntax as rs
+    import rhinoscriptsyntax as rs # type: ignore  # noqa: I001
 except ImportError:
     rs = None
 
@@ -174,9 +174,10 @@ LAYER_DATA = {
     "Densities": (ROOT + "::Attributes::Densities", None),
     "Patterns": (ROOT + "::Attributes::Patterns", None),
     "QuadMesh": (ROOT + "::QuadMesh", None),
+    "Dense": (ROOT + "::QuadMesh::Dense", None),
     "Dual": (ROOT + "::QuadMesh::Dual", None),
-    "Smoothened": (ROOT + "::QuadMesh::Smoothened", None),
-    "Area": (ROOT + "::QuadMesh::Smoothened::Area", None),
+    "Smoothed": (ROOT + "::QuadMesh::Smoothed", None),
+    "Area": (ROOT + "::QuadMesh::Smoothed::Area", None),
 }
 
 

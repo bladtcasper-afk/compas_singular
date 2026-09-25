@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 from math import ceil
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 from compas.geometry import cross_vectors
 from compas.geometry import delaunay_triangulation
@@ -11,8 +11,7 @@ from compas.geometry import distance_point_point
 from compas.geometry import length_vector
 from compas.geometry import normalize_vector
 from compas.geometry import subtract_vectors
-
-from compas_singular.datastructures import Mesh   # has .boundaries(); compas core does not
+from compas_singular.datastructures import Mesh  # has .boundaries(); compas core does not
 from compas_singular.geometry.polyline import bounding_box_diagonal
 from compas_singular.geometry.polyline import discretise_boundary
 from compas_singular.geometry.polyline import near_loop

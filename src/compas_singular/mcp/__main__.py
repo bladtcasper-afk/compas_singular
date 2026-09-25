@@ -25,7 +25,8 @@ from compas_singular.mcp.server import build
 def main(argv: Sequence[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if '--version' in argv:
-        sys.stderr.write('compas_singular.mcp 0.1.0\n')
+        from compas_singular import __version__
+        sys.stderr.write('compas_singular.mcp {}\n'.format(__version__))
         return 0
     if '--help' in argv or '-h' in argv:
         sys.stderr.write((__doc__ or '') + '\n')

@@ -3,17 +3,16 @@
 Tolerances allow for the float32 round trip of a baked mesh. Design notes: ``design_notes/datastructures.md``.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from compas_singular.geometry.polyline import project_on_polyline
 from compas.geometry import distance_point_point
 from compas.itertools import pairwise
-
 from compas.tolerance import TOL
+from compas_singular.geometry.polyline import project_on_polyline
 
 if TYPE_CHECKING:
     from compas_singular.datastructures import CoarseQuadMesh

@@ -1,26 +1,24 @@
 from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
 from typing import Any
 from typing import Callable
 
-from compas.geometry import is_point_in_polygon_xy
+from compas.datastructures import Graph
+from compas.datastructures.graph.operations.join import graph_polylines
+from compas.datastructures.mesh.operations.weld import mesh_unweld_edges
+from compas.geometry import Polyline
 from compas.geometry import delaunay_triangulation as delaunay_from_points
 from compas.geometry import distance_point_point
 from compas.geometry import intersection_segment_segment_xy
-from compas.geometry import Polyline
-from compas.datastructures.graph.operations.join import graph_polylines
-from compas.datastructures.mesh.operations.weld import mesh_unweld_edges
+from compas.geometry import is_point_in_polygon_xy
 from compas.itertools import pairwise
 from compas.tolerance import TOL
-
 from compas_singular.datastructures import Mesh
-from compas.datastructures import Graph
-from compas_singular.datastructures import trimesh_face_circle
 from compas_singular.datastructures import is_face_degenerate
-
+from compas_singular.datastructures import trimesh_face_circle
 
 __all__ = [
     'boundary_triangulation',

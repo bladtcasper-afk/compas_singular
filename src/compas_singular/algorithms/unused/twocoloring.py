@@ -1,17 +1,16 @@
 from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
 import itertools
 from typing import Any
 from typing import Iterator
 
 from compas.topology import vertex_adjacency_from_edges
-
 from compas_singular.datastructures import QuadMesh
-from compas_singular.datastructures import delete_strips
 from compas_singular.datastructures import collateral_strip_deletions
+from compas_singular.datastructures import delete_strips
 from compas_singular.datastructures import split_strips
 from compas_singular.datastructures import strips_to_split_to_prevent_boundary_collapse
 from compas_singular.datastructures import total_boundary_deletions

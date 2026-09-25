@@ -4,22 +4,21 @@ The chain is the longest run of one polyedge that stays near and parallel to the
 Design notes: ``design_notes/editing.md``.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
 from math import cos
 from math import degrees
 from math import radians
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Iterable
 from typing import Sequence
-from typing import TYPE_CHECKING
 
 from compas.geometry import Point
 from compas.geometry import Polyline
 from compas.geometry import angle_vectors
-
 from compas_singular.datastructures.mesh.smoothing import closest_point_on_constraint
 from compas_singular.datastructures.mesh.smoothing import mesh_boundary_loops
 from compas_singular.datastructures.mesh.smoothing import mesh_boundary_polylines

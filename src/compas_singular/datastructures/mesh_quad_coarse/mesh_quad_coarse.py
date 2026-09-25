@@ -1,31 +1,25 @@
 from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
+from copy import deepcopy
+from math import ceil
+from math import floor
 from typing import Any
 from typing import Callable
 
-from copy import deepcopy
-from math import floor
-from math import ceil
-
-from compas.topology import vertex_adjacency_from_edges
-from compas.topology import connected_components
+from compas.geometry import Polyline
 from compas.geometry import discrete_coons_patch
 from compas.geometry import vector_average
-from compas.geometry import Polyline
-from compas.itertools import pairwise
 from compas.itertools import linspace
-
+from compas.itertools import pairwise
+from compas.topology import connected_components
+from compas.topology import vertex_adjacency_from_edges
 from compas_singular.datastructures.mesh import Mesh
 from compas_singular.datastructures.mesh import meshes_join_and_weld
 from compas_singular.datastructures.mesh_quad import QuadMesh
-
-from compas_singular.datastructures.mesh_quad_coarse.patterns import (
-    PATTERNS,
-)
-
+from compas_singular.datastructures.mesh_quad_coarse.patterns import PATTERNS
 
 __all__ = ['CoarseQuadMesh']
 

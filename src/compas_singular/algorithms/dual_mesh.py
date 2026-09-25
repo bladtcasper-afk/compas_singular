@@ -4,12 +4,12 @@ Loses some area on a curved outline; use ``Mesh.dual(include_boundary=True)`` wh
 Do not dualise a mesh with poles. Design notes: ``design_notes/algorithms.md``.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
-from typing import Sequence
 from typing import TYPE_CHECKING
+from typing import Sequence
 
 from compas.datastructures import mesh_conway_dual
 from compas.geometry import bestfit_plane
@@ -20,7 +20,6 @@ from compas.geometry import distance_point_point
 from compas.geometry import dot_vectors
 from compas.geometry import length_vector
 from compas.geometry import subtract_vectors
-
 from compas.tolerance import TOL
 
 if TYPE_CHECKING:

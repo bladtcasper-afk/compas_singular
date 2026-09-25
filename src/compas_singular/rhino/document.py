@@ -3,9 +3,9 @@
 Changed via ``ModifyAttributes`` so Rhino's undo restores it; redo not yet verified in Rhino.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
 import base64
 import zlib

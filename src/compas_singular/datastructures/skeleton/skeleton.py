@@ -1,17 +1,15 @@
 from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
 from typing import Any
 
+from compas.datastructures import Graph
 from compas.datastructures.graph.operations.join import graph_polylines
 from compas.tolerance import TOL
-
 from compas_singular.datastructures.mesh import Mesh
 from compas_singular.datastructures.mesh import trimesh_face_circle
-from compas.datastructures import Graph
-
 
 __all__ = ["Skeleton"]
 

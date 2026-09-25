@@ -1,16 +1,15 @@
 from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
 import os
 from typing import Any
 
 from compas.datastructures import Mesh
-from compas.geometry import centroid_points
-from compas.geometry import angle_points
 from compas.geometry import Point
-
+from compas.geometry import angle_points
+from compas.geometry import centroid_points
 
 __all__ = ['Mesh']
 

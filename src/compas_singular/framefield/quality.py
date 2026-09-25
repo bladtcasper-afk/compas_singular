@@ -8,8 +8,8 @@ from math import acos
 from math import atan2
 from math import degrees
 from math import pi
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 if TYPE_CHECKING:
     from compas_singular.datastructures import Mesh

@@ -9,17 +9,17 @@ from dataclasses import dataclass
 from math import cos
 from math import sin
 from numbers import Number
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
-from compas.data import Data
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import factorized
 from scipy.sparse.linalg import spsolve
 
-from compas_singular.framefield.constraints import Constraint
+from compas.data import Data
 from compas_singular.framefield.constraints import PERIOD
+from compas_singular.framefield.constraints import Constraint
 from compas_singular.framefield.constraints import from_boundary
 from compas_singular.framefield.constraints import representation
 from compas_singular.geometry.polyline import signed_area

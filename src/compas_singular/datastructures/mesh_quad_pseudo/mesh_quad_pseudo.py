@@ -1,16 +1,14 @@
 from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
 from typing import Any
 from typing import Iterator
 
 from compas.tolerance import TOL
-
 from compas_singular.datastructures.mesh_quad import QuadMesh
 from compas_singular.utilities import list_split
-
 
 __all__ = ['PseudoQuadMesh']
 

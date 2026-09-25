@@ -107,8 +107,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
     def clear(self) -> None:
         """Everything on this object's layers, and every guid map with it.
 
-        Not their sublayers: ``QuadMesh`` has ``Edited``, ``Smoothened`` and
-        ``Dual`` under it, which belong to other commands.
+        Not their sublayers, which belong to other commands.
         """
         for layer in self.layers():
             compas_rhino.layers.clear_layer(layer, include_children=False, purge=False)

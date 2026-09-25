@@ -5,23 +5,21 @@ a picked strip), adds and removes strips, and commits back into the layout.
 Design notes: ``design_notes/editing.md``.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Sequence
-from typing import TYPE_CHECKING
 
 from compas.geometry import closest_point_on_segment_xy
 from compas.geometry import distance_point_point
 from compas.geometry import intersection_segment_segment_xy
 from compas.geometry import is_point_in_polygon_xy
 from compas.itertools import pairwise
-
 from compas_singular.datastructures.mesh_quad.grammar.add_strip import add_strip as _grammar_add_strip
 from compas_singular.datastructures.mesh_quad.grammar.add_strip import is_polyedge_valid_for_strip_addition
-
 from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import coarse_edges_to_curves
 from compas_singular.editing.curves import warp_chorded_edges
 from compas_singular.editing.editor import MeshEditor

@@ -4,19 +4,18 @@ Holds the working copy and the walls, moves a vertex, undoes, and deletes a stri
 Design notes: ``design_notes/editing.md``.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 from compas_singular.datastructures.mesh_quad.grammar.add_strip import split_strips
 from compas_singular.datastructures.mesh_quad.grammar.delete_strip import collateral_strip_deletions
 from compas_singular.datastructures.mesh_quad.grammar.delete_strip import delete_strip as _grammar_delete_strip
-from compas_singular.datastructures.mesh_quad.grammar.delete_strip import (
-    strips_to_split_to_prevent_boundary_collapse)
+from compas_singular.datastructures.mesh_quad.grammar.delete_strip import strips_to_split_to_prevent_boundary_collapse
 from compas_singular.datastructures.mesh_quad.grammar.delete_strip import total_boundary_deletions
 from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import BoundaryLoop
 from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import mean_edge_length

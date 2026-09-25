@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Sequence
-from typing import TYPE_CHECKING
 
-import compas
-
-from compas.geometry import is_polygon_in_polygon_xy, is_point_in_polygon_xy, Polygon, Polyline
-from compas_rhino.conversions import polyline_to_rhino
-from compas_rhino.conversions import vertices_and_faces_to_rhino
+import compas_rhino as cr
 from compas_rhino.conversions import mesh_to_compas
 from compas_rhino.conversions import point_to_compas
-import compas_rhino as cr
+from compas_rhino.conversions import polyline_to_rhino
+from compas_rhino.conversions import vertices_and_faces_to_rhino
+
+import compas
+from compas.geometry import Polygon
+from compas.geometry import Polyline
+from compas.geometry import is_point_in_polygon_xy
+from compas.geometry import is_polygon_in_polygon_xy
 from compas_singular.datastructures import CoarsePseudoQuadMesh
 from compas_singular.rhino.project import ROOT
 
@@ -19,9 +22,10 @@ if TYPE_CHECKING:
     from compas.datastructures import Mesh
 
 if compas.RHINO:
-	import rhinoscriptsyntax as rs
-	import scriptcontext as sc
+	import rhinoscriptsyntax as rs # type: ignore  # noqa: I001
+	import scriptcontext as sc # type: ignore  # noqa: I001
 	import System
+
 
 
 def clear_layer(layer: str, clean_sublayers: bool = False) -> int:

@@ -4,9 +4,9 @@ Validates rather than repairs: a crossing, T-junction, dangling or loose curve r
 Design notes: ``design_notes/datastructures.md``.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
 from math import atan2
 from math import radians
@@ -14,7 +14,6 @@ from math import radians
 from compas.geometry import distance_point_point
 from compas.itertools import pairwise
 from compas.tolerance import TOL
-
 
 __all__ = [
     'split_at_corners',

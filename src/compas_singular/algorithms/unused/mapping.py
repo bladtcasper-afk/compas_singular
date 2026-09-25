@@ -1,19 +1,18 @@
-from __future__ import print_function
 from __future__ import absolute_import
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
 import itertools as it
-from typing import Any
 from typing import TYPE_CHECKING
-
-from compas_singular.datastructures import delete_strip
-from compas_singular.datastructures import delete_strips
-from compas_singular.datastructures import add_strips
+from typing import Any
 
 # from .isomorphism import are_strips_isomorphic
 from compas_singular.algorithms.unused.isomorphism import are_meshes_isomorphic
 from compas_singular.algorithms.unused.isomorphism import matches_between_ismorphic_meshes
+from compas_singular.datastructures import add_strips
+from compas_singular.datastructures import delete_strip
+from compas_singular.datastructures import delete_strips
 
 if TYPE_CHECKING:
     from compas_singular.datastructures import QuadMesh

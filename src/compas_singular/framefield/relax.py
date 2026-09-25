@@ -6,13 +6,13 @@ from __future__ import annotations
 
 from math import cos
 from math import radians
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Sequence
-from typing import TYPE_CHECKING
 
 import numpy as np
-from compas.tolerance import TOL
 
+from compas.tolerance import TOL
 from compas_singular.geometry.polyline import closest_on_polyline
 
 if TYPE_CHECKING:

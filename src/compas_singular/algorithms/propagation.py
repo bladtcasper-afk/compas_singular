@@ -1,7 +1,7 @@
 from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 from __future__ import annotations
+from __future__ import division
+from __future__ import print_function
 
 from math import pi
 from math import radians
@@ -11,7 +11,6 @@ from compas.geometry import angle_vectors
 from compas.geometry import discrete_coons_patch
 from compas.geometry import length_vector
 from compas.geometry import subtract_vectors
-
 from compas_singular.utilities import list_split
 
 if TYPE_CHECKING:

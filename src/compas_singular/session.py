@@ -3,16 +3,15 @@
 Undo is a list of JSON snapshots taken by :meth:`SingularSession.record`; runs without Rhino.
 """
 from __future__ import absolute_import
+from __future__ import annotations
 from __future__ import division
 from __future__ import print_function
-from __future__ import annotations
 
-from typing import Any
 from typing import TYPE_CHECKING
+from typing import Any
 
 import compas
 from compas.data import Data
-
 from compas_singular.settings import Settings
 
 if TYPE_CHECKING:
