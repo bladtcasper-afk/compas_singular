@@ -86,7 +86,6 @@ def clean(ctx, docs=True, bytecode=True, builds=True):
 
         if docs:
             folders.append('docs/api/generated')
-            folders.append('docsource/api/generated')
 
         folders.append('dist/')
 
@@ -106,20 +105,30 @@ def clean(ctx, docs=True, bytecode=True, builds=True):
       'rebuild': 'True to clean all previously built docs before starting, otherwise False.',
       'doctest': 'True to run doctests, otherwise False.',
       'check_links': 'True to check all web links in docs for validity, otherwise False.'})
-def docs(ctx, doctest=False, rebuild=True, check_links=False):
-    """Builds package's HTML documentation."""
+def docs(ctx, doctest=False, rebuild=False, check_links=False):
+    """Builds the HTML documentation into dist/docs."""
 
     if rebuild:
-        clean(ctx)
+        clean(ctx, bytecode=False, builds=False)
 
     with chdir(BASE_FOLDER):
-        if doctest:
-            ctx.run('sphinx-build -E -b doctest docsource docs')
+        opts = '-E' if rebuild else ''
 
-        ctx.run('sphinx-build -E -b html docsource docs')
+        if doctest:
+            ctx.run('sphinx-build {} -b doctest docs dist/docs'.format(opts))
+
+        ctx.run('sphinx-build {} -b html docs dist/docs'.format(opts))
 
         if check_links:
-            ctx.run('sphinx-build -E -b linkcheck docsource docs')
+            linkcheck(ctx, rebuild=rebuild)
+
+
+@task()
+def linkcheck(ctx, rebuild=False):
+    """Check links in documentation."""
+    with chdir(BASE_FOLDER):
+        opts = '-E' if rebuild else ''
+        ctx.run('sphinx-build {} -b linkcheck docs dist/docs'.format(opts))
 
 
 @task()

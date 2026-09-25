@@ -1,16 +1,19 @@
 [build-system]
-requires = ["setuptools>=77", "wheel"]
+# 77.0.3: the first setuptools that supports `license` as an SPDX expression with `license-files`.
+requires = ["setuptools>=77.0.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "compas_singular"
-version = "0.1.0"
 description = "Topology finding of singularities in quad meshes"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "Robin Oval", email = "rpho2@cam.ac.uk" }]
+authors = [
+    { name = "Robin Oval", email = "rpho2@cam.ac.uk" },
+    { name = "Casper Bladt", email = "bladt.casper@gmail.com" },
+]
 keywords = ["compas", "quad mesh", "singularities", "topology finding"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -20,22 +23,51 @@ classifiers = [
     "Operating System :: POSIX",
     "Operating System :: Unix",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: Implementation :: CPython",
 ]
-dynamic = ["dependencies", "optional-dependencies"]
+dynamic = ["version", "dependencies", "optional-dependencies"]
 
+[project.urls]
+Repository = "https://github.com/bladtcasper-afk/compas_singular"
+Issues = "https://github.com/bladtcasper-afk/compas_singular/issues"
+Changelog = "https://github.com/bladtcasper-afk/compas_singular/blob/dev/CHANGELOG.md"
+Upstream = "https://github.com/BRG-research/compas_singular"
+
+# The MCP server, also runnable as `python -m compas_singular.mcp`.
+[project.scripts]
+compas-singular-mcp = "compas_singular.mcp.__main__:main"
+
+# The version is set in ONE place, compas_singular.__version__.
 [tool.setuptools.dynamic]
+version = { attr = "compas_singular.__version__" }
 dependencies = { file = ["requirements.txt"] }
 optional-dependencies.viewer = { file = ["requirements-viewer.txt"] }
+optional-dependencies.fd = { file = ["requirements-fd.txt"] }
+optional-dependencies.rhino = { file = ["requirements-rhino.txt"] }
+optional-dependencies.dev = { file = ["requirements-dev.txt"] }
 
 [tool.setuptools]
 include-package-data = true
 
 # `where = ["src"]` is the src-layout mapping that used to live in setup.py as
 # package_dir={"": "src"}. Unlike the old explicit packages=["compas_singular"],
-# find picks up every subpackage (datastructures, algorithms, geometry, rhino,
-# topology, utilities), which is what makes
+# find picks up every subpackage, which is what makes
 # `from compas_singular.datastructures import CoarseQuadMesh` work.
+#
+# Excluded from the wheel: thesis code no workflow uses (algorithms.unused) and
+# the RhinoCurve/RhinoSurface wrappers (rhino.geometry), kept for future
+# mesh-to-surface mapping. They still extend the COMPAS 1 compas_rhino classes,
+# so they cannot import under COMPAS 2. Ship rhino.geometry again once it is
+# ported. MANIFEST.in prunes both too, because include-package-data would
+# otherwise ship their .py files as data.
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["compas_singular*"]
+exclude = [
+    "compas_singular.algorithms.unused*",
+    "compas_singular.rhino.geometry*",
+]
