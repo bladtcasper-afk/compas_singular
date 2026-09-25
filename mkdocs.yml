@@ -162,7 +162,6 @@ nav:
           - examples/03_coarse_mesh_editing.md
           - examples/04_densities.md
           - examples/05_patterns.md
-          - examples/14_hand_made_layout.md
       - Dense mesh:
           - examples/06_quad_mesh_smoothing.md
           - examples/07_quad_mesh_editing.md
