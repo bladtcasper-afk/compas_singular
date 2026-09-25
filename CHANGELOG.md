@@ -39,6 +39,11 @@ First release of the fork. It picks up from upstream commit `66024561` (April 20
   `pyproject.toml`; `tasks.py` uses `compas_invocations2`; `environment.yml` creates the `singular-dev`
   conda environment. `setup.py`, `setup.cfg`, `pytest.ini`, `.bumpversion.cfg` and the `requirements*.txt`
   files are removed.
+* The documentation is built with MkDocs (Material + mkdocstrings) instead of Sphinx, and deployed by
+  `mkdocs gh-deploy` on every push to `main`; PRs to `main` run `mkdocs build --strict`. The site moved from
+  `.../compas_singular/latest/` to `.../compas_singular/`, and `latest/` redirects there.
+* Docstrings are plain numpy style: the Sphinx roles (`:class:` etc.) and the `autosummary` listings in the
+  `__init__.py` files are gone, and 19 parameter names that did not match their signatures are fixed.
 
 ### Removed
 

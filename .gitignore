@@ -61,10 +61,6 @@ instance/
 # Scrapy stuff:
 .scrapy
 
-# Sphinx documentation
-docs/_build/
-docs/api/generated/
-
 # PyBuilder
 target/
 

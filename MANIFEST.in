@@ -18,14 +18,9 @@ include LICENSE
 include README.md
 include AUTHORS.md
 include CHANGELOG.md
-include requirements.txt
-include requirements-viewer.txt
-include requirements-fd.txt
-include requirements-rhino.txt
-include requirements-dev.txt
 include pyproject.toml
 
-exclude pytest.ini .bumpversion.cfg .editorconfig
+exclude .editorconfig environment.yml mkdocs.yml
 exclude tasks.py
 exclude CONTRIBUTING.md
 

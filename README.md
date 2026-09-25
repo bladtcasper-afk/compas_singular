@@ -1,7 +1,7 @@
 # compas_singular
 
 Welcome to **compas_singular**, a Python library tackles topology finding of patterns, particularly singularities in structured quad meshes.
-Based on the [PhD research of Robin Oval](https://bladtcasper-afk.github.io/compas_singular/latest/publications.html), this library implements data structures for quad mesh modelling, several algorithms for topological exploration and interface with Rhino3D/Grasshopper3D.
+Based on the PhD research of Robin Oval ([*Topology Finding of Patterns for Structural Design*](https://pastel.hal.science/tel-02917467), Université Paris-Est, 2019), this library implements data structures for quad mesh modelling, several algorithms for topological exploration and interface with Rhino3D/Grasshopper3D.
 
 **compas_singular** is based on the **COMPAS** framework is an open-source, Python-based framework for computational research and collaboration in architecture, engineering, digital fabrication and construction.
 
@@ -12,7 +12,7 @@ Based on the [PhD research of Robin Oval](https://bladtcasper-afk.github.io/comp
 Python 3.9 or later. The package is not on PyPI yet; install it from GitHub:
 
 ```bash
-pip install "compas_singular @ git+https://github.com/bladtcasper-afk/compas_singular.git@dev"
+pip install "compas_singular @ git+https://github.com/bladtcasper/compas_singular.git@dev"
 ```
 
 Optional extras: `[viewer]` for the 3D viewer used by the examples, `[fd]` for
@@ -35,12 +35,12 @@ The `-e` (editable) install puts a `.pth` file pointing at `src/` on your
 works from any directory and any script, and your edits to `src/` take effect
 immediately without reinstalling.
 
-Prefer conda? A ready-made environment (Python 3.12 + compas 2.15.1 + viewer +
-an editable install of this package) is described in `environment.yml`:
+Prefer conda? `environment.yml` describes a development environment: COMPAS,
+the viewer, and an editable install with the `dev`, `fd` and `viewer` extras:
 
 ```bash
 conda env create -f environment.yml
-conda activate compas-singular
+conda activate singular-dev
 ```
 
 Verify with:
@@ -54,9 +54,9 @@ If that prints `None` instead of a path ending in
 Python found the bare repository folder and treated it as an empty namespace
 package. Run one of the install commands above.
 
-Dependencies live in `requirements.txt` (core) and `requirements-viewer.txt`,
-`requirements-fd.txt` and `requirements-rhino.txt` (the extras);
-`pyproject.toml` reads them, so those files are the single source of truth.
+All dependencies are declared in `pyproject.toml`: the core ones under
+`dependencies`, and the `viewer`, `fd`, `rhino`, `dev` and `docs` extras under
+`[project.optional-dependencies]`.
 The modules under `src/compas_singular/rhino/` additionally need
 `compas_rhino` and are only importable inside Rhino.
 
@@ -86,7 +86,7 @@ mesh = decomposition.quad_mesh(target_length=0.5)
 print(mesh.number_of_faces(), 'quads on route', decomposition.route())
 ```
 
-[`examples/GitHub/`](https://github.com/bladtcasper-afk/compas_singular/tree/dev/examples/GitHub) has thirteen worked examples, from this workflow to layout
+[`examples/GitHub/`](https://github.com/bladtcasper/compas_singular/tree/dev/examples/GitHub) has thirteen worked examples, from this workflow to layout
 editing, patterns, guides, symmetry and dual blocks.
 
 ### Rhino 8
@@ -97,35 +97,35 @@ and need `compas_singular` installed in Rhino's Python. Until the package is
 published, install it with Rhino's interpreter (Rhino closed):
 
 ```bash
-%USERPROFILE%\.rhinocode\py39-rh8\python.exe -m pip install "compas_singular[rhino,fd] @ git+https://github.com/bladtcasper-afk/compas_singular.git@dev"
+%USERPROFILE%\.rhinocode\py39-rh8\python.exe -m pip install "compas_singular[rhino,fd] @ git+https://github.com/bladtcasper/compas_singular.git@dev"
 ```
 
-[`markdowns/RHINO_PLUGIN.md`](https://github.com/bladtcasper-afk/compas_singular/blob/dev/markdowns/RHINO_PLUGIN.md) describes the workflow and the layers it creates.
+[`markdowns/RHINO_PLUGIN.md`](https://github.com/bladtcasper/compas_singular/blob/dev/markdowns/RHINO_PLUGIN.md) describes the workflow and the layers it creates.
 
-The [Rhino page](https://bladtcasper-afk.github.io/compas_singular/latest/tutorial/rhino.html) of the documentation lists the commands.
+The [Rhino page](https://bladtcasper.github.io/compas_singular/tutorial/rhino/) of the documentation lists the commands.
 
 ## First Steps
 
-The [documentation](https://bladtcasper-afk.github.io/compas_singular/latest/) has an [overview](https://bladtcasper-afk.github.io/compas_singular/latest/tutorial/overview.html) of the workflow, the [examples](https://bladtcasper-afk.github.io/compas_singular/latest/examples.html) with pictures, and the [API reference](https://bladtcasper-afk.github.io/compas_singular/latest/api.html).
+The [documentation](https://bladtcasper.github.io/compas_singular/) has an [overview](https://bladtcasper.github.io/compas_singular/tutorial/overview/) of the workflow, the [examples](https://bladtcasper.github.io/compas_singular/examples/) with pictures, and the [API reference](https://bladtcasper.github.io/compas_singular/reference/compas_singular.algorithms/).
 
 ## Questions and feedback
 
-Open an issue on the [issue tracker](https://github.com/bladtcasper-afk/compas_singular/issues).
+Open an issue on the [issue tracker](https://github.com/bladtcasper/compas_singular/issues).
 
 ## Issue tracker
 
-Bugs and feature requests: <https://github.com/bladtcasper-afk/compas_singular/issues>.
+Bugs and feature requests: <https://github.com/bladtcasper/compas_singular/issues>.
 Please include a script that reproduces the problem.
 
 ## Contributing
 
-See [CONTRIBUTING.md](https://github.com/bladtcasper-afk/compas_singular/blob/dev/CONTRIBUTING.md).
+See [CONTRIBUTING.md](https://github.com/bladtcasper/compas_singular/blob/dev/CONTRIBUTING.md).
 
 ## Changelog
 
-See [CHANGELOG.md](https://github.com/bladtcasper-afk/compas_singular/blob/dev/CHANGELOG.md). What this fork changed relative to the
+See [CHANGELOG.md](https://github.com/bladtcasper/compas_singular/blob/dev/CHANGELOG.md). What this fork changed relative to the
 upstream [BRG-research/compas_singular](https://github.com/BRG-research/compas_singular)
-is in [markdowns/CHANGES_VS_UPSTREAM.md](https://github.com/bladtcasper-afk/compas_singular/blob/dev/markdowns/CHANGES_VS_UPSTREAM.md).
+is in [markdowns/CHANGES_VS_UPSTREAM.md](https://github.com/bladtcasper/compas_singular/blob/dev/markdowns/CHANGES_VS_UPSTREAM.md).
 
 ## License
 
