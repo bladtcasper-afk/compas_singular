@@ -1,21 +1,27 @@
 from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from compas_singular.datastructures.mesh_quad.grammar.add_strip import add_strip
 from compas_singular.datastructures.mesh_quad.grammar.delete_strip import delete_strip
+
+if TYPE_CHECKING:
+	from compas_singular.datastructures import QuadMesh
 
 __all__ = ['Lizard']
 
 
 class Lizard:
 
-	def __init__(self, quad_mesh):
+	def __init__(self, quad_mesh: "QuadMesh") -> None:
 		self.lizard = None
 		self.grow = False
 		self.mesh = quad_mesh
 
-	def initiate(self, tail=None, head=None):
+	def initiate(self, tail: int | None = None, head: int | None = None) -> None:
 		if tail in self.mesh.vertex and head in self.mesh.vertex and tail in self.mesh.vertex[head]:
 			self.lizard = [head, tail]
 		else:
@@ -23,7 +29,7 @@ class Lizard:
 			head = self.mesh.vertex_neighbors(tail)[0]
 			self.lizard = [head, tail]
 
-	def turn(self):
+	def turn(self) -> None:
 		nbrs = self.mesh.vertex_neighbors(self.lizard[0], ordered=True)
 		i = nbrs.index(self.lizard[1])
 		# COMPAS 2.x orders vertex neighbors with the opposite winding to the
@@ -34,13 +40,13 @@ class Lizard:
 		if not self.grow:
 			del self.lizard[-1]
 
-	def pivot(self):
+	def pivot(self) -> None:
 		nbrs = self.mesh.vertex_neighbors(self.lizard[1], ordered=True)
 		i = nbrs.index(self.lizard[0])
 		new_head = nbrs[i - 1]  # opposite neighbor winding in COMPAS 2.x (see turn)
 		self.lizard[0] = new_head
 
-	def add(self):
+	def add(self) -> None:
 		if self.grow:
 			n, old_vkeys_to_new_vkeys = add_strip(self.mesh, self.lizard[1:])
 			head = old_vkeys_to_new_vkeys[self.lizard[0]] if self.lizard[0] in old_vkeys_to_new_vkeys else self.lizard[0]
@@ -49,7 +55,7 @@ class Lizard:
 
 		self.grow = not self.grow
 
-	def delete(self):
+	def delete(self) -> None:
 		if self.grow:
 			# use update polyedge
 			print('Not Implemented')
@@ -60,7 +66,7 @@ class Lizard:
 		old_vkeys_to_new_vkeys = delete_strip(self.mesh, skey)
 		self.lizard = [old_vkeys_to_new_vkeys[i] for i in self.lizard] # specify one when old_vkeys_to_new_vkeys[i] is a tuple
 
-	def from_vector_to_string(self, vector):
+	def from_vector_to_string(self, vector: list[int]) -> list[str]:
 		string = []
 		for i in range(len(vector) // 2):
 			x, y = vector[2 * i : 2 * i + 2]
@@ -74,7 +80,7 @@ class Lizard:
 				string.append('d')
 		return string
 
-	def from_string_to_vector(self, string):
+	def from_string_to_vector(self, string: list[str]) -> list[int]:
 		vector = []
 		for k in string:
 			if k == 't':
@@ -87,7 +93,7 @@ class Lizard:
 				vector += [1, 1]
 		return vector
 
-	def from_string_to_rules(self, string):
+	def from_string_to_rules(self, string: list[str]) -> None:
 		for k in string:
 			if k == 't':
 				self.turn()
@@ -109,24 +115,24 @@ if __name__ == '__main__':
 	import compas
 	from compas_singular.datastructures import QuadMesh
 	from compas_singular.datastructures import CoarseQuadMesh
-	from compas_singular._compat import mesh_smooth_centroid
+	from compas.datastructures.mesh.smoothing import mesh_smooth_centroid
 	from compas_plotters.meshplotter import MeshPlotter
 	from compas_singular.datastructures.mesh_quad.grammar.add_strip import add_strip
 	from math import pi
 	from compas.geometry import add_vectors
-	from compas_singular._compat import circle_evaluate
+	from compas_singular.geometry import circle_evaluate
 	from compas_singular.datastructures.mesh.operations import mesh_move_vertex_to
 	from compas.rpc import Proxy
 
 	from compas.numerical import fd_numpy
 	
-	def fix_boundaries(mesh):
+	def fix_boundaries(mesh: "QuadMesh") -> None:
 		n = len(mesh.vertices_on_boundaries())
 		for i, vkey in enumerate(mesh.boundaries()[0]):
 			xyz = add_vectors(mesh.vertex_centroid(), circle_evaluate(2.0 * pi * i / n, 10))
 			mesh_move_vertex_to(mesh, xyz, vkey)
-	
-	def find_form(mesh, total_load):
+
+	def find_form(mesh: "QuadMesh", total_load: float) -> None:
 		vertices = [mesh.vertex_coordinates(vkey) for vkey in mesh.vertices()]
 		edges = list(mesh.edges())
 		fixed = mesh.vertices_on_boundaries()

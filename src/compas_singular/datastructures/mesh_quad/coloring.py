@@ -1,13 +1,20 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from __future__ import annotations
 
-from compas_singular._compat import adjacency_from_edges
+from typing import Any
+from typing import TYPE_CHECKING
+
+from compas.topology import vertex_adjacency_from_edges
 from compas.topology import vertex_coloring
 
 from compas_singular.topology import is_adjacency_two_colorable
 
 from compas.itertools import pairwise
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import QuadMesh
 
 
 __all__ = [
@@ -18,7 +25,7 @@ __all__ = [
 ]
 
 
-def quad_mesh_strip_2_coloring(quad_mesh):
+def quad_mesh_strip_2_coloring(quad_mesh: QuadMesh) -> dict[int, int] | None:
     """Try to color the strips of a quad mesh with two colors only without overlapping strips with the same color.
 
     Parameters
@@ -34,10 +41,10 @@ def quad_mesh_strip_2_coloring(quad_mesh):
     """
 
     vertices, edges = quad_mesh.strip_graph()
-    return is_adjacency_two_colorable(adjacency_from_edges(edges))
+    return is_adjacency_two_colorable(vertex_adjacency_from_edges(edges))
 
 
-def quad_mesh_strip_n_coloring(quad_mesh):
+def quad_mesh_strip_n_coloring(quad_mesh: QuadMesh) -> dict[int, int]:
     """Color the strips of a quad mesh with a minimum number of colors without overlapping strips with the same color.
 
     Parameters
@@ -52,10 +59,10 @@ def quad_mesh_strip_n_coloring(quad_mesh):
     """
 
     vertices, edges = quad_mesh.strip_graph()
-    return vertex_coloring(adjacency_from_edges(edges))
+    return vertex_coloring(vertex_adjacency_from_edges(edges))
 
 
-def quad_mesh_polyedge_2_coloring(quad_mesh, edge_output=False):
+def quad_mesh_polyedge_2_coloring(quad_mesh: QuadMesh, edge_output: bool = False) -> dict[Any, int] | None:
     """Try to color the polyedges of a quad mesh with two colors only without overlapping polyedges with the same color.
     Polyedges connected by their extremities, which are singularities, do not count as overlapping.
 
@@ -73,8 +80,11 @@ def quad_mesh_polyedge_2_coloring(quad_mesh, edge_output=False):
         None if not two-colorable.
     """
 
-    vertices, edges = quad_mesh.polyedge_graph()
-    polyedge_coloring = is_adjacency_two_colorable(adjacency_from_edges(edges))
+    # pinned to the legacy graph: switching to polyedge_graph(legacy=False) drops the
+    # spurious self-loops and is expected to give the same colouring, but that has to
+    # be a deliberate change, not a silent one.
+    vertices, edges = quad_mesh.polyedge_graph(legacy=True)
+    polyedge_coloring = is_adjacency_two_colorable(vertex_adjacency_from_edges(edges))
     if not polyedge_coloring or not edge_output:
         return polyedge_coloring
     else:
@@ -85,7 +95,7 @@ def quad_mesh_polyedge_2_coloring(quad_mesh, edge_output=False):
         return edge_coloring
 
 
-def quad_mesh_polyedge_n_coloring(quad_mesh, edge_output=False):
+def quad_mesh_polyedge_n_coloring(quad_mesh: QuadMesh, edge_output: bool = False) -> dict[Any, int]:
     """Color the polyedges of a quad mesh with a minimum number of colors without overlapping polyedges with the same color.
     Polyedges connected by their extremities, which are singularities, do not count as overlapping.
 
@@ -102,8 +112,8 @@ def quad_mesh_polyedge_n_coloring(quad_mesh, edge_output=False):
         A dictionary with polyedge keys pointing to colors. If edge_output, edge keys pointing to colors.
     """
 
-    vertices, edges = quad_mesh.polyedge_graph()
-    polyedge_coloring = vertex_coloring(adjacency_from_edges(edges))
+    vertices, edges = quad_mesh.polyedge_graph(legacy=True)  # see quad_mesh_polyedge_2_coloring
+    polyedge_coloring = vertex_coloring(vertex_adjacency_from_edges(edges))
     if not polyedge_coloring or not edge_output:
         return polyedge_coloring
     else:

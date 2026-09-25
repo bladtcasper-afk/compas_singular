@@ -1,6 +1,9 @@
 from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
+from __future__ import annotations
+
+from typing import Iterable
 
 __all__ = [
     'extract_pareto_indices',
@@ -9,7 +12,7 @@ __all__ = [
 ]
 
 
-def extract_pareto_indices(data, k=1.0):
+def extract_pareto_indices(data: list[Iterable[float]], k: float = 1.0) -> list[int]:
     """Get the Pareto front from data. The performances are to be minimised.
     If the metrics must be maximised, take the opposite X <- -X and the inverse k <- 1/k.
 
@@ -34,11 +37,10 @@ def extract_pareto_indices(data, k=1.0):
     return [i for i, Xi in enumerate(data) if len([Xj for Xj in data if is_dominating(Xj, Xi, 1/k)]) == 0]
 
 
-def is_dominating(X1, X2, k=1.0):
-    """Check if a design (X1) is dominating another one (X2).
-    To dominate another design, a design must have all its metrics below or equal and one strictly below the metrics of the other design.
-    A weak domination is allowed for values of k below 1.0.
-    If the metrics must be maximised, take the opposite X <- -X and the inverse k <- 1/k.
+def is_dominating(X1: Iterable[float], X2: Iterable[float], k: float = 1.0) -> bool:
+    """Check if design X1 dominates X2: all metrics below or equal and one strictly below.
+
+    ``k`` below 1.0 allows weak domination.
 
     Parameters
     ----------

@@ -1,11 +1,18 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from __future__ import annotations
 
-from ..mesh.operations import mesh_move_vertices_by
+from typing import Callable
+from typing import TYPE_CHECKING
+
+from compas_singular.datastructures.mesh.operations import mesh_move_vertices_by
 # from .coloring import quad_mesh_polyedge_2_coloring
 
 from compas.itertools import pairwise
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import QuadMesh
 
 
 __all__ = [
@@ -14,7 +21,7 @@ __all__ = [
 ]
 
 
-def fold_vertex_group(quad_mesh, polyedges):
+def fold_vertex_group(quad_mesh: QuadMesh, polyedges: list[list[int]]) -> dict[int, int]:
     # is it always possible? a type of vertex 2-coloring?
 
     is_edge_in_polyedges = {edge: False for edge in quad_mesh.edges()}
@@ -57,7 +64,7 @@ def fold_vertex_group(quad_mesh, polyedges):
     return vkey_to_group
 
 
-def fold(quad_mesh, vkey_to_group, func0, func1):
+def fold(quad_mesh: QuadMesh, vkey_to_group: dict[int, int], func0: Callable[[QuadMesh, int], list[float]], func1: Callable[[QuadMesh, int], list[float]]) -> dict[int, list[float]]:
 
     moves = {}
     for vkey, group in vkey_to_group.items():

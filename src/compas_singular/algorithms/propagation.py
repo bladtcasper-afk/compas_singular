@@ -1,21 +1,33 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from __future__ import annotations
 
+from math import pi
+from math import radians
+from typing import TYPE_CHECKING
+
+from compas.geometry import angle_vectors
 from compas.geometry import discrete_coons_patch
+from compas.geometry import length_vector
+from compas.geometry import subtract_vectors
 
-from ..utilities import list_split
+from compas_singular.utilities import list_split
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import Mesh
 
 
 __all__ = [
     'quadrangulate_mesh',
+    'quadrangulate_faces',
     'quadrangulate_face',
     'discrete_coons_patch_mesh',
     'update_adjacent_face'
 ]
 
 
-def quadrangulate_mesh(mesh, sources):
+def quadrangulate_mesh(mesh: Mesh, sources: list[int]) -> None:
     """Quadrangulate the faces of a mesh by adding edges from vertex sources.
 
     Returns
@@ -48,9 +60,67 @@ def quadrangulate_mesh(mesh, sources):
                 sources_to_visit += new_sources
 
 
-def quadrangulate_face(mesh, fkey, sources):
+def quadrangulate_faces(mesh: Mesh, face_sources: dict[int, list[int]], max_faces: int | None = None) -> bool:
+    """Quadrangulate the polygonal faces of a mesh, each from its own sources, in place.
+
+    Returns False if stopped at ``max_faces``; the mesh should then be discarded.
+
+    Parameters
+    ----------
+    mesh : Mesh
+        The mesh to quadrangulate, modified in place.
+    face_sources : dict
+        Face keys pointing to the vertex keys that are sources for that face.
+    max_faces : int, optional
+        Stop once the mesh has more faces than this.
+
+    Returns
+    -------
+    bool
+        False if the propagation was stopped at ``max_faces``. The mesh is then
+        left part-way and should be discarded.
+    """
+    created = set()
+    todo = [fkey for fkey in mesh.faces() if len(mesh.face_vertices(fkey)) > 4]
+
+    count = 1000
+    while todo and count:
+        count -= 1
+        if max_faces is not None and mesh.number_of_faces() > max_faces:
+            return False
+
+        fkey = todo.pop()
+        if not mesh.has_face(fkey) or len(mesh.face_vertices(fkey)) == 4:
+            continue
+
+        sources = [vkey for vkey in mesh.face_vertices(fkey)
+                   if vkey in face_sources.get(fkey, ()) or (vkey in created and is_straight_through(mesh, fkey, vkey))]
+        new_sources = quadrangulate_face(mesh, fkey, sources)
+        created.update(new_sources)
+        todo += [nbr for vkey in new_sources for nbr in mesh.vertex_faces(vkey) if len(mesh.face_vertices(nbr)) > 4]
+
+    return True
+
+
+def is_straight_through(mesh: Mesh, fkey: int, vkey: int, tol: float = 0.5) -> bool:
+    """Does face ``fkey`` pass straight through vertex ``vkey``, within ``tol`` degrees?"""
+    face_vertices = mesh.face_vertices(fkey)
+    i = face_vertices.index(vkey)
+    xyz = mesh.vertex_coordinates(vkey)
+    u = subtract_vectors(mesh.vertex_coordinates(face_vertices[i - 1]), xyz)
+    v = subtract_vectors(mesh.vertex_coordinates(face_vertices[(i + 1) % len(face_vertices)]), xyz)
+    if not length_vector(u) or not length_vector(v):
+        return False
+    return angle_vectors(u, v) > pi - radians(tol)
+
+
+def quadrangulate_face(mesh: Mesh, fkey: int, sources: list[int]) -> list[int]:
 
     face_vertices = mesh.face_vertices(fkey)[:]
+
+    # a face that passes through a vertex twice cannot be split into its sides
+    if len(set(face_vertices)) != len(face_vertices):
+        return []
 
     # differentiate sources and non sources
     sources = [vkey for vkey in face_vertices if vkey in sources]
@@ -107,7 +177,7 @@ def quadrangulate_face(mesh, fkey, sources):
     return new_sources
 
 
-def discrete_coons_patch_mesh(mesh, ab, bc, dc, ad):
+def discrete_coons_patch_mesh(mesh: Mesh, ab: list[int], bc: list[int], dc: list[int], ad: list[int]) -> None:
 
     ab_xyz = [mesh.vertex_coordinates(vkey) for vkey in ab]
     bc_xyz = [mesh.vertex_coordinates(vkey) for vkey in bc]
@@ -145,7 +215,7 @@ def discrete_coons_patch_mesh(mesh, ab, bc, dc, ad):
         mesh.add_face(list(reversed([vertex_index_map[vkey] for vkey in face])))
 
 
-def update_adjacent_face(mesh, u, v, vertices_uv):
+def update_adjacent_face(mesh: Mesh, u: int, v: int, vertices_uv: list[int]) -> None:
     fkey = mesh.halfedge[u][v]
     if fkey is not None:
         face_vertices = mesh.face_vertices(fkey)[:]
@@ -161,41 +231,38 @@ def update_adjacent_face(mesh, u, v, vertices_uv):
 # ==============================================================================
 
 if __name__ == '__main__':
-    pass
+    
 
-    # from compas_singular.datastructures.mesh.mesh import Mesh
+    from compas_singular.datastructures.mesh.mesh import Mesh
+    from compas_viewer import Viewer
+    viewer = Viewer()
 
-    # vertices = [
-    #     [0, 0, 0],
-    #     [1, 0, 0],
-    #     [2, 0, 0],
-    #     [3, 0, 0],
-    #     [3, 1, 0],
-    #     [0, 1, 0],
-    #     [0, 0.5, 0],
-    #     [0, 0.25, 0],
-    #     [4, 0, 0],
-    #     [4, 1, 0],
-    # ]
+    vertices = [
+        [0, 0, 0],
+        [1, 0, 0],
+        [2, 0, 0],
+        [3, 0, 0],
+        [3, 1, 0],
+        [0, 1, 0],
+        [0, 0.5, 0],
+        [0, 0.25, 0],
+        [4, 0, 0],
+        [4, 1, 0],
+    ]
 
-    # faces = [
-    #     [0, 1, 2, 3, 4, 5, 6, 7],
-    #     [3, 8, 9, 4]
-    # ]
+    faces = [
+        [0, 1, 2, 3, 4, 5, 6, 7],
+        [3, 8, 9, 4]
+    ]
 
-    # sources = [1, 2, 6, 7]
+    sources = [1, 2, 6, 7]
 
-    # mesh = Mesh.from_vertices_and_faces(vertices, faces)
+    mesh = Mesh.from_vertices_and_faces(vertices, faces)
 
-    # #quadrangulate_face(mesh, 0, sources)
-    # #quadrangulate_mesh(mesh, sources)
-    # # for vkey in mesh.vertices():
-    # # 	print 'vkey', vkey, mesh.vertex_faces(vkey)
-    # # for fkey in mesh.faces():
-    # # 	print 'fkey', fkey, mesh.face_vertices(fkey)
+    viewer.scene.add(mesh.copy())
 
-    # # plotter = MeshPlotter(mesh)
-    # # plotter.draw_vertices(text='key')
-    # # plotter.draw_edges()
-    # # plotter.draw_faces(text='key')
-    # # plotter.show()
+    quadrangulate_face(mesh, 0, sources)
+    quadrangulate_mesh(mesh, sources)
+
+    viewer.scene.add(mesh)
+    viewer.show()

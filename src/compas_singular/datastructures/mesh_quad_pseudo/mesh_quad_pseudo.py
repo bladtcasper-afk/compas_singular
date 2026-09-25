@@ -1,10 +1,14 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from __future__ import annotations
 
-from compas_singular._compat import geometric_key
+from typing import Any
+from typing import Iterator
 
-from ..mesh_quad import QuadMesh
+from compas.tolerance import TOL
+
+from compas_singular.datastructures.mesh_quad import QuadMesh
 from compas_singular.utilities import list_split
 
 
@@ -13,12 +17,12 @@ __all__ = ['PseudoQuadMesh']
 
 class PseudoQuadMesh(QuadMesh):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super(PseudoQuadMesh, self).__init__(*args, **kwargs)
         self.attributes['face_pole'] = {}
 
     @classmethod
-    def __from_data__(cls, data):
+    def __from_data__(cls, data: dict[str, Any]) -> "PseudoQuadMesh":
         # COMPAS 2.x serialises ``attributes`` natively, but JSON object keys
         # are always strings. Restore the integer face keys of the pole map.
         mesh = super(PseudoQuadMesh, cls).__from_data__(data)
@@ -27,47 +31,52 @@ class PseudoQuadMesh(QuadMesh):
         return mesh
 
     @classmethod
-    def from_vertices_and_faces_with_poles(cls, vertices, faces, poles=[]):
-        pole_map = tuple([geometric_key(pole) for pole in poles])
+    def from_vertices_and_faces_with_poles(cls, vertices: "dict[int, list[float]] | list[list[float]]", faces: "dict[int, list[int]] | list[list[int]]", poles: list[list[float]] = []) -> "PseudoQuadMesh":
+        pole_map = tuple([TOL.geometric_key(pole) for pole in poles])
         mesh = cls.from_vertices_and_faces(vertices, faces)
         for fkey in mesh.faces():
             face_vertices = mesh.face_vertices(fkey)
             if len(face_vertices) == 3:
                 mesh.attributes['face_pole'][fkey] = face_vertices[0]
                 for vkey in face_vertices:
-                    if geometric_key(mesh.vertex_coordinates(vkey)) in pole_map:
+                    if TOL.geometric_key(mesh.vertex_coordinates(vkey)) in pole_map:
                         mesh.attributes['face_pole'].update({fkey: vkey})
                         break
         return mesh
 
     @classmethod
-    def from_vertices_and_faces_with_face_poles(cls, vertices, faces, face_poles={}):
+    def from_vertices_and_faces_with_face_poles(cls, vertices: "dict[int, list[float]] | list[list[float]]", faces: "dict[int, list[int]] | list[list[int]]", face_poles: dict[int, int] = {}) -> "PseudoQuadMesh":
         mesh = cls.from_vertices_and_faces(vertices, faces)
         mesh.attributes['face_pole'] = face_poles
         return mesh
 
-    def poles(self):
+    def poles(self) -> list[int]:
         return list(set(self.attributes['face_pole'].values()))
 
-    def is_pole(self, vkey):
+    def is_pole(self, vkey: int) -> bool:
         return vkey in set(self.poles())
 
-    def is_face_pseudo_quad(self, fkey):
+    def is_face_pseudo_quad(self, fkey: int) -> bool:
         return fkey in set(self.attributes['face_pole'].keys())
 
-    def is_vertex_pole(self, vkey):
+    def is_vertex_pole(self, vkey: int) -> bool:
         return vkey in set(self.attributes['face_pole'].values())
 
-    def is_vertex_full_pole(self, vkey):
+    def is_vertex_full_pole(self, vkey: int) -> bool:
         return all([self.is_face_pseudo_quad(fkey) for fkey in self.vertex_faces(vkey)])
 
-    def is_vertex_partial_pole(self, vkey):
+    def is_vertex_partial_pole(self, vkey: int) -> bool:
         return self.is_vertex_pole(vkey) and not self.is_vertex_full_pole(vkey)
 
-    def vertex_pole_faces(self, vkey):
+    def vertex_pole_faces(self, vkey: int) -> list[int]:
         return [fkey for fkey, pole in self.attributes['face_pole'].items() if pole == vkey]
 
-    def face_opposite_edge(self, u, v):
+    def is_strip_face(self, fkey: int) -> bool:
+        """A quad, or a triangle registered as a pseudo-quad in ``face_pole``."""
+        degree = len(self.face_vertices(fkey))
+        return degree == 4 or (degree == 3 and fkey in self.attributes['face_pole'])
+
+    def face_opposite_edge(self, u: int, v: int) -> tuple[int, int] | None:
         """Returns the opposite edge in the quad face.
 
         Parameters
@@ -80,11 +89,14 @@ class PseudoQuadMesh(QuadMesh):
         Returns
         -------
         (w, x) : tuple
-            The opposite edge.
+            The opposite edge. None on the boundary, and for a face a strip
+            cannot cross -- see :meth:`is_strip_face`.
 
         """
 
         fkey = self.halfedge[u][v]
+        if fkey is None or not self.is_strip_face(fkey):
+            return None
         # if quad
         if len(self.face_vertices(fkey)) == 4:
             w = self.face_vertex_descendant(fkey, v)
@@ -101,7 +113,7 @@ class PseudoQuadMesh(QuadMesh):
             else:
                 return (pole, pole)
 
-    def collect_strip(self, u0, v0):
+    def collect_strip(self, u0: int, v0: int) -> list[tuple[int, int]]:
         """Returns all the edges in the strip of the input edge.
 
         Parameters
@@ -117,7 +129,7 @@ class PseudoQuadMesh(QuadMesh):
             The list of the edges in strip.
         """
 
-        if self.halfedge[u0][v0] is None:
+        if not self._crosses(u0, v0):
             u0, v0 = v0, u0
 
         edges = [(u0, v0)]
@@ -127,22 +139,25 @@ class PseudoQuadMesh(QuadMesh):
             count -= 1
 
             u, v = edges[-1]
-            w, x = self.face_opposite_edge(u, v)
+            opposite = self.face_opposite_edge(u, v)
+            if opposite is None:
+                break
+            w, x = opposite
 
             if (x, w) == edges[0]:
                 break
 
             edges.append((x, w))
 
-            if w == x or w not in self.halfedge[x] or self.halfedge[x][w] is None:
+            if w == x or not self._crosses(x, w):
                 edges = [(v, u) for u, v in reversed(edges)]
                 u, v = edges[-1]
-                if u == v or v not in self.halfedge[u] or self.halfedge[u][v] is None:
+                if u == v or not self._crosses(u, v):
                     break
 
         return edges
 
-    def collect_strips(self):
+    def collect_strips(self) -> Iterator[tuple[int, list[tuple[int, int]]]]:
         """Collect the strip data.
 
         Returns
@@ -152,30 +167,44 @@ class PseudoQuadMesh(QuadMesh):
 
         """
 
+        # CLEAR FIRST. ``update`` only adds and overwrites, so re-collecting a mesh
+        # that has LOST a strip left the old keys behind -- and worse, a key that was
+        # deleted and is now re-assigned lands at the END of the dict's insertion
+        # order. Measured on a 4x4 grid: delete strip 3, re-collect, and the order is
+        # [0, 1, 2, 4, 5, 6, 7, 3] -- so ``list(strips())[-1]`` is 3 while the maximum
+        # is 7, and naming a new strip ``last + 1`` would then pick 4,
+        # which already exists and is silently overwritten. Stale entries are also
+        # read as real by ``is_strip_closed``, which only ever looks at
+        # ``strips[skey][0]``.
+        self.attributes['strips'].clear()
+
+        # see QuadMesh.collect_polyedges: list for a stable seed order, set for O(1) removal
         edges = [(u, v) if self.halfedge[u][v] is not None else (v, u) for u, v in self.edges()]
+        remaining = set(edges)
 
         nb_strip = -1
-        while len(edges) > 0:
+        for u0, v0 in reversed(edges):
+
+            if (u0, v0) not in remaining:
+                continue
+
             nb_strip += 1
 
-            u0, v0 = edges.pop()
             strip_edges = self.collect_strip(u0, v0)
             self.attributes['strips'].update({nb_strip: strip_edges})
 
             for u, v in strip_edges:
                 if u != v:
-                    if (u, v) in edges:
-                        edges.remove((u, v))
-                    elif (v, u) in edges:
-                        edges.remove((v, u))
+                    remaining.discard((u, v))
+                    remaining.discard((v, u))
 
         return self.strips(data=True)
 
-    def has_strip_poles(self, skey):
+    def has_strip_poles(self, skey: int) -> bool:
         return self.attributes['strips'][skey][0][0] == self.attributes['strips'][skey][0][1] \
             or self.attributes['strips'][skey][-1][0] == self.attributes['strips'][skey][-1][1]
 
-    def is_strip_closed(self, skey):
+    def is_strip_closed(self, skey: int) -> bool:
         """Output whether a strip is closed.
 
         Parameters
@@ -192,7 +221,7 @@ class PseudoQuadMesh(QuadMesh):
 
         return not self.has_strip_poles(skey) and not self.is_edge_on_boundary(*self.attributes['strips'][skey][0])
 
-    def is_vertex_singular(self, vkey):
+    def is_vertex_singular(self, vkey: int) -> bool:
         """Output whether a vertex is quad mesh singularity.
 
         Parameters
@@ -216,7 +245,7 @@ class PseudoQuadMesh(QuadMesh):
         else:
             return False
 
-    def vertex_topo_index(self, vkey):
+    def vertex_topo_index(self, vkey: int) -> float:
         """Compute vertex index.
 
         Parameters
@@ -250,7 +279,7 @@ class PseudoQuadMesh(QuadMesh):
             regular_valency = 4.0 if not self.is_vertex_on_boundary(vkey) else 3.0
             return (regular_valency - self.vertex_degree(vkey)) / 4.0
 
-    def strip_faces(self, skey):
+    def strip_faces(self, skey: int) -> list[int]:
         """Return the faces of a strip.
 
         Parameters
@@ -274,11 +303,11 @@ class PseudoQuadMesh(QuadMesh):
             elif i == len(edges) - 1 and u == v:
                 pass
             else:
-                if self.halfedge[u][v] is not None:
+                if self.halfedge[u][v] is not None and self.is_strip_face(self.halfedge[u][v]):
                     faces.append(self.halfedge[u][v])
         return faces
 
-    def face_strips(self, fkey):
+    def face_strips(self, fkey: int) -> list[int]:
         """Return the two strips of a face.
 
         Parameters
@@ -300,7 +329,7 @@ class PseudoQuadMesh(QuadMesh):
         else:
             return [self.edge_strip((u, v)) for u, v in list(self.face_halfedges(fkey))[:2]]
 
-    def delete_face_in_strips(self, fkey):
+    def delete_face_in_strips(self, fkey: int) -> None:
         """Delete face in strips.
 
         Parameters
@@ -315,7 +344,7 @@ class PseudoQuadMesh(QuadMesh):
         self.attributes['strips'] = {skey: [(u, v) for u, v in self.strip_edges(skey) if u == v or (
             self.halfedge[u][v] != fkey and self.halfedge[v][u] != fkey)] for skey in self.strips()}
 
-    def singularity_polyedges(self):
+    def singularity_polyedges(self) -> list[list[int]]:
         """Collect the polyedges connected to singularities.
 
         Returns
@@ -664,7 +693,7 @@ class PseudoQuadMesh(QuadMesh):
 #     vertex_conversion = {vkey: i for i, vkey in enumerate(mesh.vertices())}
 #     new_face_vertices = []
 
-#     poles = [geometric_key(pole) for pole in poles]
+#     poles = [TOL.geometric_key(pole) for pole in poles]
 
 #     for fkey in mesh.faces():
 #         face_vertices = mesh.face_vertices(fkey)[:]
@@ -672,7 +701,7 @@ class PseudoQuadMesh(QuadMesh):
 #             # find pole location
 #             pole = None
 #             for vkey in face_vertices:
-#                 geom_key = geometric_key(mesh.vertex_coordinates(vkey))
+#                 geom_key = TOL.geometric_key(mesh.vertex_coordinates(vkey))
 #                 if geom_key in poles:
 #                     pole = vkey
 #                     break

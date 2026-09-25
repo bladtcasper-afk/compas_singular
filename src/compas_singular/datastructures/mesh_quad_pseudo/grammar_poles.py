@@ -1,6 +1,12 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from compas_singular.datastructures import PseudoQuadMesh
 
 __all__ = [
     'split_quad_in_pseudo_quads',
@@ -8,7 +14,7 @@ __all__ = [
 ]
 
 
-def split_quad_in_pseudo_quads(mesh, fkey, vkey):
+def split_quad_in_pseudo_quads(mesh: "PseudoQuadMesh", fkey: int, vkey: int) -> dict[int, int] | None:
 
     if len(mesh.face_vertices(fkey)) != 4:
         return None
@@ -26,7 +32,7 @@ def split_quad_in_pseudo_quads(mesh, fkey, vkey):
     return {fkey_1: a, fkey_2: a}
 
 
-def merge_pseudo_quads_in_quad(mesh, fkey_1, fkey_2):
+def merge_pseudo_quads_in_quad(mesh: "PseudoQuadMesh", fkey_1: int, fkey_2: int) -> int | None:
 
     edge = mesh.face_adjacency_halfedge(fkey_1, fkey_2)
 
