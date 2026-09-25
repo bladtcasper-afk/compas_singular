@@ -4,10 +4,15 @@ prune .github
 
 prune data
 prune docs
-prune docsource
 prune examples
 prune temp
 prune tests
+
+# Excluded from the package in pyproject.toml; pruned here so that
+# include-package-data does not ship their .py files as data.
+prune src/compas_singular/algorithms/unused
+prune src/compas_singular/rhino/geometry
+prune src/compas_singular.egg-info
 
 include LICENSE
 include README.md
@@ -15,9 +20,11 @@ include AUTHORS.md
 include CHANGELOG.md
 include requirements.txt
 include requirements-viewer.txt
+include requirements-fd.txt
+include requirements-rhino.txt
+include requirements-dev.txt
 include pyproject.toml
 
-exclude requirements-dev.txt 
 exclude pytest.ini .bumpversion.cfg .editorconfig
 exclude tasks.py
 exclude CONTRIBUTING.md

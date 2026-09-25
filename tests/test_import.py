@@ -32,7 +32,6 @@ PACKAGES = [
     'compas_singular.datastructures.mesh_quad_coarse',
     'compas_singular.datastructures.mesh_quad_pseudo',
     'compas_singular.datastructures.mesh_quad_pseudo_coarse',
-    'compas_singular.datastructures.network',
     'compas_singular.datastructures.skeleton',
     'compas_singular.geometry',
     'compas_singular.topology',
@@ -59,9 +58,20 @@ def test_grammar_functions_are_callable(name):
 
 
 @pytest.mark.parametrize('name', ['delete_strip', 'delete_strips'])
-def test_deletion_keeps_the_preserve_boundaries_signature(name):
-    # algorithms/twocoloring.py and algorithms/mapping.py both rely on this
-    assert 'preserve_boundaries' in inspect.signature(getattr(ds, name)).parameters
+def test_deletion_takes_no_preserve_boundaries_flag(name):
+    """Pre-splitting to save a boundary is the CALLER's step, not the grammar's.
+
+    It used to be a ``preserve_boundaries`` kwarg here, which meant the policy
+    was decided both here and in ``MeshEditor._split_strips``. Callers now pair
+    ``strips_to_split_to_prevent_boundary_collapse`` with ``split_strips``
+    themselves -- see ``unused.twocoloring.delete_strips_preserving_boundaries``.
+    """
+    assert 'preserve_boundaries' not in inspect.signature(getattr(ds, name)).parameters
+
+
+def test_the_grammar_exports_what_a_caller_needs_to_preserve_boundaries():
+    for name in ('strips_to_split_to_prevent_boundary_collapse', 'split_strips'):
+        assert callable(getattr(ds, name)), name
 
 
 def test_datastructures_mesh_quad_is_the_package():

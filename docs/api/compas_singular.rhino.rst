@@ -1,19 +1,22 @@
 ********************************************************************************
-compas_singular.topology
+compas_singular.rhino
 ********************************************************************************
 
-.. currentmodule:: compas_singular.topology
+.. currentmodule:: compas_singular.rhino
 
 .. rst-class:: lead
 
-Topological properties of meshes.
+Rhino 8 integration. Importable only inside Rhino.
 
 
-Colouring
-=========
+Scene
+=====
+
+.. currentmodule:: compas_singular.rhino.scene
 
 .. autosummary::
     :toctree: generated/
     :nosignatures:
 
-    is_adjacency_two_colorable
+    register_scene_objects_rhino
+    ensure_registered

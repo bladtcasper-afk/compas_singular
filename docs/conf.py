@@ -1,118 +1,152 @@
+# flake8: noqa
 # -*- coding: utf-8 -*-
 
-# If your documentation needs a minimal Sphinx version, state it here.
-#
-# needs_sphinx = '1.0'
-
-import sys
-import os
-
-import sphinx_compas_theme
-
+import sphinx_compas2_theme
+from sphinx.writers import html
+from sphinx.writers import html5
 
 # -- General configuration ------------------------------------------------
 
-project = 'COMPAS Singular'
-copyright = 'Block Research Group - ETH Zurich'
-author = 'Robin Oval'
-release = '0.1.0'
-version = '.'.join(release.split('.')[0:2])
+project = "COMPAS Singular"
+copyright = "Block Research Group - ETH Zurich"
+author = "Robin Oval, Casper Bladt"
+organization = "bladtcasper-afk"
+package = "compas_singular"
 
-master_doc = 'index'
-source_suffix = ['.rst', ]
-templates_path = ['_templates', ]
-exclude_patterns = []
+master_doc = "index"
+source_suffix = {".rst": "restructuredtext", ".md": "markdown"}
+templates_path = ["_templates"] + sphinx_compas2_theme.get_autosummary_templates_path()
+exclude_patterns = sphinx_compas2_theme.default_exclude_patterns
+add_module_names = False
+language = "en"
 
-pygments_style   = 'sphinx'
-show_authors     = True
-add_module_names = True
-language         = None
+latest_version = sphinx_compas2_theme.get_latest_version()
 
+if latest_version == "Unreleased":
+    release = "Unreleased"
+    version = "latest"
+else:
+    release = latest_version
+    version = ".".join(release.split(".")[0:2])  # type: ignore
 
 # -- Extension configuration ------------------------------------------------
 
-extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.autosummary',
-    'sphinx.ext.doctest',
-    'sphinx.ext.intersphinx',
-    'sphinx.ext.mathjax',
-    'sphinx.ext.napoleon',
-    'matplotlib.sphinxext.plot_directive',
-]
+extensions = sphinx_compas2_theme.default_extensions
+
+# numpydoc options
+
+numpydoc_show_class_members = False
+numpydoc_class_members_toctree = False
+numpydoc_attributes_as_param_list = True
+numpydoc_show_inherited_class_members = False
+
+# bibtex options
 
 # autodoc options
 
-autodoc_default_flags = [
-    'undoc-members',
-    'show-inheritance',
-]
+autodoc_type_aliases = {}
+autodoc_typehints_description_target = "documented"
+autodoc_mock_imports = sphinx_compas2_theme.default_mock_imports + ["compas_rhino", "compas_rui"]
+autodoc_default_options = {
+    "undoc-members": True,
+    "show-inheritance": True,
+}
+autodoc_member_order = "groupwise"
+autodoc_typehints = "description"
+autodoc_class_signature = "separated"
 
-autodoc_member_order = 'alphabetical'
+autoclass_content = "class"
 
-autoclass_content = 'class'
+
+def setup(app):
+    app.connect("autodoc-skip-member", sphinx_compas2_theme.skip)
+
 
 # autosummary options
 
 autosummary_generate = True
+autosummary_mock_imports = sphinx_compas2_theme.default_mock_imports + ["compas_rhino", "compas_rui"]
 
-# napoleon options
-
-napoleon_google_docstring = True
-napoleon_numpy_docstring = True
-napoleon_include_init_with_doc = False
-napoleon_include_private_with_doc = False
-napoleon_include_special_with_doc = True
-napoleon_use_admonition_for_examples = False
-napoleon_use_admonition_for_notes = False
-napoleon_use_admonition_for_references = False
-napoleon_use_ivar = False
-napoleon_use_param = False
-napoleon_use_rtype = False
+# graph options
 
 # plot options
-
-# plot_include_source
-# plot_pre_code
-# plot_basedir
-# plot_formats
-# plot_rcparams
-# plot_apply_rcparams
-# plot_working_directory
-# plot_template
-
-plot_html_show_source_link = False
-plot_html_show_formats = False
 
 # intersphinx options
 
 intersphinx_mapping = {
-    'python': ('https://docs.python.org/', None),
-    'compas': ('https://compas-dev.github.io/main', 'https://compas-dev.github.io/main/objects.inv'),
+    "python": ("https://docs.python.org/3", None),
+    "compas": ("https://compas.dev/compas/latest/", None),
 }
 
+# linkcode
+
+linkcode_resolve = sphinx_compas2_theme.get_linkcode_resolve(organization, package)
+
+# extlinks
+
+extlinks = {}
+
+# from pytorch
+
+sphinx_compas2_theme.replace(html.HTMLTranslator)
+sphinx_compas2_theme.replace(html5.HTML5Translator)
 
 # -- Options for HTML output ----------------------------------------------
 
-html_theme = 'compaspkg'
-html_theme_path = sphinx_compas_theme.get_html_theme_path()
+html_theme = "sidebaronly"
+html_title = project
+
+favicons = [
+    {
+        "rel": "icon",
+        "href": "compas.ico",
+    }
+]
 
 html_theme_options = {
-    'package_name' : 'compas_singular',
-    'package_title' : project,
-    'package_version' : release,
-    'package_author' : author,
-    'package_description' : '',
-    'package_docs' : 'https://blockresearchgroup.github.io/compas_singular',
-    'package_repo' : 'https://github.com/blockresearchgroup/compas_singular.git',
+    "external_links": [
+        {"name": "COMPAS Framework", "url": "https://compas.dev"},
+    ],
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": f"https://github.com/{organization}/{package}",
+            "icon": "fa-brands fa-github",
+            "type": "fontawesome",
+        },
+        {
+            "name": "Discourse",
+            "url": "http://forum.compas-framework.org/",
+            "icon": "fa-brands fa-discourse",
+            "type": "fontawesome",
+        },
+    ],
+    "switcher": {
+        "json_url": f"https://raw.githubusercontent.com/{organization}/{package}/gh-pages/versions.json",
+        "version_match": version,
+    },
+    "logo": {
+        "image_light": "_static/compas_icon_white.png",
+        "image_dark": "_static/compas_icon_white.png",
+        "text": project,
+    },
+    "navigation_depth": 2,
 }
 
-html_context = {}
-html_static_path = []
-html_extra_path = ['.nojekyll']
-html_last_updated_fmt = ''
+html_context = {
+    "github_url": "https://github.com",
+    "github_user": organization,
+    "github_repo": package,
+    "github_version": "dev",
+    "doc_path": "docs",
+}
+
+html_static_path = sphinx_compas2_theme.get_html_static_path() + ["_static"]
+html_css_files = []
+html_extra_path = []
+html_last_updated_fmt = ""
 html_copy_source = False
-html_show_sourcelink = False
-html_add_permalinks = ''
-html_experimental_html5_writer = True
+html_show_sourcelink = True
+html_permalinks = False
+html_permalinks_icon = ""
 html_compact_lists = True

@@ -232,6 +232,25 @@ def test_undo_puts_the_pole_back():
     assert not editor._strips_stale
 
 
+def test_reset_puts_the_preferred_poles_back():
+    fixture = _two_triangle_pole()
+    editor = CoarseEditor(fixture.target, loops=fixture.loops, poles=[[2.0, 0.5, 0.0]])
+    assert editor.move_pole(2, 5)[0]
+    assert editor.poles == [[1.0, 0.5, 0.0]]
+    editor.reset()
+    assert editor.poles == [[2.0, 0.5, 0.0]]
+
+
+def test_unify_counts_the_faces_it_flipped():
+    from compas_singular.editing.repair import _unify
+    vertices = [[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0],
+                [0, 1, 0], [1, 1, 0], [2, 1, 0], [3, 1, 0]]
+    faces = [[0, 1, 5, 4], [5, 6, 2, 1], [2, 3, 7, 6]]      # the middle one clockwise
+    mesh = CoarsePseudoQuadMesh.from_vertices_and_faces(vertices, faces)
+    _out, flipped = _unify(mesh, CoarsePseudoQuadMesh)
+    assert flipped == 1
+
+
 def test_a_commit_after_move_pole_keeps_keys_and_drops_the_strip_data():
     # Not the one-triangle fixture: its corner 5 belongs to no patch, which
     # ``densifiable`` rightly calls non-manifold.
@@ -348,19 +367,38 @@ def test_divide_takes_the_rebuild_path_at_commit(grid3):
 # ==============================================================================
 #
 # A deletion that would leave a boundary with fewer than three edges is preceded
-# by REFINING the strips that survive on it. The refinement itself is a strip
-# addition, and which add_strip it goes through is the whole question: the pattern
-# grammar's ends with ``func_1``, a 20-iteration constrained smooth, and on a
-# COARSE layout that slides corners along the chorded boundary.
+# by REFINING the strips that survive on it. The refinement is itself a strip
+# addition, so it inherits the grammar's rule: topology only, and the new strip
+# has ZERO WIDTH until the caller opens it. The base therefore leaves the split
+# strips closed, and each editor opens them its own way -- exact thirds here,
+# relaxation on a dense mesh.
+#
+# Until 2026-09-18 the base instead went through a second ``add_strip`` that
+# ended in ``func_1``, a 20-iteration constrained smooth; on a COARSE layout that
+# slid corners along the chorded boundary, which is what the override below was
+# originally written to avoid. The override survives that implementation for the
+# opposite reason: the base no longer moves anything, and now something has to.
 
 from compas_singular.editing.editor import MeshEditor  # noqa: E402
 
 
-class _Unsmoothed(CoarseEditor):
-    """The base behaviour, for comparison: pattern-grammar split_strips."""
+class _Unopened(CoarseEditor):
+    """The base behaviour, for comparison: topology only, nothing opened."""
 
     def _split_strips(self, work, to_split):
         return MeshEditor._split_strips(self, work, to_split)
+
+
+def _coincident_corner_pairs(mesh):
+    """Pairs of corners of one face sitting on top of each other."""
+    n = 0
+    for fkey in mesh.faces():
+        points = [mesh.vertex_coordinates(v) for v in mesh.face_vertices(fkey)]
+        for a in range(len(points)):
+            for b in range(a + 1, len(points)):
+                if sum((x - y) ** 2 for x, y in zip(points[a], points[b])) ** 0.5 < 1e-9:
+                    n += 1
+    return n
 
 
 def _split_and_measure(cls, mesh):
@@ -386,8 +424,7 @@ def _split_and_measure(cls, mesh):
 
 
 def test_the_coarse_pre_split_moves_no_existing_corner(grid3):
-    """The point of overriding it. Measured on this 3x3 layout: the pattern
-    grammar's smooth moves 10 corners by up to 0.94 on a 3-unit plate."""
+    """Refining to save a boundary must not disturb the layout it is saving."""
     mesh, _ = grid3
     work, moved, drift = _split_and_measure(CoarseEditor, mesh)
 
@@ -395,15 +432,28 @@ def test_the_coarse_pre_split_moves_no_existing_corner(grid3):
     assert work.number_of_faces() == 12, 'the strip was not actually split'
 
 
-def test_the_pattern_grammar_pre_split_does_move_them(grid3):
+def test_the_base_pre_split_leaves_the_new_strip_closed(grid3):
     """Pins WHY the override exists. If this ever stops being true the override
-    is dead weight and should go."""
-    mesh, _ = grid3
-    _work, moved, drift = _split_and_measure(_Unsmoothed, mesh)
+    is dead weight and should go.
 
-    assert moved > 0 and drift > 0.1, (
-        'func_1 no longer disturbs the layout -- re-check whether the coarse '
-        'override is still needed (moved %d, drift %.4f)' % (moved, drift))
+    The base is topology only, so every rung of the refined strip comes out with
+    its two sides on top of each other. The override opens them, and the measure
+    of that is strictly fewer coincident corners -- not zero, because
+    ``_open_strip`` still leaves the rungs at the two ends closed on this layout.
+    """
+    mesh, _ = grid3
+    base, _moved, _drift = _split_and_measure(_Unopened, mesh)
+    opened, _moved, _drift = _split_and_measure(CoarseEditor, mesh)
+
+    base_pairs = _coincident_corner_pairs(base)
+    opened_pairs = _coincident_corner_pairs(opened)
+
+    assert base_pairs > 0, (
+        'the base pre-split no longer leaves the strip closed -- re-check '
+        'whether the coarse override is still needed')
+    assert opened_pairs < base_pairs, (
+        'the override opened nothing (base %d, override %d)'
+        % (base_pairs, opened_pairs))
 
 
 def test_the_plan_reports_whether_a_boundary_can_be_saved(grid3):

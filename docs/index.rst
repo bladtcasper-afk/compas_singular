@@ -2,68 +2,48 @@
 COMPAS Singular
 ********************************************************************************
 
+.. figure:: /_images/01_front.jpg
+     :figclass: figure
+     :class: figure-img img-fluid
+
 .. rst-class:: lead
 
-Welcome to the documentation of :mod:`compas_singular`,
-a Python library developed for the topological design of the singularities in quad-mesh patterns.
+:mod:`compas_singular` turns a 2D domain -- a boundary, optional holes, and optional
+point features, curve features and guides -- into a quad mesh with controlled topology.
+You choose where the irregular vertices (the *singularities*) sit,
+instead of getting them wherever a generic quadrangulation happens to put them.
 
+A coarse quad layout is built from the domain along one of two routes:
+the topological skeleton of the domain, or a cross field solved over it.
+The layout can then be edited strip by strip, given densities and patterns,
+densified into a dense quad mesh, smoothed, and turned into its dual.
+The same pipeline runs as a Python API, as a set of Rhino 8 commands, and as an MCP server.
 
-Introduction
-============
-
-:mod:`compas_singular` stems from the doctoral research of Robin Oval at Université Paris-Est in a collaboration between Laboratoire Navier and ETH Zurich,
-funded by l'École des Ponts ParisTech and the Block Research Group, under the supervision of Prof Olivier Baverel and Prof Philippe Block, as well as Dr Romain Mesnil, Dr Matthias Rippmann and Dr Tom Van Mele.
-
-.. figure:: /_images/01_front.jpg
-    :figclass: figure
-    :class: figure-img img-fluid
-
-    This figure shows that even for a simple shape like an elliptic dome, a rich combinatorial design space is to be explored regarding compas_singularities (in pink) in coarse quad meshes (in black).
-
-
-Motivation
-==========
-
-Shell-like structures allow to elegantly and efficiently span large areas.
-Quad meshes are natural patterns to represent these surface objects, which can also serve for mapping other patterns.
-Patterns for these shells, vaults, gridshells or nets can represent the materialised structure, the force equilibrium or the surface map.
-The topology of these patterns constrains their qualitative and quantitative modelling freedom for geometrical exploration.
-Unless topological exploration is enabled.
-Parametric design supporting exploration and optimisation of the geometry of structures is spreading across the community of designers and builders.
-Unfortunately, topological design is lagging, despite some optimisation-oriented strategies for specific design objectives.
-Strategies, algorithms and tools for topological exploration are necessary to tackle the multiple objectives in architecture, engineering and construction for the design of structures at the architectural scale.
-The task of structural design is rich and complex, calling for interactive algorithms oriented towards co-design between the human and the machine.
-Such an approach is complementary and empowered with existing methods for geometrical exploration and topology optimisation.
-The present work introduces topology finding for efficient search across the topological design space.
-This thesis builds on three strategies for topology finding of compas_singularities in quad-mesh patterns, presented from the most high-level to the most low-level approach.
-
-**Geometry-coded exploration** relies on a skeleton-based quad decomposition of a surface including point and curve features.
-These geometrical parameters can stem from design heuristics to integrate into the design, related to the statics system or the curvature of the shell, for instance.
-
-**Graph-coded exploration** relies on the topological strips in quad meshes.
-A grammar of rules allows exploration of this strip structure to search the design space.
-A similarity-informed search algorithm finds design with different degrees of topological similarity.
-Designs optimised for single objectives can inform this generation process to obtain designs offering different trade-offs between multiple objectives.
-A two-colour search algorithm finds designs that fulfil a two-colouring requirement of two-colouring.
-This topological property allows a partition of the pattern elements that many structural systems necessitate.
-
-**String-coded exploration** relies on the translation of the grammar rules into alphabetical operations, shifting encoding from a phenotype mesh to a genotype string.
-Modifications, or mutations, of the string transform the genotype and change the phenotype of the design.
-String or vector encoding opens for the use of search and optimisation algorithms, like linear programming, genetic algorithms or machine learning.
+:mod:`compas_singular` stems from the doctoral research of Robin Oval
+on topology finding of patterns for structural design,
+and is built on the `COMPAS <https://compas.dev>`_ framework.
 
 
 Table of Contents
 =================
 
 .. toctree::
-    :maxdepth: 3
-    :titlesonly:
+   :maxdepth: 3
+   :titlesonly:
 
-    Introduction <self>
-    01_getting_started
-    02_overview
-    03_examples
-    04_api
-    05_license
-    06_citing
-    07_publications
+   Introduction <self>
+   installation
+   tutorial
+   examples
+   api
+   publications
+   citing
+   license
+   acknowledgements
+
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`search`

@@ -188,16 +188,16 @@ def test_new_graph_pairs_the_two_polyedges_crossing_at_a_vertex(grid):
 # without clearing, so a strip key that had been DELETED and was then re-assigned
 # landed at the END of the dict's insertion order. That alone leaves stale entries
 # (read as real by ``is_strip_closed``, which only looks at ``strips[skey][0]``),
-# and it also breaks ``grammar_pattern.add_strip``'s ``list(mesh.strips())[-1] + 1``,
+# and it also breaks an ``add_strip`` that names the new strip ``list(mesh.strips())[-1] + 1``,
 # which then names a strip that already exists and silently overwrites its edges.
 #
 # Measured on the 4 x 4 grid below, before the fix:
 #     after delete_strip(3) + collect_strips() -> [0, 1, 2, 4, 5, 6, 7, 3]
 #     last = 3, max = 7, and ``last + 1`` = 4, which was a live strip.
 
-from compas_singular.datastructures.mesh_quad.grammar_pattern import (  # noqa: E402
+from compas_singular.datastructures.mesh_quad.grammar.add_strip import (  # noqa: E402
     add_strip as pattern_add_strip)
-from compas_singular.datastructures.mesh_quad.grammar_pattern import (  # noqa: E402
+from compas_singular.datastructures.mesh_quad.grammar.delete_strip import (  # noqa: E402
     delete_strip as pattern_delete_strip)
 
 
