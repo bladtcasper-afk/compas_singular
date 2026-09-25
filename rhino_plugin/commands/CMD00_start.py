@@ -49,9 +49,7 @@ def reset_project():
     for name, color in LAYER_DATA.values():
         rs.AddLayer(name=name, color=color)
 
-    # An empty session with the settings kept. Cleared explicitly: with its anchor
-    # gone, the document reads as one from before sessions, and the legacy
-    # import would bring an old side-car layout or field back.
+    # An empty session with the settings kept.
     session = RhinoSession.current()
     session.clear(*session.ITEMS)
     session.settings = settings

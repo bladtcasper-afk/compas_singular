@@ -80,11 +80,11 @@ from System.Drawing import Color
 from compas_singular.editing import CoarseEditor
 from compas_singular.rhino import mesh_ui
 from compas_singular.rhino.mesh_ui import FINISH
-from compas_singular.rhino.coarse_curves import coarse_edges_to_curves
+from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import coarse_edges_to_curves
 from compas_singular.rhino.helpers import read_boundaries
 from compas_singular.rhino.helpers import read_boundary_loops
 from compas_singular.rhino.project import get_settings, resolve_spacing
-from compas_singular.rhino.project import layout_polylines, read_layout
+from compas_singular.rhino.project import read_layout
 from compas_singular.rhino.session import RhinoSession
 
 
@@ -139,7 +139,7 @@ print("layout: {} patch(es), {} corner(s), {} pole(s)".format(
 #     on a skeleton-route document, legitimately.
 session = RhinoSession.current()
 field = session.field
-polylines = layout_polylines(coarse)
+polylines = coarse.shape_polylines()
 print("separatrices: {} on the layout".format(len(polylines)))
 
 #: What ``commit()`` puts here, and the only thing the write-back below tests.
@@ -860,8 +860,13 @@ else:
 
     # Into the session. Recording draws it: the layout on Skeleton::Mesh, its
     # poles, its edge curves and its shape polylines on their layers.
+    #
+    # The shape polylines are the COMMITTED layout's edges, one per edge, not
+    # ``editor.all_polylines``: that is every separatrix this command read plus
+    # every curve drawn, so a removed strip's separatrix and a moved corner's
+    # old polyline stayed on Skeleton::Polylines and were fed to the next edit.
     committed.set_edges_to_curves(curves)
-    committed.set_shape_polylines(editor.all_polylines)
+    committed.set_shape_polylines(list(curves.values()))
     committed.attributes.setdefault("route", "field")
     committed.attributes["edited"] = True
     session.coarse = committed

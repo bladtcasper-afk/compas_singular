@@ -7,7 +7,7 @@
 
     reads   the session's layout WITH its attributes, and its field if step 3 solved one
             TopologyProblem::InputBoundaries::{Outer, Inner}
-    writes  the session's dense mesh, drawn on TopologyProblem::QuadMesh
+    writes  the session's dense mesh, drawn on TopologyProblem::QuadMesh::Dense
 
 **A coarse edge is a straight chord, and the coarse layout has to stay that
 way.** Strips, densities, poles and ``add_strip`` are all defined on the
@@ -39,12 +39,12 @@ from compas_singular.rhino.helpers import read_boundaries, read_boundary_loops
 from compas_singular.framefield.quality import mesh_quality
 
 from compas_singular.rhino.project import get_settings, set_settings
-from compas_singular.rhino.project import layout_polylines, read_layout
+from compas_singular.rhino.project import read_layout
 from compas_singular.rhino.project import resolve_relax, resolve_field_symmetry, resolve_spacing
 from compas_singular.rhino.session import RhinoSession
 # One implementation, shared with CMD_densities.
 from compas_singular.rhino.project import resolve_densities
-from compas_singular.rhino.project import ROOT
+from compas_singular.rhino.project import ROOT, layer_path
 
 #The walls the layout's boundary edges densify ALONG, as a multiple of the
 #background spacing. Finer than the background, because these points are the
@@ -135,7 +135,7 @@ def main():
             snapped, worst))
 
     edges_to_curves, tally = coarse_edges_to_curves(
-        coarse, loops=loops, polylines=layout_polylines(coarse))
+        coarse, loops=loops, polylines=coarse.shape_polylines())
 
     # ------------------------------------------------------------------
     # densities, then the mesh
@@ -152,9 +152,9 @@ def main():
         dense = coarse.quad_mesh(boundary_curvature=boundary_curvature, skeleton_curvature=skeleton_curvature)
 
     # What was under QuadMesh belonged to the previous mesh: an edited copy, a
-    # smoothed one, a dual. Recording draws the new one on QuadMesh itself.
-    layer = rs.AddLayer("QuadMesh", parent=ROOT)
-    clear_layer(layer, clean_sublayers=True)
+    # smoothed one, a dual. Recording draws the new one on QuadMesh::Dense.
+    clear_layer(rs.AddLayer("QuadMesh", parent=ROOT), clean_sublayers=True)
+    layer = layer_path("Dense")
     session = RhinoSession.current()
     session.coarse = coarse          # with the densities it was meshed at
     session.dense = dense

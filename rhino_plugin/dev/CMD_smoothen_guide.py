@@ -380,12 +380,12 @@ if fixed:
 constrained_smoothing(mesh, kmax=kmax, damping=damping,
                       constraints=constraints, algorithm="area", fixed=fixed)
 
-clear_layer("Smoothened", clean_sublayers=True)
-rs.AddLayer("Smoothened", parent="QuadMesh")
-rs.AddLayer("Guided", parent="Smoothened")
+clear_layer("Smoothed", clean_sublayers=True)
+rs.AddLayer("Smoothed", parent="QuadMesh")
+rs.AddLayer("Guided", parent="Smoothed")
 bake_mesh(mesh, "Guided")
 
 print("smoothed: {} vertices moved onto guides, {} constrained in total, boundary {}.".format(
     len(moved), len(constraints), boundary_mode))
-print("baked to 'QuadMesh::Smoothened::Guided' -- the original 'QuadMesh' is untouched.")
+print("baked to 'QuadMesh::Smoothed::Guided' -- the original 'QuadMesh' is untouched.")
 print("next: CMD_dual for the dual mesh, or run this again to attach more guides.")

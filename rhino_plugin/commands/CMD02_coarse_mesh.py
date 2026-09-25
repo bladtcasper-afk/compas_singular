@@ -12,7 +12,7 @@ import compas_rhino as cr
 from compas_singular.algorithms import SkeletonDecomposition
 from compas_singular.framefield.field_decomposition import FieldDecomposition
 from compas_singular.rhino.helpers import clear_layer, read_boundary_loops, read_boundaries
-from compas_singular.rhino.coarse_curves import coarse_edges_to_curves, snap_corners_to_walls
+from compas_singular.datastructures.mesh_quad_coarse.coarse_curves import coarse_edges_to_curves, snap_corners_to_walls
 from compas_singular.rhino.project import get_settings, resolve_relax, resolve_field_symmetry
 from compas_singular.rhino.project import resolve_spacing, layer_path
 from compas_singular.rhino.session import RhinoSession

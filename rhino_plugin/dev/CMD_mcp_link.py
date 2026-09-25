@@ -4,11 +4,11 @@
 """**Attach this document to the standalone MCP server. Toggle on, toggle off.**
 
     reads   Outer / Inner / Guides / PointFeatures    the domain
-            TopologyProblem::QuadMesh             the dense mesh
+            TopologyProblem::QuadMesh::Dense      the dense mesh
             Mesh + Poles                          the coarse layout, on request
             the session's layout                  with pull_coarse
             the current selection                 with pull, selection=true
-    writes  TopologyProblem::QuadMesh             only on a push
+    writes  TopologyProblem::QuadMesh::Dense      only on a push
             ...::QuadMesh::MCP::Before            the mesh that was there
             the session's layout                  on a push_coarse, drawn by it on
             TopologyProblem::Skeleton::{Mesh, Poles, Polylines, EdgeCurves}
@@ -64,12 +64,12 @@ from compas_singular.rhino.project import ROOT
 from compas_singular.rhino.project import layer_path
 
 
-QUADMESH_LAYER = layer_path("QuadMesh")
-BEFORE_LAYER = QUADMESH_LAYER + "::MCP::Before"
+#: Where the session draws the dense mesh; "QuadMesh" is its alias for the tools.
+DENSE_LAYER = layer_path("Dense")
+BEFORE_LAYER = layer_path("QuadMesh") + "::MCP::Before"
 
-#: Where the CMD_ commands keep a coarse layout -- ``CMD_coarse_mesh`` writes
-#: these four and ``read_coarse`` / ``CMD_quad_mesh`` / ``CMD_edit_coarse_mesh``
-#: read them. A pushed layout has to land exactly here to be picked up.
+#: Where the session draws a coarse layout. The layout itself lives in the
+#: session; what is on these four is only its display.
 SKELETON = layer_path("Skeleton")
 SKELETON_LAYERS = (
     ("mesh", layer_path("Mesh")),
@@ -84,7 +84,8 @@ COARSE_BEFORE_LAYER = SKELETON + "::MCP::Before"
 
 #: Layers that may be pulled from, by the short name the tool passes.
 PULL_LAYERS = {
-    "QuadMesh": QUADMESH_LAYER,
+    "QuadMesh": DENSE_LAYER,
+    "Dense": DENSE_LAYER,
     "Mesh": "Mesh",
 }
 
@@ -112,12 +113,10 @@ def _bind():
     from compas_singular.rhino.helpers import read_boundary_loops
     from compas_singular.rhino.helpers import read_mesh
     from compas_singular.rhino import mesh_ui
-    from compas_singular.rhino.project import layout_polylines
     from compas_singular.rhino.session import RhinoSession
     _BOUND.update({
         "package": compas_singular, "spool": spool, "wire": wire,
         "compas": compas, "session": RhinoSession.current,
-        "layout_polylines": layout_polylines,
         "bake_mesh": bake_mesh,
         "clear_layer": clear_layer, "curve_points": curve_points,
         "read_coarse": read_coarse, "mesh_from_rhino": mesh_from_rhino,
@@ -280,18 +279,14 @@ def _verb_pull(args):
 def _verb_pull_coarse(args):
     """Read the session's coarse layout, and the domain from the document. Changes nothing.
 
-    Everything a layout needs to come back as it went out: its corners and poles,
-    the polylines its edges take their shape from, and the layout itself as TEXT
-    (the ``side_car`` field) carrying strips / densities / patterns. The server
-    matches the text against the corners, so the link still decides nothing.
+    The layout goes as TEXT (the ``coarse`` field), exactly as the session holds
+    it: double precision, with its strips, densities, patterns and edge shapes.
     """
     bound = _fresh()
     spacing = float(args.get("spacing") or 0.125)
     outer, inners, guides, points = _read_domain(bound, spacing)
 
     layout = bound["session"]().coarse
-    side_car = bound["compas"].json_dumps(layout) if layout is not None else None
-    polylines = bound["layout_polylines"](layout) if layout is not None else []
 
     return {
         "document": document_name(),
@@ -299,10 +294,7 @@ def _verb_pull_coarse(args):
         "inners": [[list(p) for p in loop] for loop in inners],
         "guides": [[list(p) for p in g] for g in guides],
         "points": points,
-        "layout": bound["wire"].mesh_to_wire(layout) if layout is not None else None,
-        "polylines": [[list(p) for p in curve] for curve in polylines],
-        "side_car": side_car,
-        "side_car_path": "session" if side_car is not None else None,
+        "coarse": bound["compas"].json_dumps(layout) if layout is not None else None,
     }
 
 
@@ -369,19 +361,15 @@ def _verb_push_coarse(args):
 
     Everything is computed by the server: the layout WITH what only it knows --
     strips, densities, dense patterns, the shape of every edge -- in the
-    ``side_car`` text, and the shaped edges in ``polylines``. Recording draws it
-    on the four layers ``CMD_coarse_mesh`` would have, so ``CMD_densities``,
-    ``CMD_quad_mesh`` and ``CMD_edit_coarse_mesh`` carry on from it.
+    ``coarse`` text. Recording draws it on the four layers ``CMD_coarse_mesh``
+    would have, so ``CMD_densities``, ``CMD_quad_mesh`` and
+    ``CMD_edit_coarse_mesh`` carry on from it.
     """
     bound = _fresh()
-    payload = args.get("layout")
-    side_car = args.get("side_car")
-    if not payload or not side_car:
+    text = args.get("coarse")
+    if not text:
         raise ValueError("the push carried no layout")
-    mesh = bound["wire"].mesh_from_wire(payload)
-    layout = bound["compas"].json_loads(side_car)
-    if not layout.shape_polylines():
-        layout.set_shape_polylines(args.get("polylines") or [])
+    layout = bound["compas"].json_loads(text)
 
     try:
         selected = list(rs.SelectedObjects() or [])
@@ -425,12 +413,10 @@ def _verb_push_coarse(args):
     result = {
         "document": document_name(),
         "layers": dict(SKELETON_LAYERS),
-        "faces": mesh.number_of_faces(),
-        "vertices": mesh.number_of_vertices(),
+        "faces": layout.number_of_faces(),
+        "vertices": layout.number_of_vertices(),
         "before_layer": COARSE_BEFORE_LAYER if moved else None,
         "moved_aside": moved,
-        "side_car": "session",
-        "side_car_before": None,
         "undo_record": "MCP push coarse",
     }
     result.update(counts)
