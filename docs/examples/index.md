@@ -14,7 +14,6 @@ so install the package with the `viewer` extra to run them.
 - [Editing the coarse quad mesh](03_coarse_mesh_editing.md)
 - [Densities](04_densities.md)
 - [Patterns](05_patterns.md)
-- [A hand-made coarse layout](14_hand_made_layout.md)
 
 ## Dense mesh
 
