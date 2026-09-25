@@ -12,7 +12,6 @@ from math import pi
 
 from compas.tolerance import TOL
 
-from compas_singular import blocks
 from compas_singular.datastructures import CoarseQuadMesh
 from compas_singular.datastructures import CoarsePseudoQuadMesh
 from compas_singular.datastructures import QuadMesh
@@ -88,168 +87,6 @@ def test_polygonal_walls_do_not_divide_by_zero(radii, spacing):
     assert coarse.is_manifold()
 
 
-def _l_plate_dense(density=3, resolution=6):
-    """An L-plate, whose reentrant corner gives the layout one valence-5 joint.
-
-    Deliberately not a square with a point feature: that comes out a POLE, and
-    a pole carries index 4, which no single face can carry.
-    """
-    from compas.geometry import Line, Point
-
-    corners = [Point(0, 0, 0), Point(10, 0, 0), Point(10, 4, 0),
-               Point(4, 4, 0), Point(4, 9, 0), Point(0, 9, 0)]
-    corners = corners + [corners[0]]
-    outer = []
-    for i in range(len(corners) - 1):
-        outer.extend(Line(corners[i], corners[i + 1]).to_polyline(n=resolution).points)
-    outer = [[p.x, p.y, p.z] for p in outer]
-
-    trimesh = boundary_triangulation(outer, [], [], [])
-    coarse = SkeletonDecomposition.from_mesh(trimesh).decomposition_mesh([])
-    coarse.collect_strips()
-    coarse.set_strips_density(density)
-    coarse.densification()
-    return coarse.get_quad_mesh()
-
-
-def test_block_from_point_conserves_index():
-    """Truncating a joint TRADES it for a face -- it must not invent one."""
-    mesh = _l_plate_dense()
-    joints = blocks.joints(mesh)
-    assert len(joints) == 1, 'the L-plate should give exactly one joint'
-    valence = mesh.vertex_degree(joints[0])
-    x, y, z = mesh.vertex_coordinates(joints[0])
-
-    before = blocks.index_sum(mesh)
-    degrees_before = blocks.face_degrees(mesh)
-    assert set(degrees_before) == {4}, 'the primal should be all quads'
-
-    # click NEAR the joint, not exactly on it -- the point is the handle
-    out, report = blocks.block_points(mesh, [[x + 0.12, y - 0.09, z]], ratio=0.45)
-
-    assert report['built'] == 1, report['blocks'][0]['reason']
-    assert blocks.index_sum(out) == before
-    assert out.is_manifold()
-
-    degrees_after = blocks.face_degrees(out)
-    assert degrees_after.get(valence) == 1, 'one block, of the joint\'s degree'
-    assert set(degrees_after) == {4, valence}
-    assert report['blocks'][0]['degree'] == valence
-    # the block landed on the point, within one element
-    assert report['blocks'][0]['offset'] < 1.0
-
-
-def test_block_points_refuses_a_pole_with_a_reason():
-    """A pole cannot be truncated, and the refusal has to say so."""
-    mesh = CoarsePseudoQuadMesh.from_json(
-        os.path.join(DATA, 'coarse_quad_mesh_british_museum_poles.json'))
-    mesh.collect_strips()
-    mesh.set_strips_density(2)
-    mesh.densification()
-    dense = mesh.get_quad_mesh()
-
-    pole = dense.vertex_coordinates(
-        [v for v in dense.vertices()
-         if any(len(dense.face_vertices(f)) != 4
-                for f in dense.vertex_faces(v, ordered=True))
-         and not dense.is_vertex_on_boundary(v)][0])
-
-    out, report = blocks.block_points(dense, [pole])
-    assert report['built'] == 0
-    assert 'pole' in report['blocks'][0]['reason'].lower()
-    assert out is dense, 'a refusal must not modify the mesh'
-
-
-def _square_centre_pole_dense(density=2, size=10.0, resolution=20):
-    """A square with one centre point feature -- a FULL pole, clear of the wall."""
-    from compas.geometry import Line, Point
-
-    h = size / 2.0
-    corners = [Point(h, h, 0), Point(-h, h, 0), Point(-h, -h, 0), Point(h, -h, 0)]
-    corners = corners + [corners[0]]
-    outer = []
-    for i in range(len(corners) - 1):
-        outer.extend(Line(corners[i], corners[i + 1]).to_polyline(n=resolution).points)
-    outer = [[p.x, p.y, p.z] for p in outer]
-
-    point = [0.0, 0.0, 0.0]
-    trimesh = boundary_triangulation(outer, [], [], [point])
-    coarse = SkeletonDecomposition.from_mesh(trimesh).decomposition_mesh([point])
-    coarse.collect_strips()
-    coarse.set_strips_density(density)
-    coarse.densification()
-    return coarse.get_quad_mesh(), point
-
-
-def test_pole_blocks_collapses_the_fan_and_conserves_index():
-    """The other route: the fan becomes one face, and the ring pays for it."""
-    dense, point = _square_centre_pole_dense(density=2)
-
-    pole = [v for v in dense.vertices()
-            if not dense.is_vertex_on_boundary(v)
-            and any(len(dense.face_vertices(f)) != 4
-                    for f in dense.vertex_faces(v, ordered=True))
-            and dense.vertex_coordinates(v)[:2] == [0.0, 0.0]][0]
-    fan = len(dense.vertex_faces(pole))
-    # a FULL pole: every face in the fan is a triangle, and none of the fan
-    # touches the wall, which is what makes the index conserve exactly
-    assert all(len(dense.face_vertices(f)) == 3 for f in dense.vertex_faces(pole))
-
-    before = blocks.index_sum(dense)
-    faces_before = dense.number_of_faces()
-    joints_before = len(blocks.joints(dense))
-    out, report = blocks.pole_blocks(dense, [point])
-
-    assert report['built'] == 1, report['blocks'][0]['reason']
-    assert blocks.index_sum(out) == before
-    assert out.is_manifold()
-    # the whole fan became exactly one face, and nothing else moved
-    assert out.number_of_faces() == faces_before - fan + 1
-    assert report['blocks'][0]['degree'] == fan
-    # the block sits exactly on the picked point, because the point WAS the pole
-    assert report['blocks'][0]['offset'] < 1e-6
-    assert report['strips'] == 0, 'the collapse must not propagate'
-    # and the price: the ring vertices each drop to valence 3
-    assert report['ring_joints'] == len(blocks.joints(out)) - joints_before
-
-
-def test_pole_blocks_reports_index_loss_at_the_wall():
-    """A fan touching the boundary still collapses -- and says what it cost.
-
-    ``index_sum`` counts interior vertices only, so a ring vertex ON the wall
-    loses a valence without its term being counted and the total drops. That is
-    the bookkeeping, not a broken collapse: the result must still be manifold,
-    and the drop must be visible in the report rather than silent.
-    """
-    mesh = CoarsePseudoQuadMesh.from_json(
-        os.path.join(DATA, 'coarse_quad_mesh_british_museum_poles.json'))
-    mesh.collect_strips()
-    mesh.set_strips_density(2)
-    mesh.densification()
-    dense = mesh.get_quad_mesh()
-
-    poles = [v for v in dense.vertices()
-             if not dense.is_vertex_on_boundary(v)
-             and any(len(dense.face_vertices(f)) != 4
-                     for f in dense.vertex_faces(v, ordered=True))]
-    assert poles, 'the fixture should have an interior pole'
-    pole = poles[0]
-    # this fixture's poles are PARTIAL -- quads in the fan as well as triangles
-    assert any(len(dense.face_vertices(f)) == 4 for f in dense.vertex_faces(pole))
-    fan = len(dense.vertex_faces(pole))
-
-    out, report = blocks.pole_blocks(dense, [dense.vertex_coordinates(pole)])
-
-    assert report['built'] == 1, report['blocks'][0]['reason']
-    assert out.is_manifold()
-    assert out.number_of_faces() == dense.number_of_faces() - fan + 1
-    # the block is closed on the fan's boundary CYCLE, which is longer than the
-    # neighbour ring when there are quads in the fan
-    assert report['blocks'][0]['degree'] > dense.vertex_degree(pole)
-    assert report['index_after'] <= report['index_before']
-    assert any('INDEX CHANGED' in line for line in blocks.report_lines(report))
-
-
 @pytest.mark.parametrize('string', ['ata', 'atta', 'attta', 'attpptta'])
 def test_lizard_grammar_produces_manifold_mesh(string):
     vertices = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0],
@@ -268,7 +105,7 @@ def test_lizard_grammar_produces_manifold_mesh(string):
 # ==============================================================================
 # Curve features (Oval, thesis 4.3.2, Figs 4.17-4.22)
 #
-# Restored in 2026 after five years switched off; see HOW_IT_WORKS.md. The first
+# Restored in 2026 after five years switched off; see markdowns/HOW_IT_WORKS.md. The first
 # test is the tripwire that keeps the restoration from moving anything else:
 # quadrangulate_polygonal_faces welds, and welding renumbers keys.
 # ==============================================================================
@@ -398,33 +235,6 @@ def test_crossing_features_are_welded_at_their_junction():
     # a single feature, or none, is passed through untouched
     assert weld_polyline_features([arms[0]]) == [arms[0]]
     assert weld_polyline_features([]) == []
-
-
-def test_guide_feature_mesh_embeds_the_guide():
-    """A guide as a curve feature lands ON the mesh edges by construction."""
-    from compas.geometry import closest_point_on_segment, distance_point_point
-    from compas_singular.guide_lines import guide_feature_mesh
-
-    guide = [[2.0, 5.0, 0.0], [8.0, 5.0, 0.0]]
-    target = 0.5
-    dense, info = guide_feature_mesh(_square(), [guide], target_length=target)
-    assert dense.number_of_faces() > 0
-
-    edges = [(dense.vertex_coordinates(u), dense.vertex_coordinates(v)) for u, v in dense.edges()]
-    offsets = []
-    for i in range(41):
-        point = [2.0 + 6.0 * i / 40.0, 5.0, 0.0]
-        offsets.append(min(distance_point_point(point, closest_point_on_segment(point, e)) for e in edges))
-
-    # Away from the extremities the guide IS a run of mesh edges, exactly -- that
-    # is what the topological cut buys, and it is not a snapping tolerance.
-    interior = offsets[4:-4]
-    assert max(interior) < 1e-6, 'guide leaves the mesh edges by {}'.format(max(interior))
-
-    # At a free extremity it can drift, because the medial axis does not always
-    # put a branch point on the tip. Fig 4.22's unwanted-triangle operation is
-    # what closes this and is not implemented; see HOW_IT_WORKS.md.
-    assert max(offsets) < 0.1 * target, 'extremity drifts by {}'.format(max(offsets))
 
 
 def test_boundary_triangulation_accepts_polylines_and_points():
