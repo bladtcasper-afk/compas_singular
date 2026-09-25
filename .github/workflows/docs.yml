@@ -23,3 +23,17 @@ jobs:
           doc_url: https://bladtcasper-afk.github.io/compas_singular/
           python: "3.12"
           test_docs: false
+
+      # Without .nojekyll, GitHub Pages runs Jekyll and drops _static/ and _images/ (no CSS).
+      # The root index.html sends https://bladtcasper-afk.github.io/compas_singular/ to latest/.
+      - name: Serve _static and redirect the root to latest
+        if: github.event_name != 'pull_request'
+        run: |
+          git clone --depth 1 --branch gh-pages "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" site
+          cd site
+          touch .nojekyll
+          printf '<!DOCTYPE html>\n<meta charset="utf-8">\n<title>COMPAS Singular</title>\n<meta http-equiv="refresh" content="0; url=latest/">\n<link rel="canonical" href="latest/">\n<a href="latest/">COMPAS Singular documentation</a>\n' > index.html
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .nojekyll index.html
+          git diff --cached --quiet || (git commit -m "Serve _static and redirect the root to latest" && git push)
