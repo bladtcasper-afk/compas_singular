@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="generator" content="Docutils 0.23: https://docutils.sourceforge.io/" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Overview</title>
+<style type="text/css">
+
+/* Minimal style sheet for the HTML output of Docutils.                    */
+/*                                                                         */
+/* :Author: Günter Milde, based on html4css1.css by David Goodger          */
+/* :Id: $Id: minimal.css 10018 2025-03-06 16:19:15Z milde $                                                               */
+/* :Copyright: © 2015, 2021 Günter Milde.                                  */
+/* :License: Released under the terms of the `2-Clause BSD license`_,      */
+/*    in short:                                                            */
+/*                                                                         */
+/*    Copying and distribution of this file, with or without modification, */
+/*    are permitted in any medium without royalty provided the copyright   */
+/*    notice and this notice are preserved.                                */
+/*                                                                         */
+/*    This file is offered as-is, without any warranty.                    */
+/*                                                                         */
+/* .. _2-Clause BSD license: http://www.spdx.org/licenses/BSD-2-Clause     */
+
+/* This CSS3 stylesheet defines rules for Docutils elements without        */
+/* HTML equivalent. It is required to make the document semantics visible. */
+/*                                                                         */
+/* .. _validates: http://jigsaw.w3.org/css-validator/validator$link        */
+
+/* titles */
+p.topic-title,
+p.admonition-title,
+p.system-message-title {
+  font-weight: bold;
+}
+p.sidebar-title,
+p.rubric {
+  font-weight: bold;
+  font-size: larger;
+}
+p.rubric {
+  color: maroon;
+}
+p.subtitle,
+p.section-subtitle,
+p.sidebar-subtitle {
+  font-weight: bold;
+  margin-top: -0.5em;
+}
+h1 + p.subtitle {
+  font-size: 1.6em;
+}
+a.toc-backref {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Warnings, Errors */
+.system-messages h2,
+.system-message-title,
+pre.problematic,
+span.problematic {
+  color: red;
+}
+
+/* Inline Literals */
+.docutils.literal {
+  font-family: monospace;
+  white-space: pre-wrap;
+}
+/* do not wrap at hyphens and similar: */
+.literal > span.pre { white-space: nowrap; }
+
+/* keep line-breaks (\n) visible */
+.pre-wrap { white-space: pre-wrap; }
+
+/* Lists */
+
+/* compact and simple lists: no margin between items */
+.simple  li, .simple  ul, .simple  ol, .simple  > li p,
+.compact li, .compact ul, .compact ol, .compact > li p,
+dl.simple  > dd, dl.compact > dd, dl.docinfo > dd {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+/* Nested Paragraphs */
+p:first-child { margin-top: 0; }
+p:last-child { margin-bottom: 0; }
+details > p:last-child { margin-bottom: 1em; }
+
+/* Table of Contents */
+.contents ul.auto-toc { /* section numbers present */
+  list-style-type: none;
+}
+
+/* Enumerated Lists */
+ol.arabic     { list-style: decimal }
+ol.loweralpha { list-style: lower-alpha }
+ol.upperalpha { list-style: upper-alpha }
+ol.lowerroman { list-style: lower-roman }
+ol.upperroman { list-style: upper-roman }
+
+/* Definition Lists and Derivatives */
+dt .classifier { font-style: italic }
+dt .classifier:before {
+  font-style: normal;
+  margin: 0.5em;
+  content: ":";
+}
+/* Field Lists and similar */
+/* bold field name, content starts on the same line */
+dl.field-list,
+dl.option-list,
+dl.docinfo {
+  display: flow-root;
+}
+dl.field-list > dt,
+dl.option-list > dt,
+dl.docinfo > dt {
+  font-weight: bold;
+  clear: left;
+  float: left;
+  margin: 0;
+  padding: 0;
+  padding-right: 0.25em;
+}
+/* Offset for field content (corresponds to the --field-name-limit option) */
+dl.field-list > dd,
+dl.option-list > dd,
+dl.docinfo > dd {
+  margin-left:  9em; /* ca. 14 chars in the test examples, fit all Docinfo fields */
+}
+/* start nested lists on new line */
+dd > dl:first-child,
+dd > ul:first-child,
+dd > ol:first-child {
+  clear: left;
+}
+/* start field-body on a new line after long field names */
+dl.field-list > dd > *:first-child,
+dl.option-list > dd > *:first-child
+{
+  display: inline-block;
+  width: 100%;
+  margin: 0;
+}
+
+/* Bibliographic Fields (docinfo) */
+dl.docinfo pre.address {
+  font: inherit;
+  margin: 0;
+}
+dl.docinfo > dd.authors > p { margin: 0; }
+
+/* Option Lists */
+dl.option-list > dt { font-weight: normal; }
+span.option { white-space: nowrap; }
+
+/* Footnotes and Citations  */
+
+.footnote, .citation { margin: 1em 0; } /* default paragraph skip (Firefox) */
+/* hanging indent */
+.citation { padding-left: 2em; }
+.footnote { padding-left: 1.7em; }
+.footnote.superscript { padding-left: 1.0em; }
+.citation > .label { margin-left: -2em; }
+.footnote > .label { margin-left: -1.7em; }
+.footnote.superscript > .label { margin-left: -1.0em; }
+
+.footnote > .label + *,
+.citation > .label + * {
+  display: inline-block;
+  margin-top: 0;
+  vertical-align: top;
+}
+.footnote > .backrefs + *,
+.citation > .backrefs + * {
+  margin-top: 0;
+}
+.footnote > .label + p, .footnote > .backrefs + p,
+.citation > .label + p, .citation > .backrefs + p {
+  display: inline;
+  vertical-align: inherit;
+}
+
+.backrefs { user-select: none; }
+.backrefs > a { font-style: italic; }
+
+/* superscript footnotes */
+a[role="doc-noteref"].superscript,
+.footnote.superscript > .label,
+.footnote.superscript > .backrefs {
+  vertical-align: super;
+  font-size: smaller;
+  line-height: 1;
+}
+a[role="doc-noteref"].superscript > .fn-bracket,
+.footnote.superscript > .label > .fn-bracket {
+  /* hide brackets in display but leave for copy/paste */
+  display: inline-block;
+  width: 0;
+  overflow: hidden;
+}
+[role="doc-noteref"].superscript + [role="doc-noteref"].superscript {
+  padding-left: 0.15em; /* separate consecutive footnote references */
+  /* TODO: unfortunately, "+" also selects with text between the references. */
+}
+
+/* Alignment */
+.align-left   {
+  text-align: left;
+  margin-right: auto;
+}
+.align-center {
+  text-align: center;
+  margin-left: auto;
+  margin-right: auto;
+}
+.align-right  {
+  text-align: right;
+  margin-left: auto;
+}
+.align-top    { vertical-align: top; }
+.align-middle { vertical-align: middle; }
+.align-bottom { vertical-align: bottom; }
+
+/* reset inner alignment in figures and tables */
+figure.align-left, figure.align-right,
+table.align-left, table.align-center, table.align-right {
+  text-align: inherit;
+}
+
+/* Text Blocks */
+.topic { margin: 1em 2em; }
+.sidebar,
+.admonition,
+.system-message {
+  margin: 1em 2em;
+  border: thin solid;
+  padding: 0.5em 1em;
+}
+div.line-block { display: block; }
+div.line-block div.line-block, pre { margin-left: 2em; }
+
+/* Code line numbers: don't copy with drag-and-drop */
+pre.code .ln { display: none; }
+pre.code code:before {
+  content: attr(data-lineno);
+  font-size: small;
+  color: gray;
+}
+
+/* Tables */
+table {
+  border-collapse: collapse;
+}
+td, th {
+  border: thin solid silver;
+  padding: 0 1ex;
+}
+.borderless td, .borderless th {
+  border: 0;
+  padding: 0;
+  padding-right: 0.5em /* separate table cells */
+}
+
+table > caption, figcaption {
+  text-align: left;
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+}
+table.captionbelow {
+  caption-side: bottom;
+}
+
+/* MathML (see "math.css" for --math-output=HTML) */
+math .boldsymbol { font-weight: bold; }
+math.boxed, math .boxed {padding: 0.25em; border: thin solid; }
+/* style table similar to AMS "align" or "aligned" environment: */
+mtable.cases > mtr > mtd { text-align: left; }
+mtable.ams-align > mtr > mtd { padding-left: 0; padding-right: 0; }
+mtable.ams-align > mtr > mtd:nth-child(2n) { text-align: left; }
+mtable.ams-align > mtr > mtd:nth-child(2n+1) { text-align: right; }
+mtable.ams-align > mtr > mtd:nth-child(2n+3) { padding-left: 2em; }
+.mathscr mi, mi.mathscr {
+  font-family: STIX, XITSMathJax_Script, rsfs10,
+               "Asana Math", Garamond, cursive;
+}
+
+/* Document Header and Footer */
+header { border-bottom: 1px solid black; }
+footer { border-top: 1px solid black; }
+
+/* Images are block-level by default in Docutils */
+/* New HTML5 block elements: set display for older browsers */
+img, svg, header, footer, main, aside, nav, section, figure, video, details {
+  display: block;
+}
+svg { width: auto; height: auto; }  /* enable scaling of SVG images */
+/* inline images */
+
+p img, p svg, p video,
+h1 img, h2 img, h3 img, h4 img, h5 img, h6 img,
+h1 svg, h2 svg, h3 svg, h4 svg, h5 svg, h6 svg {
+  display: inline;
+}
+
+</style>
+<style type="text/css">
+
+/* CSS31_ style sheet for the output of Docutils HTML writers.             */
+/* Rules for easy reading and pre-defined style variants.                  */
+/*                                                                         */
+/* :Author: Günter Milde, based on html4css1.css by David Goodger          */
+/* :Id: $Id: plain.css 10079 2025-04-10 12:01:48Z milde $                                                               */
+/* :Copyright: © 2015 Günter Milde.                                        */
+/* :License: Released under the terms of the `2-Clause BSD license`_,      */
+/*    in short:                                                            */
+/*                                                                         */
+/*    Copying and distribution of this file, with or without modification, */
+/*    are permitted in any medium without royalty provided the copyright   */
+/*    notice and this notice are preserved.                                */
+/*                                                                         */
+/*    This file is offered as-is, without any warranty.                    */
+/*                                                                         */
+/* .. _2-Clause BSD license: http://www.spdx.org/licenses/BSD-2-Clause     */
+/* .. _CSS3: https://www.w3.org/Style/CSS/                                 */
+
+
+/* Document Structure */
+/* ****************** */
+
+/* "page layout" */
+body {
+  margin: 0;
+  background-color: #dbdbdb;
+  --field-indent: 9em; /* default indent of fields in field lists */
+}
+main, footer, header {
+  line-height:1.6;
+  /* avoid long lines --> better reading */
+  /* optimum is 45…75 characters/line <http://webtypography.net/2.1.2> */
+  /* OTOH: lines should not be too short because of missing hyphenation, */
+  max-width: 50rem;
+  padding: 1px 2%; /* 1px on top avoids grey bar above title (mozilla) */
+  margin: auto;
+}
+main {
+  counter-reset: table figure;
+  background-color: white;
+}
+footer, header {
+  font-size: smaller;
+  padding: 0.5em 2%;
+  border: none;
+}
+
+/* Table of Contents */
+ul.auto-toc > li > p {
+  padding-left: 1em;
+  text-indent: -1em;
+}
+nav.contents ul {
+  padding-left: 1em;
+}
+main > nav.contents ul ul ul ul:not(.auto-toc) {
+  list-style-type: '\2B29\ ';
+}
+main > nav.contents ul ul ul ul ul:not(.auto-toc) {
+  list-style-type: '\2B1D\ ';
+}
+
+/* Transitions */
+hr.docutils {
+  width: 80%;
+  margin-top: 1em;
+  margin-bottom: 1em;
+  clear: both;
+}
+
+/* Paragraphs */
+
+/* vertical space (parskip) */
+p, ol, ul, dl, li,
+.footnote, .citation,
+div > math,
+table {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+h1, h2, h3, h4, h5, h6,
+dd, details > p:last-child {
+  margin-bottom: 0.5em;
+}
+
+/* Lists */
+/* ===== */
+
+/* Definition Lists */
+/* Indent lists nested in definition lists */
+dd > ul:only-child, dd > ol:only-child { padding-left: 1em; }
+
+/* Description Lists */
+/* styled like in most dictionaries, encyclopedias etc. */
+dl.description {
+  display: flow-root;
+}
+dl.description > dt {
+  font-weight: bold;
+  clear: left;
+  float: left;
+  margin: 0;
+  padding: 0;
+  padding-right: 0.3em;
+}
+dl.description > dd:after {
+  display: table;
+  content: "";
+  clear: left; /* clearfix for empty descriptions */
+}
+
+/* Field Lists */
+
+dl.field-list > dd,
+dl.docinfo > dd {
+  margin-left: var(--field-indent); /* adapted in media queries or HTML */
+}
+
+/* example for custom field-name width */
+dl.field-list.narrow > dd {
+  --field-indent: 5em;
+}
+/* run-in: start field-body on same line after long field names */
+dl.field-list.run-in > dd p {
+  display: block;
+}
+
+/* Bibliographic Fields */
+
+/* generally, bibliographic fields use dl.docinfo */
+/* but dedication and abstract are placed into divs */
+div.abstract p.topic-title {
+  text-align: center;
+}
+div.dedication {
+  margin: 2em 5em;
+  text-align: center;
+  font-style: italic;
+}
+div.dedication p.topic-title {
+  font-style: normal;
+}
+
+/* disclosures */
+details { padding-left: 1em; }
+summary { margin-left: -1em; }
+
+/* Text Blocks */
+/* =========== */
+
+/* Literal Blocks */
+pre.literal-block, pre.doctest-block,
+pre.math, pre.code {
+  font-family: monospace;
+}
+
+/* Block Quotes and Topics */
+bockquote { margin: 1em 2em; }
+blockquote p.attribution {
+  text-align: right;
+  margin-left: 20%;
+}
+
+/* Tables */
+/* ====== */
+
+/* th { vertical-align: bottom; } */
+
+table tr { text-align: left; }
+
+/* "booktabs" style (no vertical lines) */
+table.booktabs {
+  border: 0;
+  border-top: 2px solid;
+  border-bottom: 2px solid;
+  border-collapse: collapse;
+}
+table.booktabs * {
+  border: 0;
+}
+table.booktabs th {
+  border-bottom: thin solid;
+}
+
+/* numbered tables (counter defined in div.document) */
+table.numbered > caption:before {
+  counter-increment: table;
+  content: "Table " counter(table) ": ";
+  font-weight: bold;
+}
+
+/* Explicit Markup Blocks */
+/* ====================== */
+
+/* Footnotes and Citations */
+/* ----------------------- */
+
+/* line on the left */
+.footnote-list {
+  border-left: solid thin;
+  padding-left: 0.25em;
+}
+
+/* Directives */
+/* ---------- */
+
+/* Body Elements */
+/* ~~~~~~~~~~~~~ */
+
+/* Images and Figures */
+
+/* let content flow to the side of aligned images and figures */
+figure.align-left,
+img.align-left,
+svg.align-left,
+video.align-left,
+div.align-left,
+object.align-left {
+  clear: left;
+  float: left;
+  margin-right: 1em;
+}
+figure.align-right,
+img.align-right,
+svg.align-right,
+video.align-right,
+div.align-right,
+object.align-right {
+  clear: right;
+  float: right;
+  margin-left: 1em;
+}
+/* Stop floating sidebars, images and figures */
+h1, h2, h3, h4, footer, header { clear: both; }
+
+/* Numbered figures */
+figure.numbered > figcaption > p:before {
+  counter-increment: figure;
+  content: "Figure " counter(figure) ": ";
+  font-weight: bold;
+}
+
+/* Admonitions and System Messages */
+.caution p.admonition-title,
+.attention p.admonition-title,
+.danger p.admonition-title,
+.error p.admonition-title,
+.warning p.admonition-title,
+div.error {
+  color: red;
+}
+
+/* Sidebar */
+/* Move right. In a layout with fixed margins, */
+/* it can be moved into the margin.            */
+aside.sidebar {
+  width: 30%;
+  max-width: 26em;
+  float: right;
+  clear: right;
+  margin-left: 1em;
+  margin-right: -1%;
+  background-color: #fffffa;
+}
+
+
+/* Code */
+pre.code { padding: 0.7ex }
+pre.code, code { background-color: #eeeeee }
+/* basic highlighting: for a complete scheme, see */
+/* https://docutils.sourceforge.io/sandbox/stylesheets/ */
+pre.code .comment, code .comment { color: #5C6576 }
+pre.code .keyword, code .keyword { color: #3B0D06; font-weight: bold }
+pre.code .literal.string, code .literal.string { color: #0C5404 }
+pre.code .name.builtin, code .name.builtin { color: #352B84 }
+pre.code .deleted, code .deleted { background-color: #DEB0A1}
+pre.code .inserted, code .inserted { background-color: #A3D289}
+
+
+/* Epigraph           */
+/* Highlights         */
+/* Pull-Quote         */
+/* Compound Paragraph */
+/* Container          */
+
+/* Inline Markup */
+/* ============= */
+
+sup, sub { line-height: 0.8; } /* do not add leading for lines with sup/sub */
+
+/* Inline Literals                                          */
+/* possible values: normal, nowrap, pre, pre-wrap, pre-line */
+/*   span.docutils.literal { white-space: pre-wrap; }       */
+
+/* Hyperlink References */
+a { text-decoration: none; }
+
+/* External Targets       */
+/*   span.target.external */
+/* Internal Targets       */
+/*   span.target.internal */
+/* Footnote References    */
+/*   a[role="doc-noteref"] */
+/* Citation References    */
+/*   a.citation-reference */
+
+</style>
+</head>
+<body>
+<main id="overview">
+<h1 class="title">Overview</h1>
+
+<p>:mod:`compas_singular` turns a 2D domain — a boundary, optional holes, and
+optional internal points/curves/cables — into a <strong>quad mesh with controlled
+topology</strong>: you choose where the irregular vertices (<em>singularities</em>) sit,
+instead of getting them wherever a generic quadrangulation algorithm happens to
+put them.</p>
+<p>There is one pipeline, with <strong>two ways to build the first, coarse layout</strong>, and
+everything downstream of that layout — editing, setting densities, densifying,
+smoothing, taking the dual — is shared. The whole pipeline is available three
+ways: as a <strong>Python API</strong> (headless, scriptable), as a <strong>Rhino plugin</strong>
+(a sequence of commands, <span class="docutils literal">CMD_*</span>, driven by picks and prompts), and as an
+<strong>AI-assisted session</strong> (an agent — inside Rhino, at a terminal, or through this
+MCP server — driving the same underlying tools from natural language).</p>
+<p>This page is the map of that workflow: what each stage does, what it can be
+told, and where to find it in each of the three front ends. It is deliberately
+not a function-by-function reference — that lives in the API docs.</p>
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+<hr class="docutils" />
+<section id="the-two-routes-to-a-coarse-layout">
+<h2>The two routes to a coarse layout</h2>
+<p>Everything starts from a <strong>coarse mesh</strong>: one quad face per topological patch,
+each patch edge carrying a <em>strip density</em>. It is cheap to edit and carries no
+geometry detail yet. Two independent algorithms build one from a domain:</p>
+<table>
+<colgroup>
+<col style="width: 18.0%" />
+<col style="width: 41.0%" />
+<col style="width: 41.0%" />
+</colgroup>
+<thead>
+<tr><th class="head"></th>
+<th class="head"><p><strong>Skeleton route</strong></p></th>
+<th class="head"><p><strong>Field route</strong></p></th>
+</tr>
+</thead>
+<tbody>
+<tr><td><p>class</p></td>
+<td><p><span class="docutils literal">SkeletonDecomposition</span></p></td>
+<td><p><span class="docutils literal">FieldDecomposition</span></p></td>
+</tr>
+<tr><td><p>idea</p></td>
+<td><p>the topological skeleton (medial axis) of a Delaunay triangulation of
+the domain partitions it into quad patches</p></td>
+<td><p>a cross field is solved over the domain and traced into separatrices,
+which partition it into quad patches</p></td>
+</tr>
+<tr><td><p>can be steered by guides (cables, force lines)?</p></td>
+<td><p>no — a medial axis is equidistant from the walls by definition</p></td>
+<td><p><strong>yes</strong> — a guide is the reason to pick this route</p></td>
+</tr>
+<tr><td><p>respects input symmetry?</p></td>
+<td><p>only incidentally</p></td>
+<td><p>yes, with <span class="docutils literal"><span class="pre">symmetry='auto'</span></span></p></td>
+</tr>
+<tr><td><p>line (&quot;curve&quot;) features</p></td>
+<td><p>yes — a curve becomes a topological cut, patches lie along it</p></td>
+<td><p>not applicable (use guides instead)</p></td>
+</tr>
+<tr><td><p>point features → poles</p></td>
+<td><p>yes</p></td>
+<td><p>yes</p></td>
+</tr>
+<tr><td><p>measured quality, 18-domain baseline</p></td>
+<td><p>wins 1 of 18</p></td>
+<td><p>wins 15 of 18</p></td>
+</tr>
+<tr><td><p>weak spot</p></td>
+<td><p>a free curve-feature tip still isn't fully resolved (see the curve
+feature notes in the developer docs)</p></td>
+<td><p>a domain of <em>uniform curvature</em> loses quality at patch <strong>corners</strong>; a
+sampled arc that turns more than 45° between two points reads as a
+corner to the field</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Rule of thumb:</strong> start with the field route. Use the skeleton route only when
+you need a line feature the mesh must be cut along (not just steered by), or
+when you deliberately want the medial-axis layout.</p>
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+</section>
+<hr class="docutils" />
+<section id="the-eight-step-pipeline">
+<h2>The eight-step pipeline</h2>
+<p>Both routes share the same eight stages. This is the spine of the whole
+workflow — the same eight steps exist as eight Rhino commands and as eight
+sections of a plain Python script.</p>
+<table>
+<colgroup>
+<col style="width: 6.0%" />
+<col style="width: 22.0%" />
+<col style="width: 36.0%" />
+<col style="width: 36.0%" />
+</colgroup>
+<thead>
+<tr><th class="head"><p>#</p></th>
+<th class="head"><p>Stage</p></th>
+<th class="head"><p>What happens</p></th>
+<th class="head"><p>Where</p></th>
+</tr>
+</thead>
+<tbody>
+<tr><td><p>1</p></td>
+<td><p><strong>Settings</strong></p></td>
+<td><p>background spacing, target edge length, guide mode, symmetry, caching</p></td>
+<td><p><span class="docutils literal">CMD_start</span> / a settings dict at the top of the script</p></td>
+</tr>
+<tr><td><p>2</p></td>
+<td><p><strong>Input</strong></p></td>
+<td><p>outer boundary, holes, point features, line features and/or guides</p></td>
+<td><p><span class="docutils literal">CMD_boundary_selection</span> / plain point lists or curves</p></td>
+</tr>
+<tr><td><p>3</p></td>
+<td><p><strong>Coarse layout</strong></p></td>
+<td><p>build the patch layout — this is where Skeleton vs Field is chosen</p></td>
+<td><p><span class="docutils literal">CMD_coarse_mesh</span> / <span class="docutils literal">SkeletonDecomposition</span> or <span class="docutils literal">FieldDecomposition</span></p></td>
+</tr>
+<tr><td><p>4</p></td>
+<td><p><strong>Edit</strong> <em>(optional)</em></p></td>
+<td><p>move a corner, cut a new division, unzip a strip, delete a strip</p></td>
+<td><p><span class="docutils literal">CMD_edit_coarse_mesh</span> / <span class="docutils literal">CoarseEditor</span></p></td>
+</tr>
+<tr><td><p>5</p></td>
+<td><p><strong>Densities</strong></p></td>
+<td><p>how many elements across each strip — per strip, or a global target</p></td>
+<td><p><span class="docutils literal">CMD_densities</span> (+ <span class="docutils literal">CMD_dense_pattern</span>) / <span class="docutils literal">set_strip(s)_density*</span></p></td>
+</tr>
+<tr><td><p>6</p></td>
+<td><p><strong>Quad mesh</strong></p></td>
+<td><p>fill every patch with an actual grid of quads</p></td>
+<td><p><span class="docutils literal">CMD_quad_mesh</span> / <span class="docutils literal"><span class="pre">coarse.densification(...)</span></span> or <span class="docutils literal"><span class="pre">decomposition.quad_mesh(...)</span></span></p></td>
+</tr>
+<tr><td><p>7</p></td>
+<td><p><strong>Smoothing</strong> <em>(optional)</em></p></td>
+<td><p>relax the dense mesh to improve element shape</p></td>
+<td><p><span class="docutils literal">CMD_smoothen</span> / <span class="docutils literal">CMD_smoothen_guide</span> / <span class="docutils literal">relax</span> and friends</p></td>
+</tr>
+<tr><td><p>8</p></td>
+<td><p><strong>Dual mesh</strong> <em>(optional)</em></p></td>
+<td><p>turn the quad mesh into its dual (e.g. for a block layout)</p></td>
+<td><p><span class="docutils literal">CMD_dual</span> / <span class="docutils literal"><span class="pre">dual_mesh(...)</span></span></p></td>
+</tr>
+</tbody>
+</table>
+<p>The two canonical, runnable references for this pipeline are
+<span class="docutils literal">examples/11_skeleton_workflow.py</span> and <span class="docutils literal">examples/12_framefield_workflow.py</span>:
+the same eight sections, in the same order, with the route as the only
+structural difference. Read them side by side to see exactly what each route
+needs and returns.</p>
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+</section>
+<hr class="docutils" />
+<section id="the-python-workflow">
+<h2>The Python workflow</h2>
+<p>A minimal field-route script is, at its core, four lines:</p>
+<pre class="literal-block">from compas_singular.framefield.decomposition import FieldDecomposition
+
+decomposition = FieldDecomposition.from_boundary(outer, inner_boundaries=holes,
+                                                   guides=guides, target_length=0.5)
+coarse = decomposition.coarse_mesh(point_features)
+coarse.set_strips_density_target(t=0.5)
+dense = decomposition.densify()            # or coarse.densification(...)</pre>
+<p>The skeleton route mirrors it, one import and one call to build the layout:</p>
+<pre class="literal-block">from compas_singular.algorithms import SkeletonDecomposition
+
+decomposition = SkeletonDecomposition.from_boundary(outer, inner_boundaries=holes,
+                                                      point_features=points,
+                                                      target_length=0.5)
+coarse = decomposition.coarse_mesh()
+coarse.set_strips_density_target(t=0.5)
+dense = coarse.densification()</pre>
+<p>Everything past step 3 is genuinely shared code. What varies at each step:</p>
+<p><strong>Step 2 — input.</strong> A list of <span class="docutils literal">[x, y, z]</span> points (or <span class="docutils literal">compas.geometry</span>
+<span class="docutils literal">Point</span>/<span class="docutils literal">Polyline</span> objects — both are accepted and coerced) for:</p>
+<ul class="simple">
+<li><p><span class="docutils literal">outer_boundary</span> — required, closed;</p></li>
+<li><p><span class="docutils literal">inner_boundaries</span> — a list of closed loops (holes); faces inside one are removed;</p></li>
+<li><p><span class="docutils literal">point_features</span> — interior points that become <strong>poles</strong> (an odd number of
+strips fanning into one vertex — e.g. a column head);</p></li>
+<li><p><span class="docutils literal">polyline_features</span> <em>(skeleton route only)</em> — curves the layout is <strong>cut
+along</strong>: the curve survives as a continuous course of mesh edges, not by
+snapping;</p></li>
+<li><p><span class="docutils literal">guides</span> <em>(field route only)</em> — cables / force lines the field is steered
+by, with <span class="docutils literal"><span class="pre">mode='tangent'</span></span> (mesh runs <em>along</em> the guide) or
+<span class="docutils literal">'perpendicular'</span> (runs <em>across</em> it).</p></li>
+</ul>
+<p>A curved boundary or hole should be sampled <em>finer</em> than the background
+spacing before it is handed in — the wall is the boundary from that point on,
+so under-sampling costs coverage (a densified circle can come out tens of
+percent short of its true radius if sampled too coarsely, see
+<span class="docutils literal">05_boundary_curvature</span> in the developer notes).</p>
+<p><strong>Step 3 — coarse layout, key options.</strong></p>
+<ul class="simple">
+<li><p><span class="docutils literal">target_length</span> — the <em>background</em> triangulation/field spacing, <strong>not</strong>
+the eventual quad size; finer is a better layout and a slower solve;</p></li>
+<li><p><span class="docutils literal"><span class="pre">symmetry='auto'</span></span> <em>(field route)</em> — detects the symmetry group of the
+input and holds it through the solve;</p></li>
+<li><p><span class="docutils literal">relax=True</span> <em>(field route)</em> — diffusion + normalisation instead of a
+single Dirichlet solve; use it whenever guides are present (the default
+solver is measurably wrong about where singularities sit without it) —
+except with a <strong>closed</strong> guide, where relaxation is measurably worse;</p></li>
+<li><p>always read <span class="docutils literal">decomposition.route()</span> and <span class="docutils literal">decomposition.warnings()</span>
+afterwards — the front end always returns <em>a</em> mesh, including when the
+separatrix network did not close and it silently fell back to a coarser
+covering.</p></li>
+</ul>
+<p><strong>Step 4 — editing the coarse layout, via ``CoarseEditor``.</strong> Anchored on the
+layout itself (not on a particular route), it takes <span class="docutils literal">loops</span> (the domain
+walls) and <span class="docutils literal">polylines</span> (the traced branches/separatrices, so an edited edge
+keeps its curve instead of falling back to a straight chord), and offers:</p>
+<ul class="simple">
+<li><p><span class="docutils literal">move_vertex</span> — drag a corner; a boundary corner is projected back onto
+its own wall, an interior one moves freely;</p></li>
+<li><p><span class="docutils literal">divide</span> — split a band of patches in two, either by strip key and a
+parameter <span class="docutils literal">t</span>, or along a drawn curve (<span class="docutils literal">points=</span>); must enter/leave
+every patch through opposite sides;</p></li>
+<li><p><span class="docutils literal">add_strip</span> / <span class="docutils literal">remove_strip</span> — unzip a new band along a chosen run of
+corners, or delete one entirely;</p></li>
+<li><p><span class="docutils literal">commit()</span> — writes the edit back <strong>in place</strong> and returns the mesh (or
+<span class="docutils literal">None</span> on refusal — test that, not truthiness). A moves-only edit keeps
+every strip key and density; a cut/divide/strip edit re-welds and
+<strong>renumbers everything</strong>.</p></li>
+</ul>
+<p><strong>Step 5 — densities.</strong> <span class="docutils literal">coarse.set_strip_density(skey, n)</span> for one strip,
+<span class="docutils literal"><span class="pre">set_strips_density(...)</span></span> for several, or <span class="docutils literal">set_strips_density_target(t)</span>
+to derive a density per strip from a target edge length. Optionally,
+<span class="docutils literal"><span class="pre">coarse.set_pattern(...)</span></span> / per-patch pattern assignment chooses <span class="docutils literal">ortho</span>
+(default grid), <span class="docutils literal">diagonal</span> (both diagonals cut through the grid) or <span class="docutils literal">fan</span>
+(four polar fans meeting at the centre) — diagonal and fan need an even
+density on both strips crossing the patch, and cost measured quality on
+purpose (they are triangulated/fanned by construction), so set patterns
+<em>before</em> final densities.</p>
+<p><strong>Step 6 — quad mesh.</strong> <span class="docutils literal"><span class="pre">coarse.densification(edges_to_curves=...)</span></span> blends
+each patch from its own four (subdivided) sides — a discrete Coons patch.
+<span class="docutils literal">edges_to_curves</span> (from the editor, or <span class="docutils literal">decomposition.edges_to_curves()</span>)
+gives each coarse edge back the curvature of the wall or branch it came from;
+without it every edge densifies as a straight chord and a curved boundary
+loses real area. On the field route, <span class="docutils literal">decomposition.densify()</span> (or
+<span class="docutils literal"><span class="pre">coarse.densification(...,</span> <span class="pre">field=decomposition.get_field())</span></span>) additionally
+integrates the <strong>patch interior</strong> from the field — the only way a guide
+reaches a patch it forced no topology in. <span class="docutils literal"><span class="pre">decomposition.quad_mesh(...)</span></span> is
+steps 5+6 combined, with two fallbacks if the separatrix network did not
+close; read <span class="docutils literal">decomposition.route()</span> after calling it.</p>
+<p><strong>Step 7 — smoothing.</strong> Not a single call but a small decision ladder — see
+<em>Smoothing and quality</em> below.</p>
+<p><strong>Step 8 — dual mesh.</strong> <span class="docutils literal">compas_singular.rhino.dual_mesh.dual_mesh(mesh, redistribute=True)</span> (despite the module path, it needs no Rhino) turns the
+quad mesh into its dual, redistributing boundary faces so they come out full
+size rather than half.</p>
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+</section>
+<hr class="docutils" />
+<section id="smoothing-and-quality">
+<h2>Smoothing and quality</h2>
+<p>Quality here means <em>element</em> quality — the shape of the individual quads —
+not whether the layout/topology is right. Four numbers describe it:
+<span class="docutils literal">min_angle</span> / <span class="docutils literal">max_angle</span> (worst corner angle anywhere), <span class="docutils literal">aspect_max</span>
+(longest/shortest edge, worst face) and <span class="docutils literal">share_below</span> (the fraction of
+corners below a low-angle threshold — the number that says whether a problem
+is <em>one face</em> or <em>the whole mesh</em>). A high aspect ratio and an irregular
+vertex are not automatically defects: a graded mesh is supposed to have
+stretched elements, and a quad mesh over anything but a rectangle must have
+some non-4-valent vertices.</p>
+<p>Five smoothing tools, not interchangeable, tried in this order:</p>
+<ol class="arabic simple">
+<li><p><strong>relax</strong> — the safe first move. Tries a schedule of settings
+gentlest-first and <strong>keeps a result only if min angle, max angle and max
+aspect all improve together</strong>; otherwise it leaves the mesh untouched. Not
+a failure if nothing changes — it means the layout, not the smoothing, is
+the limit.</p></li>
+<li><p><strong>smooth_boundary_constrained</strong> — the workhorse for a mesh that is
+generally slack. Interior vertices relax freely, boundary vertices slide
+along the walls, kinks stay pinned. No gate — it can make things worse, so
+measure before/after.</p></li>
+<li><p><strong>smooth_region</strong> — for <em>one</em> bad spot (<span class="docutils literal">share_below</span> near zero). Area-
+weighted and tapered over a few rings so it blends rather than creasing at
+its edge.</p></li>
+<li><p><strong>smooth_guides</strong> — when the mesh has guide curves it should hug. Attaches
+the longest run of one polyedge that already follows each guide and
+smooths with that chain (plus the boundary) held.</p></li>
+<li><p><strong>relax_fdm</strong> — force-density relaxation, a specialised alternative to
+<span class="docutils literal">relax</span> rather than a general constrained solve (its <span class="docutils literal">constraints</span> /
+<span class="docutils literal">algorithm</span> arguments are not wired through).</p></li>
+</ol>
+<p><strong>Never smooth a mesh whose whole purpose is interface perpendicularity to a
+boundary or a force line</strong> (e.g. a block-coursing mesh) — global smoothing has
+been measured to degrade that from ~90° down to ~45–65° while barely improving
+regularity.</p>
+<p>When the layout itself is the limit rather than the element shapes,
+<span class="docutils literal">dense_add_line</span> / <span class="docutils literal">dense_remove_line</span> (adding or removing a whole strip
+on the <em>dense</em> mesh) change topology directly — but any such edit is lost the
+next time the coarse layout is re-densified, and is refused outright on a
+mesh with a pole.</p>
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+</section>
+<hr class="docutils" />
+<section id="the-rhino-plugin-workflow">
+<h2>The Rhino plugin workflow</h2>
+<p>The Rhino side is the same eight-step pipeline as a sequence of commands
+(<span class="docutils literal"><span class="pre">rhino_plugin/commands/CMD_*.py</span></span>), each one reading and writing named
+layers under <span class="docutils literal">TopologyProblem::</span> plus a small JSON side-car cached next to
+the document, so state survives between commands (and a save/reopen) without
+re-deriving anything that was computed and is expensive to recompute.</p>
+<table>
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 14.0%" />
+<col style="width: 64.0%" />
+</colgroup>
+<thead>
+<tr><th class="head"><p>Command</p></th>
+<th class="head"><p>Step</p></th>
+<th class="head"><p>What it does</p></th>
+</tr>
+</thead>
+<tbody>
+<tr><td><p><span class="docutils literal">CMD_start</span></p></td>
+<td><p>1</p></td>
+<td><p>not run directly — holds the settings dict every other command reads
+(background spacing, target length, guide mode, symmetry, relax,
+field caching) and the <span class="docutils literal">import_compas_singular</span> bootstrap</p></td>
+</tr>
+<tr><td><p><span class="docutils literal">CMD_boundary_selection</span></p></td>
+<td><p>2</p></td>
+<td><p>pick/draw the outer boundary, holes, point features and guide curves
+onto their layers</p></td>
+</tr>
+<tr><td><p><span class="docutils literal">CMD_coarse_mesh</span></p></td>
+<td><p>3</p></td>
+<td><p>asks <strong>FrameField</strong> or <strong>Skeleton</strong>, then builds the coarse layout and
+bakes it (mesh, poles, separatrices/branches, edge curves)</p></td>
+</tr>
+<tr><td><p><span class="docutils literal">CMD_read_coarse_mesh</span></p></td>
+<td><p>3 <em>(alt.)</em></p></td>
+<td><p>the mirror of the above: reads a coarse layout <strong>you drew by hand</strong>
+(walls on <span class="docutils literal">Outer</span>/<span class="docutils literal">Inner</span>, division lines on <span class="docutils literal">EdgeCurves</span>)
+instead of generating one</p></td>
+</tr>
+<tr><td><p><span class="docutils literal">CMD_edit_coarse_mesh</span></p></td>
+<td><p>4</p></td>
+<td><p>move a corner; draw a polyline/arc across the layout to cut a new
+division; pick a run of corners to unzip into a new strip; pick a
+strip's ribbon to delete it; <span class="docutils literal">commit</span> or <span class="docutils literal">reset</span></p></td>
+</tr>
+<tr><td><p><span class="docutils literal">CMD_densities</span></p></td>
+<td><p>5</p></td>
+<td><p>pick a strip (shown as a ribbon shaded by density) and set its count,
+or set a global target for every strip at once</p></td>
+</tr>
+<tr><td><p><span class="docutils literal">CMD_dense_pattern</span></p></td>
+<td><p>5 <em>(opt.)</em></p></td>
+<td><p>assign <span class="docutils literal">ortho</span> / <span class="docutils literal">diagonal</span> / <span class="docutils literal">fan</span> to picked patches or all of
+them, before final densities</p></td>
+</tr>
+<tr><td><p><span class="docutils literal">CMD_quad_mesh</span></p></td>
+<td><p>6</p></td>
+<td><p>densifies the coarse layout into the dense quad mesh, using the
+document's own boundary curves for curved edges and, on the field
+route, the cached field for patch interiors</p></td>
+</tr>
+<tr><td><p><span class="docutils literal">CMD_edit_quad_mesh</span></p></td>
+<td><p>6 <em>(alt.)</em></p></td>
+<td><p>hand-edit the <strong>dense</strong> mesh directly: drag a vertex, or pick an edge
+to add/remove the whole strip through it. Ends the pipeline for that
+mesh — re-running <span class="docutils literal">CMD_quad_mesh</span> regenerates from the layout and
+discards a hand edit</p></td>
+</tr>
+<tr><td><p><span class="docutils literal">CMD_smoothen</span></p></td>
+<td><p>7</p></td>
+<td><p>relax / boundary-constrained / region smoothing on a picked dense mesh</p></td>
+</tr>
+<tr><td><p><span class="docutils literal">CMD_smoothen_guide</span></p></td>
+<td><p>7 <em>(opt.)</em></p></td>
+<td><p>attach chains of mesh vertices to guide curves, automatically or by
+hand, then smooth with them held</p></td>
+</tr>
+<tr><td><p><span class="docutils literal">CMD_dual</span></p></td>
+<td><p>8</p></td>
+<td><p>takes the dual of a picked dense mesh, redistributing boundary faces</p></td>
+</tr>
+<tr><td><p><span class="docutils literal">CMD_symmetry_report</span></p></td>
+<td><p>diagnostic</p></td>
+<td><p>read-only: reports the worst symmetry-mismatch distance per input
+element, to tell drawing imprecision from a genuinely asymmetric input</p></td>
+</tr>
+<tr><td><p><span class="docutils literal">CMD_clear</span></p></td>
+<td><p>utility</p></td>
+<td><p>clears chosen layers (inputs, field, skeleton, quad mesh, trash) to
+start over</p></td>
+</tr>
+</tbody>
+</table>
+<p>Settings persist in the document (<span class="docutils literal">CMD_start</span>'s settings dict, stored in
+document user text) and the field/layout are cached to disk, keyed on the
+inputs, so re-opening a file does not force a re-solve. Strip <strong>keys</strong> are not
+stable across a bake — a layout read back from Rhino geometry can come back
+with its strips renumbered — so densities and patterns are always matched
+geometrically (by edge midpoint), never by raw index.</p>
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+</section>
+<hr class="docutils" />
+<section id="ai-assisted-editing">
+<h2>AI-assisted editing</h2>
+<p>The same tools underneath <span class="docutils literal">CMD_edit_coarse_mesh</span>, <span class="docutils literal">CMD_densities</span>,
+<span class="docutils literal">CMD_quad_mesh</span> and the smoothers are also exposed as an <strong>agent</strong> that can
+be driven from natural language, in three equivalent front ends:</p>
+<ul class="simple">
+<li><p><strong>inside Rhino</strong> — <span class="docutils literal">CMD_ai_edit</span>: asks whether to start from the field
+(generate fresh), the coarse layout already on the document, or the dense
+mesh already on the document, then runs the model's tool calls against the
+live document, asking for confirmation before anything that discards work
+(re-solving the field, committing an edit, reverting to coarse);</p></li>
+<li><p><strong>at a terminal, headless</strong> — <span class="docutils literal">python <span class="pre">-m</span> compas_singular.agent.cli</span>, the
+same session/tools/state machine with no Rhino involved, for reproducing or
+scripting an AI-driven run;</p></li>
+<li><p><strong>through this MCP server</strong> — the same underlying operations as typed
+tools (<span class="docutils literal">create_coarse_mesh</span>, <span class="docutils literal">coarse_set_density</span>, <span class="docutils literal">coarse_densify</span>,
+<span class="docutils literal">relax</span>, <span class="docutils literal">smooth_boundary_constrained</span>, <span class="docutils literal">smooth_guides</span>,
+<span class="docutils literal">smooth_region</span>, <span class="docutils literal">dense_add_line</span>/<span class="docutils literal">dense_remove_line</span>, <span class="docutils literal">inspect</span>,
+<span class="docutils literal">rhino_pull</span>/<span class="docutils literal">rhino_push</span> and their <span class="docutils literal">_coarse</span> counterparts, among
+others), plus <span class="docutils literal">check_inputs</span> — run first, because the skeleton route never
+raises on a bad input, it just builds a bad layout — and a picture-based
+<span class="docutils literal">inspect(image=True)</span> for judging what the numbers can't say (boundary
+deviation, ignored point features, guides the mesh ran across instead of
+along, kinks and propagated distortion).</p></li>
+</ul>
+<p>In every case, the underlying decision ladder is the same one described above
+under <em>Smoothing and quality</em>: try <span class="docutils literal">relax</span> first, escalate to a global or
+regional pass only if it did not help, and treat two passes that change
+nothing as proof the <em>layout</em> is the limit rather than something to keep
+retrying.</p>
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+</section>
+<hr class="docutils" />
+<section id="what-this-page-does-not-cover-yet">
+<h2>What this page does not cover yet</h2>
+<p>This is the workflow foundation: what exists, how the pieces fit together,
+and what can be configured at each stage. It deliberately stops short of a
+function-by-function reference (parameter lists, return types, edge cases) —
+that belongs in the generated API pages (:doc:`04_api`) and in individual
+docstrings, and is the natural next layer to build on top of this one.</p>
+</section>
+</main>
+</body>
+</html>
