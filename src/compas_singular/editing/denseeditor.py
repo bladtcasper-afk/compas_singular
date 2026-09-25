@@ -1,6 +1,6 @@
 """Hand-editing the final dense mesh, with no Rhino in it.
 
-:class:`DenseMeshEditor` moves and removes vertices, faces and edges, draws edges in,
+``DenseMeshEditor`` moves and removes vertices, faces and edges, draws edges in,
 and adds or removes strips where the mesh is quads. Design notes: ``design_notes/editing.md``.
 """
 from __future__ import absolute_import
@@ -44,28 +44,28 @@ class DenseMeshEditor(MeshEditor):
 
     Parameters
     ----------
-    mesh : :class:`compas_singular.datastructures.QuadMesh`
+    mesh : compas_singular.datastructures.QuadMesh
         The mesh to edit, polygons allowed. A ``QuadMesh`` rather than a plain
-        :class:`compas.datastructures.Mesh`, because the strip operations need
+        ``compas.datastructures.Mesh``, because the strip operations need
         its polyedges and strips.
     walls : list, optional
         The domain walls, as point lists, closed polylines or
-        :class:`BoundaryLoop` instances. A boundary vertex that moves is
+        ``BoundaryLoop`` instances. A boundary vertex that moves is
         projected onto the nearest one. Without walls it is left where it was put.
     relax_iterations : int, optional
-        Default number of smoothing passes for :meth:`relax`. Defaults to
-        :data:`RELAX_ITERATIONS`.
+        Default number of smoothing passes for ``relax``. Defaults to
+        ``RELAX_ITERATIONS``.
 
     Attributes
     ----------
-    mesh : :class:`compas_singular.datastructures.QuadMesh`
+    mesh : compas_singular.datastructures.QuadMesh
         The mesh as it currently stands.
     last_reason : str
         Why the last operation was refused. Empty when nothing was.
     last_addition : dict
-        What the last successful :meth:`add_line` did.
+        What the last successful ``add_line`` did.
     last_deletion : dict
-        What the last successful :meth:`remove_line` did.
+        What the last successful ``remove_line`` did.
 
     Examples
     --------
@@ -289,7 +289,7 @@ class DenseMeshEditor(MeshEditor):
             The polyline, at least two points.
         snap : float, optional
             Distance within which the line goes through an existing vertex or
-            lies on an existing edge. Defaults to :data:`DRAW_SNAP` times the
+            lies on an existing edge. Defaults to ``DRAW_SNAP`` times the
             mean edge length.
         """
         points = [list(p) + [0.0] * (3 - len(p)) for p in points]
@@ -551,9 +551,9 @@ class DenseMeshEditor(MeshEditor):
         return True, ''
 
     def add_line(self, edge: tuple[int, int]) -> tuple[bool, dict[str, Any]]:
-        """Grow a strip along the polyedge through ``edge``, on a copy adopted only if it passes :meth:`_gate`. ``(ok, notes)``.
+        """Grow a strip along the polyedge through ``edge``, on a copy adopted only if it passes ``_gate``. ``(ok, notes)``.
 
-        Only the new vertex pairs move; smoothing is a separate step (:meth:`relax`).
+        Only the new vertex pairs move; smoothing is a separate step (``relax``).
 
         Parameters
         ----------
@@ -695,7 +695,7 @@ class DenseMeshEditor(MeshEditor):
         Returns
         -------
         dict
-            ``ok`` -- whether :meth:`remove_line` would succeed with these
+            ``ok`` -- whether ``remove_line`` would succeed with these
             arguments -- and ``reason`` when it would not. Plus ``strip``,
             ``faces``, ``collateral``, ``boundaries_lost`` (a COUNT),
             ``boundaries_lost_vertices`` (which ones), ``to_split``,
@@ -720,7 +720,7 @@ class DenseMeshEditor(MeshEditor):
         preserve_boundaries: bool = False,
         skey: int | None = None,
     ) -> tuple[bool, dict[str, Any]]:
-        """Same as :meth:`remove_line`, with the strip given by ``edge`` or ``skey``. ``(ok, notes)``."""
+        """Same as ``remove_line``, with the strip given by ``edge`` or ``skey``. ``(ok, notes)``."""
         edge, reason = self._resolve_edge(edge, skey)
         if reason:
             return self._refuse(reason)
@@ -729,7 +729,7 @@ class DenseMeshEditor(MeshEditor):
     def remove_line(self, edge: tuple[int, int], preserve_boundaries: bool = False) -> tuple[bool, dict[str, Any]]:
         """**Delete the strip through** ``edge``. ``(ok, notes)``.
 
-        Performs the same trial as :meth:`plan_strip_deletion` and adopts the
+        Performs the same trial as ``plan_strip_deletion`` and adopts the
         result, so a refusal costs nothing.
 
         Parameters

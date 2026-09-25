@@ -1,6 +1,6 @@
 """A whole project in one object (settings, inputs, coarse layout, field, dense mesh), saved as one JSON file.
 
-Undo is a list of JSON snapshots taken by :meth:`SingularSession.record`; runs without Rhino.
+Undo is a list of JSON snapshots taken by ``SingularSession.record``; runs without Rhino.
 """
 from __future__ import absolute_import
 from __future__ import annotations
@@ -24,22 +24,22 @@ if TYPE_CHECKING:
 __all__ = ['SingularSession', 'UNDO_DEPTH']
 
 
-#: How many recorded states :meth:`SingularSession.undo` can step back through.
+#: How many recorded states ``SingularSession.undo`` can step back through.
 UNDO_DEPTH = 50
 
 
 class SingularSession(Data):
-    """Everything a project is. Call :meth:`record` after every change.
+    """Everything a project is. Call ``record`` after every change.
 
     Parameters
     ----------
-    settings : :class:`compas_singular.settings.Settings`, optional
-    domain : :class:`compas_singular.symmetry.Domain`, optional
+    settings : compas_singular.settings.Settings, optional
+    domain : compas_singular.symmetry.Domain, optional
         The inputs: outer boundary, holes, guides and poles.
-    coarse : :class:`compas_singular.datastructures.CoarsePseudoQuadMesh`, optional
-    field : :class:`compas_singular.framefield.CrossField`, optional
+    coarse : compas_singular.datastructures.CoarsePseudoQuadMesh, optional
+    field : compas_singular.framefield.CrossField, optional
         ``None`` on the skeleton route.
-    dense : :class:`compas_singular.datastructures.QuadMesh`, optional
+    dense : compas_singular.datastructures.QuadMesh, optional
     """
 
     #: The attributes that hold items. Everything else is settings or history.
@@ -106,7 +106,7 @@ class SingularSession(Data):
 
     @classmethod
     def load(cls, filepath: str) -> SingularSession:
-        """Read a project written by :meth:`dump`, recorded as the first undo state."""
+        """Read a project written by ``dump``, recorded as the first undo state."""
         session = cls()
         session.take(compas.json_load(filepath))
         session.record('load')
@@ -132,7 +132,7 @@ class SingularSession(Data):
         return True
 
     def redo(self) -> bool:
-        """Go forward again after :meth:`undo`. ``False`` if there is nothing to redo."""
+        """Go forward again after ``undo``. ``False`` if there is nothing to redo."""
         if self._current >= len(self._history) - 1:
             return False
         self._current += 1

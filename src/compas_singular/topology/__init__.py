@@ -1,24 +1,4 @@
-"""
-********************************************************************************
-compas_singular.topology
-********************************************************************************
-
-.. currentmodule:: compas_singular.topology
-
-
-Coloring
-========
-
-Coloring elements based on their topology.
-
-.. autosummary::
-    :toctree: generated/
-    :nosignatures:
-
-    is_adjacency_two_colorable
-
-
-"""
+"""Topological properties of meshes."""
 
 from __future__ import absolute_import
 from __future__ import division

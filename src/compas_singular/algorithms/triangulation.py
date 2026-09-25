@@ -72,10 +72,10 @@ def as_curves(curves: Polyline | list | None, close: bool | None = None) -> list
     Parameters
     ----------
     curves : Polyline | list
-        One curve or a list of curves, in any of the forms :func:`as_points`
+        One curve or a list of curves, in any of the forms ``as_points``
         accepts.
     close : bool, optional
-        Passed through to :func:`as_points` for every curve.
+        Passed through to ``as_points`` for every curve.
 
     Returns
     -------
@@ -102,7 +102,7 @@ def as_curves(curves: Polyline | list | None, close: bool | None = None) -> list
 def weld_polyline_features(polyline_features: list[list[list[float]]]) -> list[list[list[float]]]:
     """Weld feature polylines that share a point into chains split at every non-two-valent junction.
 
-    Crossings without a shared point are left alone; see :func:`arrange_polyline_features`.
+    Crossings without a shared point are left alone; see ``arrange_polyline_features``.
 
     Parameters
     ----------
@@ -196,7 +196,7 @@ def boundary_triangulation(
     ----------
     outer_boundary : Polyline | list
         Planar outer boundary, as a list of vertex coordinates or a
-        :class:`compas.geometry.Polyline`. A final point coincident with the
+        ``compas.geometry.Polyline``. A final point coincident with the
         first is dropped.
     inner_boundaries : list
         Planar inner boundaries, as a list of the above.
@@ -206,7 +206,7 @@ def boundary_triangulation(
         given as a closed ``Polyline`` already does.
     point_features : list
         Planar point features, as a flat list of ``[x, y, z]`` or of
-        :class:`compas.geometry.Point`. NOT a list of lists of points.
+        ``compas.geometry.Point``. NOT a list of lists of points.
     delaunay : callable or proxy
         Delaunay triangulation function.
 

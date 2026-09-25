@@ -111,7 +111,7 @@ def ensure_layer(path: str, color: tuple[int, int, int] | None = None) -> str:
 
 
 def unlock(layer: str, guids: Sequence[Any] = ()) -> dict[str, Any]:
-    """Unlock a layer, all its parents, and the given objects; returns what was locked for :func:`relock`."""
+    """Unlock a layer, all its parents, and the given objects; returns what was locked for ``relock``."""
     _require_rhino()
     parts = layer.split('::')
     state = {'layers': {}, 'objects': []}
@@ -129,7 +129,7 @@ def unlock(layer: str, guids: Sequence[Any] = ()) -> dict[str, Any]:
 
 
 def relock(state: dict[str, Any]) -> None:
-    """Put back exactly what :func:`unlock` took off, and nothing else."""
+    """Put back exactly what ``unlock`` took off, and nothing else."""
     _require_rhino()
     for guid in state.get('objects', []):
         if rs.IsObject(guid):

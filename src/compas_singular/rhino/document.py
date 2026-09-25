@@ -54,7 +54,7 @@ def pack(text: str) -> str:
 
 
 def unpack(packed: str) -> str:
-    """The inverse of :func:`pack`."""
+    """The inverse of ``pack``."""
     return zlib.decompress(base64.b64decode(packed)).decode('utf-8')
 
 

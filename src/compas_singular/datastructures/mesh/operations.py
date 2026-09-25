@@ -136,7 +136,7 @@ def trimesh_face_circle(mesh: Mesh, fkey: int) -> tuple[list[float], float, list
     ValueError
         If the triangle is flat. A flat triangle has no circumcircle, and the
         closed form below divides by its doubled squared area.
-        :func:`boundary_triangulation` deletes flat faces before any caller here
+        ``boundary_triangulation`` deletes flat faces before any caller here
         gets to walk them, so reaching this means one was built some other way.
     """
     vertices = mesh.face_vertices(fkey)

@@ -19,10 +19,10 @@ class Skeleton(Mesh):
 
     References
     ----------
-    .. [1] Harry Blum. 1967. *A transformation for extracting new descriptors of shape*.
+    1. Harry Blum. 1967. *A transformation for extracting new descriptors of shape*.
            Models for Perception of Speech and Visual Forms, pages 362--380.
            Available at http://pageperso.lif.univ-mrs.fr/~edouard.thiel/rech/1967-blum.pdf.
-    .. [2] Punam K. Saha, Gunilla Borgefors, and Gabriella Sanniti di Baja. 2016. *A survey on skeletonization algorithms and their applications*.
+    2. Punam K. Saha, Gunilla Borgefors, and Gabriella Sanniti di Baja. 2016. *A survey on skeletonization algorithms and their applications*.
            Pattern Recognition Letters, volume 76, pages 3--12.
            Available at https://www.sciencedirect.com/science/article/abs/pii/S0167865515001233.
     """
@@ -31,8 +31,8 @@ class Skeleton(Mesh):
         super(Skeleton, self).__init__(*args, **kwargs)
         #: Curve-feature edges as pairs of ``TOL.geometric_key``. An adjacency
         #: across one of these is not a real adjacency -- see
-        #: :meth:`real_neighbors`. Empty unless set by
-        #: :func:`~compas_singular.algorithms.boundary_triangulation`.
+        #: ``real_neighbors``. Empty unless set by
+        #: ``compas_singular.algorithms.boundary_triangulation``.
         self.feature_edges = frozenset()
         #: The curve features as ordered point chains. Grafting uses the
         #: ordering to tell whether two branches land at the same place.

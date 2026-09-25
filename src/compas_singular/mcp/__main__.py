@@ -3,7 +3,7 @@
 Speaks MCP on stdin and stdout and nothing else. Every diagnostic goes to
 stderr, where an MCP client shows it as server log output; anything written to
 stdout that is not a protocol frame breaks the session, which is why
-:func:`~compas_singular.mcp.protocol.serve` rebinds ``sys.stdout`` before it
+``compas_singular.mcp.protocol.serve`` rebinds ``sys.stdout`` before it
 reads the first line.
 
 Run it by hand to check the wiring::

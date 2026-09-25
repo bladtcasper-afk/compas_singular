@@ -341,7 +341,7 @@ def recall(target: dict[str, Any], limit: int = 3, verdicts: Sequence[str] = ('g
     Parameters
     ----------
     target : dict
-        A fingerprint, from :func:`fingerprint`.
+        A fingerprint, from ``fingerprint``.
     limit : int, optional
     verdicts : sequence, optional
         Which verdicts to include. A bad example is instructive -- it is what

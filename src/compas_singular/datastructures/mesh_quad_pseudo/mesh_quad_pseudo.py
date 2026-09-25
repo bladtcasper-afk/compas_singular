@@ -88,7 +88,7 @@ class PseudoQuadMesh(QuadMesh):
         -------
         (w, x) : tuple
             The opposite edge. None on the boundary, and for a face a strip
-            cannot cross -- see :meth:`is_strip_face`.
+            cannot cross -- see ``is_strip_face``.
 
         """
 
@@ -116,9 +116,9 @@ class PseudoQuadMesh(QuadMesh):
 
         Parameters
         ----------
-        u : int
+        u0 : int
             The identifier of the edge start.
-        v : int
+        v0 : int
             The identifier of the edge end.
 
         Returns
@@ -332,10 +332,8 @@ class PseudoQuadMesh(QuadMesh):
 
         Parameters
         ----------
-        old_vkey : hashable
-            The old vertex key.
-        new_vkey : hashable
-            The new vertex key.
+        fkey : int
+            The face to remove from every strip.
 
         """
 
@@ -408,8 +406,8 @@ class PseudoQuadMesh(QuadMesh):
 
     #     See Also
     #     --------
-    #     * :meth:`add_vertex`
-    #     * :meth:`add_edge`
+    #     * ``add_vertex``
+    #     * ``add_edge``
 
     #     Examples
     #     --------
@@ -512,7 +510,7 @@ class PseudoQuadMesh(QuadMesh):
 
     #     In some cases, disconnected vertices can remain after application of this
     #     method. To remove these vertices as well, combine this method with vertex
-    #     culling (:meth:`cull_vertices`).
+    #     culling (``cull_vertices``).
 
     #     .. plot::
     #         :include-source:
@@ -580,7 +578,7 @@ class PseudoQuadMesh(QuadMesh):
 #         they are accessed using this method.
 
 #         This method yields the directed edges of the mesh.
-#         Unless edges were added explicitly using :meth:`add_edge` the order of
+#         Unless edges were added explicitly using ``add_edge`` the order of
 #         edges is *as they come out*. However, as long as the toplogy remains
 #         unchanged, the order is consistent.
 

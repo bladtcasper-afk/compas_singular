@@ -51,7 +51,7 @@ def points_of(curve: Polyline | Sequence[Any]) -> list[list[float]]:
 
 
 def curve_to_wire(curve: Polyline | Sequence[Any]) -> list[list[float]]:
-    """One curve as a point list. Alias of :func:`points_of`, named for the wire."""
+    """One curve as a point list. Alias of ``points_of``, named for the wire."""
     return points_of(curve)
 
 
@@ -99,11 +99,11 @@ def mesh_from_wire(data: dict[str, Any], cls: type | None = None) -> Mesh:
     Parameters
     ----------
     data : dict
-        As produced by :func:`mesh_to_wire`.
+        As produced by ``mesh_to_wire``.
     cls : type, optional
         The class to build. Defaults to
-        :class:`~compas_singular.datastructures.QuadMesh`, or to
-        :class:`~compas_singular.datastructures.CoarsePseudoQuadMesh` when the
+        ``compas_singular.datastructures.QuadMesh``, or to
+        ``compas_singular.datastructures.CoarsePseudoQuadMesh`` when the
         payload carries poles -- a mesh with poles is not a plain quad mesh and
         building it as one silently discards the collapsed sides.
 

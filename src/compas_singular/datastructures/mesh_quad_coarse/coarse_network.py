@@ -95,7 +95,7 @@ def _intersect(p1: list[float], p2: list[float], p3: list[float], p4: list[float
     """Parameters ``(t, u)`` where segments ``p1p2`` and ``p3p4`` meet, or ``None``.
 
     Collinear overlaps return ``None``: there is no single point to report, and a
-    curve drawn twice is caught by :func:`weld_network` as a duplicate edge.
+    curve drawn twice is caught by ``weld_network`` as a duplicate edge.
     """
     d1x, d1y = p2[0] - p1[0], p2[1] - p1[1]
     d2x, d2y = p4[0] - p3[0], p4[1] - p3[1]
@@ -164,13 +164,13 @@ def _turn(a: list[float], b: list[float], c: list[float]) -> float:
 def split_at_corners(points: list[list[float]], angle: float = CORNER_ANGLE) -> list[list[list[float]]]:
     """Cut a clicked polyline into one piece per straight run, at every vertex turning more than ``angle``.
 
-    Never hand it a sampled curve; not called by :func:`weld_network`.
+    Never hand it a sampled curve; not called by ``weld_network``.
 
     Parameters
     ----------
     points : list[[x, y, z]]
     angle : float, optional
-        Radians. Defaults to :data:`CORNER_ANGLE`, one degree.
+        Radians. Defaults to ``CORNER_ANGLE``, one degree.
 
     Returns
     -------
@@ -256,14 +256,14 @@ def _cut(points: list[list[float]], cuts: list[tuple[int, float, list[float]]], 
 def split_at_junctions(polylines: list[list[list[float]]], tol: float | None = None, precision: int | None = None, points: "list[list[float]] | tuple[list[float], ...]" = ()) -> tuple[list[list[list[float]]], list[int]]:
     """Split every polyline wherever another ends on it or crosses it. ``(pieces, origin)``.
 
-    Turns a drawing into a network :func:`weld_network` accepts; dangling ends are left for it to refuse.
+    Turns a drawing into a network ``weld_network`` accepts; dangling ends are left for it to refuse.
 
     Parameters
     ----------
     polylines : list[list[[x, y, z]]]
     tol : float, optional
         How close an end must be to another curve to be ON it. Defaults to the
-        weld resolution, the same distance :func:`check_network` refuses a
+        weld resolution, the same distance ``check_network`` refuses a
         T-junction at -- so what this splits is exactly what that would refuse.
     precision : int, optional
         Decimals of the weld, used only to derive the default ``tol``.
@@ -425,7 +425,8 @@ def check_network(vertices: list[list[float]], edges: list[tuple[int, int, list[
 
     Parameters
     ----------
-    vertices, edges : as returned by :func:`weld_network`
+    vertices, edges : list
+        As returned by ``weld_network``.
     tol : float
         Distance below which a point is ON a curve. The weld resolution is the right
         scale -- two points nearer than that are already one corner.
@@ -520,7 +521,8 @@ def faces_from_network(vertices: list[list[float]], edges: list[tuple[int, int, 
 
     Parameters
     ----------
-    vertices, edges : as returned by :func:`weld_network`
+    vertices, edges : list
+        As returned by ``weld_network``.
     holes : list[[x, y, z]], optional
         One point inside each hole of the domain.
 

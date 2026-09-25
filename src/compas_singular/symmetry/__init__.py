@@ -1,22 +1,6 @@
-"""********************************************************************************
-compas_singular.symmetry
-********************************************************************************
-
-Symmetry for any meshing route: find it, mesh one unit, expand it by the group.
+"""Symmetry for either route: find the symmetry of a domain, mesh one unit, and expand it by the group.
 
 Design notes: ``design_notes/symmetry.md``.
-
-.. currentmodule:: compas_singular.symmetry
-
-.. autosummary::
-    :toctree: generated/
-
-    find_symmetry
-    SymmetryReport
-    SymmetryGroup
-    Domain
-    SymmetricUnit
-    SymmetricQuadUnit
 """
 from __future__ import absolute_import
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """Bind the tools, the one session and the library to the protocol's methods.
 
-Importing it registers the tools; :func:`build` refuses to start on an empty registry.
+Importing it registers the tools; ``build`` refuses to start on an empty registry.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -61,7 +61,7 @@ allowed. Reading a hand-drawn skeleton back in is not exposed yet."""
 
 
 class Handler(object):
-    """What :class:`~compas_singular.mcp.protocol.Dispatcher` asks for content."""
+    """What ``compas_singular.mcp.protocol.Dispatcher`` asks for content."""
 
     def __init__(self, session: MeshSession | None = None) -> None:
         self.session = session if session is not None else MeshSession()

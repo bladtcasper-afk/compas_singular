@@ -65,13 +65,13 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
             Defaults to the weld resolution.
         collect_strips : bool, optional
             Collect strip data before returning, as
-            :meth:`CoarseQuadMesh.from_quad_mesh` does.
+            ``CoarseQuadMesh.from_quad_mesh`` does.
 
         Returns
         -------
         CoarsePseudoQuadMesh
             Carrying the drawn shape of every edge -- see
-            :meth:`CoarseQuadMesh.edges_to_curves`.
+            ``CoarseQuadMesh.edges_to_curves``.
 
         Raises
         ------
@@ -132,10 +132,10 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
         Parameters
         ----------
         boundary_curvature : bool, optional
-            Use the shape :meth:`edges_to_curves` has stored for edges on the
+            Use the shape ``edges_to_curves`` has stored for edges on the
             layout's own boundary, instead of chording them. Defaults to True.
             Ignored -- treated as True -- when ``overwrite_edges_to_curves`` is
-            given. See :meth:`densify`.
+            given. See ``densify``.
         skeleton_curvature : bool, optional
             Same, for the edges that are NOT on the boundary -- the interior
             edges a skeleton or field decomposition traced as separatrices.
@@ -144,12 +144,12 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
         overwrite_edges_to_curves : dict, optional
             Coarse edges ``(u, v)`` pointing to a curve to densify them along,
             each curve a list of XYZ points, overriding whatever
-            :meth:`edges_to_curves` has stored -- for every edge, regardless of
+            ``edges_to_curves`` has stored -- for every edge, regardless of
             ``boundary_curvature`` / ``skeleton_curvature``.
         field : optional
             A ``CrossField``. Only valid with the ``ortho`` pattern -- see
-            :meth:`densification`.
-        pattern : str, optional
+            ``densification``.
+        pattern_overwrite : str or dict, optional
             One of ``compas_singular...patterns.PATTERNS``: ``'ortho'`` (the
             plain grid), ``'diagonal'`` (the grid with both patch diagonals cut
             through it) or ``'fan'`` (four polar fans meeting at the centre).
@@ -170,17 +170,17 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
 
         Parameters
         ----------
-        pattern : str, optional
-            A key of ``PATTERNS``.
+        pattern_overwrite : str or dict, optional
+            A key of ``PATTERNS`` for every face, or a dict of face to key.
         boundary_curvature : bool, optional
-            Use the stored :meth:`edges_to_curves` shape for edges on the
+            Use the stored ``edges_to_curves`` shape for edges on the
             layout's own boundary. Defaults to True. Ignored -- treated as True
             -- when ``overwrite_edges_to_curves`` is given.
         skeleton_curvature : bool, optional
             Same, for the interior edges. Defaults to True. Ignored -- treated
             as True -- when ``overwrite_edges_to_curves`` is given.
         overwrite_edges_to_curves : dict, optional
-            Overrides whatever :meth:`edges_to_curves` has stored, for every
+            Overrides whatever ``edges_to_curves`` has stored, for every
             edge.
         field : optional
 
@@ -296,7 +296,7 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
         edge_strip : dict
             ``(u, v) -> strip key``, both ways round.
         edges_to_curves : dict, optional
-            As in :meth:`quad_mesh`.
+            As in ``quad_mesh``.
 
         Returns
         -------
@@ -323,7 +323,7 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
         Parameters
         ----------
         boundary_curvature : bool, optional
-            Use the stored :meth:`edges_to_curves` shape for edges on the
+            Use the stored ``edges_to_curves`` shape for edges on the
             layout's own boundary. Defaults to True. Ignored -- treated as True
             -- when ``overwrite_edges_to_curves`` is given.
         skeleton_curvature : bool, optional
@@ -331,7 +331,7 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
             as True -- when ``overwrite_edges_to_curves`` is given.
         overwrite_edges_to_curves : dict, optional
             A dictionary with edges (u, v) pointing to a curve for
-            densification, overriding whatever :meth:`edges_to_curves` has
+            densification, overriding whatever ``edges_to_curves`` has
             stored -- for every edge. The curves are lists of XYZ points.
         field : optional
             A ``CrossField`` (from ``FieldDecomposition.get_field()`` or

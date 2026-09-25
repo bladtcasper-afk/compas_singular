@@ -51,7 +51,7 @@ if TYPE_CHECKING:
 __all__ = ['FieldDecomposition']
 
 
-#: The routes :meth:`FieldDecomposition.quad_mesh` can take, best first.
+#: The routes ``FieldDecomposition.quad_mesh`` can take, best first.
 ROUTES = ('field', 'polygon', 'triangulation')
 
 
@@ -140,33 +140,33 @@ class FieldDecomposition(object):
     separatrices : list[Separatrix]
     tracer : Tracer
     inputs : dict
-        The arguments :meth:`from_boundary` was called with, so the same route
+        The arguments ``from_boundary`` was called with, so the same route
         can be rebuilt on another domain (a symmetric unit, say).
     mesh : CoarsePseudoQuadMesh or None
-        The coarse layout, once :meth:`decomposition_mesh` has run -- or the
-        triangulated backstop after a :meth:`quad_mesh` that fell back.
+        The coarse layout, once ``decomposition_mesh`` has run -- or the
+        triangulated backstop after a ``quad_mesh`` that fell back.
     dense : QuadMesh or None
-        The last mesh :meth:`quad_mesh` returned.
+        The last mesh ``quad_mesh`` returned.
     polylines : list or None
-        The network the layout was built from, plus :attr:`user_curves`.
+        The network the layout was built from, plus ``user_curves``.
     guides : list
         The guide curves the field was solved with.
     symmetry : Symmetry or None
         The in-solver symmetry group (``framefield.symmetry``).
     symmetry_report : SymmetryReport or None
-        What :meth:`find_symmetry` found.
+        What ``find_symmetry`` found.
     trace_report, snap_report, densify_stats, edit_notes : dict
         What tracing, singularity snapping, densification and
-        :meth:`edit_coarse` / :meth:`edges_to_curves` did.
+        ``edit_coarse`` / ``edges_to_curves`` did.
     repair_notes : list[str]
-        Everything that degraded the result, in words. See :meth:`warnings`.
+        Everything that degraded the result, in words. See ``warnings``.
     last_error : str or None
-        The traceback of an exception :meth:`quad_mesh` caught and fell back
+        The traceback of an exception ``quad_mesh`` caught and fell back
         from.
     user_curves : list
         Curves the user drew on the layout (a line added in Rhino); kept in
-        :attr:`polylines` so the edge they made densifies along them. Set with
-        :meth:`set_user_curves`.
+        ``polylines`` so the edge they made densifies along them. Set with
+        ``set_user_curves``.
     field_aware : bool
         ``False`` densifies patch interiors as plain Coons patches. For A/B
         measurements only.
@@ -250,17 +250,17 @@ class FieldDecomposition(object):
             Guide curves -- cables, force lines. A LIST of curves; each may be a
             list of points or a compas ``Polyline``.
         mode, target_length, guide_weight, guide_band, relax, tau, symmetry : optional
-            As :meth:`CrossField.from_boundary`. ``target_length`` is the
+            As ``CrossField.from_boundary``. ``target_length`` is the
             background spacing, not the quad size -- that is set later by
-            ``set_strips_density_target`` or :meth:`quad_mesh`. With the
+            ``set_strips_density_target`` or ``quad_mesh``. With the
             default ``symmetry='auto'`` a symmetric input gives a symmetric
             layout; an asymmetric one is unaffected.
         orthogonal : bool, optional
             Only orthogonal (cross) fields are implemented; ``False`` raises.
         solve : bool, optional
             ``False`` stores the inputs and returns without solving, for
-            :meth:`find_symmetry` and :meth:`symmetry_unit`. Anything that needs
-            the field raises until :meth:`solve` is called.
+            ``find_symmetry`` and ``symmetry_unit``. Anything that needs
+            the field raises until ``solve`` is called.
         field_tau : float, optional
             Old name of ``tau``.
         """
@@ -335,11 +335,11 @@ class FieldDecomposition(object):
     ) -> SymmetryReport:
         """**Detect the symmetry of the domain** -- walls, holes, guides.
 
-        Works without a solve (``solve=False``). Kept on :attr:`symmetry_report`.
+        Works without a solve (``solve=False``). Kept on ``symmetry_report``.
 
         Returns
         -------
-        :class:`compas_singular.symmetry.SymmetryReport`
+        compas_singular.symmetry.SymmetryReport
         """
         from compas_singular.symmetry import find_symmetry
         from compas_singular.symmetry.routes import domain_of
@@ -360,7 +360,7 @@ class FieldDecomposition(object):
 
         Returns
         -------
-        :class:`compas_singular.symmetry.SymmetricUnit`
+        compas_singular.symmetry.SymmetricUnit
         """
         from compas_singular.symmetry import build_unit
         from compas_singular.symmetry.routes import mesher_for
@@ -380,7 +380,7 @@ class FieldDecomposition(object):
     def decomposition_mesh(self, poles: Any = (), force: bool = False) -> CoarsePseudoQuadMesh:
         """The all-quad coarse mesh, cached so densities and strips set on it survive.
 
-        Falls back to a one-polygon or triangulated layout; :meth:`route` says which.
+        Falls back to a one-polygon or triangulated layout; ``route`` says which.
 
         Parameters
         ----------
@@ -452,12 +452,12 @@ class FieldDecomposition(object):
 
     def coarse_mesh(self, poles: Any = (), force: bool = False) -> CoarsePseudoQuadMesh:
         """**The coarse quad layout** -- the name both front ends answer to.
-        See :meth:`decomposition_mesh`."""
+        See ``decomposition_mesh``."""
         return self.decomposition_mesh(poles=poles, force=force)
 
     def get_field(self) -> CrossField:
         """**The cross field**, to hand to ``densification(field=...)`` of any
-        coarse layout. The same object as :attr:`field`."""
+        coarse layout. The same object as ``field``."""
         self._require_solved()
         return self.field
 
@@ -538,7 +538,7 @@ class FieldDecomposition(object):
         return self.mesh
 
     def set_user_curves(self, curves: list[list[Any]]) -> None:
-        """Adopt the curves a user drew on the layout, replacing any set before, and add them to :attr:`polylines`."""
+        """Adopt the curves a user drew on the layout, replacing any set before, and add them to ``polylines``."""
         self.user_curves = [[list(point) for point in curve] for curve in curves]
         if self.polylines is not None:
             boundary, others, _ = self._build()
@@ -554,7 +554,7 @@ class FieldDecomposition(object):
     ) -> QuadMesh:
         """An all-quad mesh of the domain, always: via the field layout, else one polygon, else a triangulation.
 
-        :meth:`route` says which route ran and :meth:`warnings` why.
+        ``route`` says which route ran and ``warnings`` why.
 
         Parameters
         ----------
@@ -563,7 +563,7 @@ class FieldDecomposition(object):
         density : int, optional
             Fixed subdivision per coarse edge instead; takes precedence.
         coarse : mesh or list, optional
-            A hand-edited layout, put through :meth:`edit_coarse`. Once edited,
+            A hand-edited layout, put through ``edit_coarse``. Once edited,
             the edit stays in use.
         densities : dict, optional
             ``{strip key: density}`` over the base pass. A key naming no strip is
@@ -574,7 +574,7 @@ class FieldDecomposition(object):
 
         Returns
         -------
-        :class:`compas_singular.datastructures.QuadMesh`
+        compas_singular.datastructures.QuadMesh
         """
         self._require_solved()
         keep_preset = target_length is None and density is None
@@ -647,9 +647,9 @@ class FieldDecomposition(object):
         Parameters
         ----------
         coarse : CoarsePseudoQuadMesh, optional
-            Strips collected and densities set. Defaults to :attr:`mesh`.
+            Strips collected and densities set. Defaults to ``mesh``.
         **kwargs
-            Passed to :func:`densify.field_densification`.
+            Passed to ``densify.field_densification``.
 
         Returns
         -------
@@ -682,14 +682,14 @@ class FieldDecomposition(object):
         Parameters
         ----------
         mesh : Mesh, optional
-            Defaults to the last mesh :meth:`quad_mesh` returned.
+            Defaults to the last mesh ``quad_mesh`` returned.
         low_angle : float, optional
             Threshold for ``share_below``, in degrees.
 
         Returns
         -------
         dict
-            :func:`quality.mesh_quality`'s metrics, plus ``route``, ``coverage``
+            ``quality.mesh_quality``'s metrics, plus ``route``, ``coverage``
             (mesh area over domain area) and ``coarse_faces``.
         """
         if mesh is None:
@@ -725,7 +725,7 @@ class FieldDecomposition(object):
         (bool, str, dict, str or None)
             The verdict, the first structural reason when false, the
             element-quality metrics (``{}`` when rejected before measuring), and
-            a note for :attr:`repair_notes` or ``None``.
+            a note for ``repair_notes`` or ``None``.
         """
         if not mesh.faces():
             return False, 'no faces', {}, None

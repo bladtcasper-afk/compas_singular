@@ -227,7 +227,7 @@ def planar_arrangement(
         Updated in place with what the arrangement had to do.
     loops : list[list[[x, y, z]]]
         The domain's boundary loops, outer first. The walls are rebuilt from
-        these as a true partition (:func:`_partition_loop`).
+        these as a true partition (``_partition_loop``).
 
     Returns
     -------
@@ -530,7 +530,7 @@ def faces_from_arrangement(
     Parameters
     ----------
     boundary, others : list[list[[x, y, z]]]
-        The network, already through :func:`planar_arrangement`.
+        The network, already through ``planar_arrangement``.
     loops : list[list[[x, y, z]]]
         Domain boundary loops, outer first. Used only to test containment.
 

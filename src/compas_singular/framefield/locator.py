@@ -1,6 +1,6 @@
 """Point location on a background triangulation, the hottest code in the field route.
 
-:meth:`PointLocator.locate_many` returns exactly what :meth:`PointLocator.locate` would.
+``PointLocator.locate_many`` returns exactly what ``PointLocator.locate`` would.
 """
 from __future__ import annotations
 
@@ -20,8 +20,8 @@ __all__ = ['PointLocator', 'AMBIGUOUS']
 #: inside it, so a point on a shared edge is found from either side.
 INSIDE_TOL = -1e-9
 
-#: Returned by :meth:`PointLocator.locate_many` for a point that more than one
-#: triangle accepts. Which one :meth:`PointLocator.locate` picks then depends on
+#: Returned by ``PointLocator.locate_many`` for a point that more than one
+#: triangle accepts. Which one ``PointLocator.locate`` picks then depends on
 #: its ``hint``, so the caller has to ask ``locate`` with the right one.
 AMBIGUOUS = object()
 
@@ -46,7 +46,7 @@ def barycentric(
 
 
 class PointLocator(object):
-    """Point location on a :class:`BackgroundMesh`, using a face grid cached as plain arrays.
+    """Point location on a ``BackgroundMesh``, using a face grid cached as plain arrays.
 
     Parameters
     ----------
@@ -183,15 +183,15 @@ class PointLocator(object):
     # ------------------------------------------------------------------
 
     def locate_arrays(self, points: Any) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """:meth:`locate` for a batch, without a hint, as arrays.
+        """``locate`` for a batch, without a hint, as arrays.
 
         Returns
         -------
         (ndarray, ndarray, ndarray)
             ``status`` per point -- 0 when no face accepts it, 1 when exactly
-            one does, 2 when several do (:data:`AMBIGUOUS`: which one ``locate``
+            one does, 2 when several do (``AMBIGUOUS``: which one ``locate``
             picks then depends on its hint) -- and, where ``status`` is 1, the
-            face's position in :attr:`fkeys` and the barycentric coordinates.
+            face's position in ``fkeys`` and the barycentric coordinates.
             Status 0 and 1 are exactly what ``locate`` returns for ANY hint.
         """
         pts = np.asarray(points, dtype=float).reshape(-1, 3)
@@ -246,8 +246,8 @@ class PointLocator(object):
         return status, faces, bary
 
     def locate_many(self, points: Any) -> list[Any]:
-        """:meth:`locate_arrays` as a list: per point ``(fkey, barycentric)``,
-        ``None``, or :data:`AMBIGUOUS`."""
+        """``locate_arrays`` as a list: per point ``(fkey, barycentric)``,
+        ``None``, or ``AMBIGUOUS``."""
         status, faces, bary = self.locate_arrays(points)
         out = []
         for s, f, b in zip(status.tolist(), faces.tolist(), bary.tolist()):

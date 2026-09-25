@@ -53,7 +53,7 @@ LEGEND = (
 )
 
 #: Stroke widths, in supersampled pixels. The ORDER of these two matters more
-#: than either value: see :func:`scene`.
+#: than either value: see ``scene``.
 WALL_WIDTH = 5
 OUTLINE_WIDTH = 9
 GUIDE_WIDTH = 5

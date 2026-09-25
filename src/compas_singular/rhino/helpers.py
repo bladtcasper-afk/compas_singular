@@ -173,7 +173,7 @@ SYMMETRY_SAMPLE_MULTIPLE = 4
 def curve_points(guid: Any, max_edge: float) -> list[list[float]]:
 	"""A Rhino curve as points: a polyline at its own vertices, any other curve divided by length.
 
-	Closed loops get at least :data:`MIN_CLOSED_CURVE_POINTS`, rounded to :data:`SYMMETRY_SAMPLE_MULTIPLE`.
+	Closed loops get at least ``MIN_CLOSED_CURVE_POINTS``, rounded to ``SYMMETRY_SAMPLE_MULTIPLE``.
 	"""
 	curve = rs.coercecurve(guid)
 	ok, polyline = curve.TryGetPolyline()
@@ -200,7 +200,7 @@ def _distance(a: Sequence[float], b: Sequence[float]) -> float:
 
 
 def curve_to_polyline(guid: Any, max_edge: float) -> Polyline:
-	""":func:`curve_points` as a closed compas :class:`Polyline` (first point repeated)."""
+	"""``curve_points`` as a closed compas ``Polyline`` (first point repeated)."""
 	points = curve_points(guid, max_edge)
 	return Polyline(points + points[:1])
 

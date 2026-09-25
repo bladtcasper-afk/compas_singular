@@ -144,7 +144,7 @@ def _key(point: list[float]) -> tuple[float, float]:
 
 
 def mesh_from_faces(faces: list[list[list[float]]], cls: type = CoarsePseudoQuadMesh) -> tuple["QuadMesh | None", int]:
-    """A coarse mesh from faces as corner point lists, welded at :data:`PRECISION`. ``None`` if nothing is left.
+    """A coarse mesh from faces as corner point lists, welded at ``PRECISION``. ``None`` if nothing is left.
 
     Faces that repeat a corner are dropped as degenerate.
     """
@@ -193,7 +193,7 @@ def coarse_from_skeleton(
         See design_notes/editing.md (rebuild.py) on why.
     loops : list[list[[x, y, z]]], optional
         Boundary loops -- outer first, then holes. Used for snapping and handed
-        to :func:`repair.solve_non_quad_faces` so a split vertex lands on the
+        to ``repair.solve_non_quad_faces`` so a split vertex lands on the
         wall rather than on a chord.
     poles : list[[x, y, z]], optional
         Preferred pole positions. Pass the previous layout's poles so an
@@ -213,7 +213,7 @@ def coarse_from_skeleton(
         ``vertices``, ``snapped``, ``off_wall``, ``degenerate``, ``sides`` (the
         side-count histogram BEFORE repair -- anything other than ``{4: n}``
         means the skeleton was not four-sided patches) and ``repair`` (the note
-        :func:`repair.solve_non_quad_faces` returned).
+        ``repair.solve_non_quad_faces`` returned).
     """
     faces = faces_from_geometry(geometry)
     notes = {'faces_in': len(faces), 'faces_out': 0, 'vertices': 0,
@@ -227,7 +227,7 @@ def coarse_from_skeleton(
     if mesh is None:
         return None, notes
 
-    # Snapping needs the topology -- see :func:`snap_to_loops` -- so it happens
+    # Snapping needs the topology -- see ``snap_to_loops`` -- so it happens
     # after the weld and before anything is measured or validated.
     notes['snapped'], notes['off_wall'] = snap_to_loops(mesh, loops or [], snap_tol)
 
@@ -307,7 +307,7 @@ def face_polylines(coarse: "QuadMesh") -> list[Polyline]:
 
     Returns
     -------
-    list[:class:`compas.geometry.Polyline`]
+    list[compas.geometry.Polyline]
     """
     out = []
     for fkey in coarse.faces():

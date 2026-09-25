@@ -73,9 +73,11 @@ def mesh_quality(mesh: Mesh, low_angle: float = LOW_ANGLE) -> dict[str, Any]:
         ``worst_face`` -- the key of the face carrying ``min_angle``, so a
         failure can be looked at rather than merely counted.
 
+    Notes
+    -----
     Aspect ratio is **longest edge over shortest edge**, per face, worst over
     the mesh. A perfect grid reads 1.00. It is ``inf`` when a face has a
-    zero-length edge, which is what :func:`hard_floor` rejects on.
+    zero-length edge, which is what ``hard_floor`` rejects on.
     """
     face_pole = mesh.attributes.get('face_pole') or {}
 
@@ -187,7 +189,7 @@ def curve_alignment(
     radius: float = ALIGNMENT_RADIUS,
     spacing: float = 0.5,
 ) -> float:
-    """Mean of :func:`curve_alignment_profile`, in degrees; check the profile too."""
+    """Mean of ``curve_alignment_profile``, in degrees; check the profile too."""
     profile = curve_alignment_profile(mesh, curve, radius, spacing)
     if not profile:
         return float('nan')

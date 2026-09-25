@@ -1,12 +1,6 @@
-"""********************************************************************************
-mcp
-********************************************************************************
+"""The meshing tools as an MCP server: the client supplies the model, this package the mesh operations.
 
-.. currentmodule:: compas_singular.mcp
-
-The meshing tools as an MCP server: the client supplies the model, this package the mesh operations.
-
-Runs standalone; :mod:`~compas_singular.mcp.bridge` links to a live Rhino. Design notes: ``design_notes/mcp.md``.
+Runs standalone; ``compas_singular.mcp.bridge`` links to a live Rhino. Design notes: ``design_notes/mcp.md``.
 
 Modules
 =======

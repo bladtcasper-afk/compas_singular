@@ -46,7 +46,7 @@ def create_pattern(type: str, nu: int, nw: int) -> tuple[list[tuple[float, float
     Parameters
     ----------
     kind : str
-        A key of :attr:`PATTERNS`.
+        A key of ``PATTERNS``.
     nu, nw : int
         Divisions along u (the a->b side) and along w (the a->d side).
 
@@ -241,13 +241,13 @@ _FAN_TRIANGLE_CENTRE = (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)
 def _pattern_fan_triangle(nu: int, nw: int) -> tuple[list[tuple[float, float, float]], list[list[int]]]:
     """Three polar fans, one per corner, meeting at the centre of a triangular patch.
 
-    Vertices are barycentric on (pole, V1, V2); map them with :func:`pattern_morph_triangle`.
+    Vertices are barycentric on (pole, V1, V2); map them with ``pattern_morph_triangle``.
 
     Parameters
     ----------
     nu, nw : int
         Divisions along the sides. Must be equal and even, as for
-        :func:`_pattern_fan`.
+        ``_pattern_fan``.
 
     Returns
     -------
@@ -413,7 +413,7 @@ def pattern_morph_triangle(lam: list[tuple[float, float, float]], faces: list[li
         Template faces.
     sides : list
         The four side polylines ``[ab, bc, dc, ad]`` of a pseudo-quad, as for
-        :func:`pattern_morph`, exactly one of them ``None``.
+        ``pattern_morph``, exactly one of them ``None``.
 
     Returns
     -------
@@ -524,10 +524,10 @@ def reconcile_strip_densities(coarse: "CoarseQuadMesh", patterns: "str | dict[in
 
     Parameters
     ----------
-    coarse : :class:`CoarseQuadMesh`
+    coarse : CoarseQuadMesh
         The layout. Its strip densities are modified in place.
     patterns : str or dict
-        A key of :attr:`PATTERNS` for every face, or one per face as
+        A key of ``PATTERNS`` for every face, or one per face as
         ``{fkey: pattern}``.
 
     Returns

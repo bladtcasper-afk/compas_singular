@@ -29,8 +29,8 @@ __all__ = [
 def quadrangulate_mesh(mesh: Mesh, sources: list[int]) -> None:
     """Quadrangulate the faces of a mesh by adding edges from vertex sources.
 
-    Returns
-    -------
+    Parameters
+    ----------
     mesh : Mesh
         A mesh to quadrangulate.
     sources : list
@@ -38,7 +38,7 @@ def quadrangulate_mesh(mesh: Mesh, sources: list[int]) -> None:
 
     References
     ----------
-    .. [1] Oval et al., *Feature-based Topology Finding of Patterns for Shell Structures*. Automation in Construction. 2019.
+    1. Oval et al., *Feature-based Topology Finding of Patterns for Shell Structures*. Automation in Construction. 2019.
 
     """
     sources_to_visit = sources[:]

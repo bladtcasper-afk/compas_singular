@@ -203,7 +203,7 @@ def expand(
 def orbit_maps(mesh: PseudoQuadMesh | CoarsePseudoQuadMesh) -> dict[str, dict[int, int]]:
     """``{element key: {global vertex: global vertex}}`` from an expanded mesh.
 
-    Exact: read from the labels :func:`expand` recorded, not from positions.
+    Exact: read from the labels ``expand`` recorded, not from positions.
     """
     orbits = mesh.attributes.get('orbits')
     if not orbits:

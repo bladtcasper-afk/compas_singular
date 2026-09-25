@@ -95,7 +95,7 @@ def spool_directory(directory: str | None = None) -> str:
     Parameters
     ----------
     directory : str, optional
-        Use this instead of :func:`default_directory`. The tests pass a tmpdir.
+        Use this instead of ``default_directory``. The tests pass a tmpdir.
 
     Returns
     -------
@@ -179,13 +179,13 @@ def post(verb: str, args: dict[str, Any] | None = None, directory: str | None = 
     directory : str, optional
     ttl : float, optional
         Seconds the request stays servable -- pass the timeout it will be waited
-        for with. :func:`take` refuses it once ``ttl`` plus
-        :data:`EXPIRY_GRACE` has passed. ``None`` never expires.
+        for with. ``take`` refuses it once ``ttl`` plus
+        ``EXPIRY_GRACE`` has passed. ``None`` never expires.
 
     Returns
     -------
     str
-        The request id, for :func:`wait`.
+        The request id, for ``wait``.
     """
     folder = spool_directory(directory)
     request_id = new_id()

@@ -30,7 +30,7 @@ def extract_pareto_indices(data: list[Iterable[float]], k: float = 1.0) -> list[
 
     References
     ----------
-    .. [1] Wikipedia. *Multi-objective optimization*.
+    1. Wikipedia. *Multi-objective optimization*.
            Available at: https://en.wikipedia.org/wiki/Multi-objective_optimization.
     """
 
@@ -46,7 +46,7 @@ def is_dominating(X1: Iterable[float], X2: Iterable[float], k: float = 1.0) -> b
     ----------
     X1 : iterable
         A design to test if is dominating.
-    X12 : iterable
+    X2 : iterable
         A design to test if is dominated.
     k : float, optional
         Parameter for weak domination. Default if 1.0.
@@ -58,7 +58,7 @@ def is_dominating(X1: Iterable[float], X2: Iterable[float], k: float = 1.0) -> b
 
     References
     ----------
-    .. [1] Wikipedia. *Multi-objective optimization*.
+    1. Wikipedia. *Multi-objective optimization*.
            Available at: https://en.wikipedia.org/wiki/Multi-objective_optimization.
     """
 

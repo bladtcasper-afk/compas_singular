@@ -89,7 +89,8 @@ def clip_halfplane(
 
     Returns
     -------
-    list of open point lists, oriented the same way.
+    list
+        Open point lists, oriented the same way.
     """
     cx, cy = point[0], point[1]
     dx, dy = direction[0], direction[1]
@@ -503,8 +504,8 @@ def cut_unit(
 
     Parameters
     ----------
-    domain : :class:`~.domain.Domain`
-    group : :class:`~.group.SymmetryGroup`
+    domain : .domain.Domain
+    group : .group.SymmetryGroup
         The group to enforce -- usually ``report.group.subgroup(keys)``.
     centre : {'route'}
         How the centre is treated. Only ``'route'`` (the apex is left to the
@@ -518,7 +519,7 @@ def cut_unit(
 
     Returns
     -------
-    :class:`UnitDomain`
+    UnitDomain
     """
     if centre not in ('route', None):
         raise NotImplementedError("centre={!r} is not implemented yet -- only 'route'".format(centre))

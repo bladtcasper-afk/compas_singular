@@ -1,42 +1,6 @@
-"""********************************************************************************
-editing
-********************************************************************************
-
-.. currentmodule:: compas_singular.editing
-
-Hand-editing a coarse layout or dense mesh, with no CAD in it; Rhino supplies only picks and prompts.
+"""Hand-editing a coarse layout or a dense mesh, with no CAD in it. Rhino supplies only picks and prompts.
 
 Imports nothing from ``framefield``. Design notes: ``design_notes/editing.md``.
-
-Classes
-=======
-
-.. autosummary::
-    :toctree: generated/
-    :nosignatures:
-
-    MeshEditor
-    CoarseEditor
-    DenseMeshEditor
-    GuideCurve
-
-Functions
-=========
-
-.. autosummary::
-    :toctree: generated/
-    :nosignatures:
-
-    guide_chain
-    attach_chain
-    chain_quality
-    collect_polyedges
-    mean_edge_length
-    coarse_from_skeleton
-    snap_to_loops
-    warp_polyline
-    densifiable
-    solve_non_quad_faces
 """
 from __future__ import absolute_import
 from __future__ import division

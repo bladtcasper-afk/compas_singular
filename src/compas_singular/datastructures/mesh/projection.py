@@ -57,7 +57,7 @@ def automated_smoothing_surface_constraints(mesh: Mesh, surface: Any, borders: S
 
     Parameters
     ----------
-    mesh : :class:`compas.datastructures.Mesh`
+    mesh : compas.datastructures.Mesh
         The mesh to constrain.
     surface : Any
         The surface, as anything with a ``closest_point`` method.
@@ -69,7 +69,7 @@ def automated_smoothing_surface_constraints(mesh: Mesh, surface: Any, borders: S
     Returns
     -------
     dict
-        Vertex keys pointing to the surface, a border curve or a :class:`compas.geometry.Point`.
+        Vertex keys pointing to the surface, a border curve or a ``compas.geometry.Point``.
     """
     constraints = {vertex: surface for vertex in mesh.vertices()}
 
@@ -93,7 +93,7 @@ def automated_smoothing_constraints(mesh: Mesh, points: Sequence[list[float]] | 
 
     Parameters
     ----------
-    mesh : :class:`compas.datastructures.Mesh`
+    mesh : compas.datastructures.Mesh
         The mesh to constrain.
     points : sequence[[float, float, float]], optional
         Each pins the mesh vertex nearest to it, anywhere in the mesh.
@@ -136,7 +136,7 @@ def surface_constrained_smoothing(mesh: Mesh, surface: Any, borders: Sequence[An
 
     Parameters
     ----------
-    mesh : :class:`compas.datastructures.Mesh`
+    mesh : compas.datastructures.Mesh
         A mesh to smooth, modified in place.
     surface : Any
         The surface, as anything with a ``closest_point`` method.

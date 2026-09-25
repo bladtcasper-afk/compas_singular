@@ -56,12 +56,12 @@ class MeshSession(object):
         #: Where the mesh came from: ``{'kind': 'rhino'|'file', ...}``.
         self.source: dict[str, Any] | None = None
         #: The coarse layout, once ``create_coarse_mesh`` has built one --
-        #: a ``CoarsePseudoQuadMesh``, or ``None``. Independent of :attr:`mesh`:
+        #: a ``CoarsePseudoQuadMesh``, or ``None``. Independent of ``mesh``:
         #: pulling a new dense mesh does not clear this, because
         #: ``coarse_densify`` adopts ITS OWN output through the same path and
         #: clearing the layout that just produced it would be wrong.
         self.coarse: CoarsePseudoQuadMesh | None = None
-        #: The ``SkeletonDecomposition`` that built :attr:`coarse`, kept so
+        #: The ``SkeletonDecomposition`` that built ``coarse``, kept so
         #: ``coarse_densify`` can ask it for curved-boundary edge shapes.
         self.decomposition: SkeletonDecomposition | None = None
         self.history: list[dict[str, Any]] = []
@@ -71,7 +71,7 @@ class MeshSession(object):
         #: The coarse layout's own undo stack -- whole-mesh copies, not
         #: positions. See design_notes/mcp.md (session.py) for why.
         self._coarse_undo: list[dict[str, Any]] = []
-        #: Monotonic counters behind :attr:`visually_current`. Numbers rather
+        #: Monotonic counters behind ``visually_current``. Numbers rather
         #: than a bool because "seen since the last change" is the question, and
         #: a bool would need resetting in every tool that moves a vertex.
         self._changed_at = 0

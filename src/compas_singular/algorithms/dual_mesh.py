@@ -34,11 +34,11 @@ def dual_mesh(mesh: Mesh, redistribute: bool = True) -> Mesh:
 
     Parameters
     ----------
-    mesh : :class:`compas.datastructures.Mesh`
+    mesh : compas.datastructures.Mesh
 
     Returns
     -------
-    :class:`compas.datastructures.Mesh`
+    compas.datastructures.Mesh
         The dual, of the same class as ``mesh``.
 
     """
@@ -115,9 +115,9 @@ def redistribute_blocks(dual: Mesh, primal: Mesh, project: bool = True) -> Mesh:
 
     Parameters
     ----------
-    dual : :class:`compas.datastructures.Mesh`
-        The dual to modify, as returned by :func:`dual_mesh`. Modified in place.
-    primal : :class:`compas.datastructures.Mesh`
+    dual : compas.datastructures.Mesh
+        The dual to modify, as returned by ``dual_mesh``. Modified in place.
+    primal : compas.datastructures.Mesh
         The mesh it was built from. Supplies the outline, the strips and the
         surface.
     project : bool, optional
@@ -128,7 +128,7 @@ def redistribute_blocks(dual: Mesh, primal: Mesh, project: bool = True) -> Mesh:
 
     Returns
     -------
-    :class:`compas.datastructures.Mesh`
+    compas.datastructures.Mesh
         ``dual``, modified in place.
     """
     gkey_vertex = {TOL.geometric_key(dual.vertex_coordinates(v)): v

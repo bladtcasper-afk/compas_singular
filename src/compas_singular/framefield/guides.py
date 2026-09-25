@@ -105,7 +105,7 @@ def guide_metrics(mesh: Mesh, guides: list[list[Any]], steep: float = STEEP) -> 
         in degrees. 0 is a course running along the guide.
 
         ``across`` / ``across_within`` / ``across_tilted`` -- median angle of the other
-        family, the share of it within :data:`ACROSS_TOLERANCE` of 90 degrees, and the
+        family, the share of it within ``ACROSS_TOLERANCE`` of 90 degrees, and the
         median over tilted stations only. 90 is an interface meeting the guide square.
 
         ``off_centre`` / ``off_centre_worst`` -- the guide's offset from the face centre
@@ -177,7 +177,7 @@ def guide_metrics(mesh: Mesh, guides: list[list[Any]], steep: float = STEEP) -> 
 
 
 def format_guide_metrics(metrics: dict[str, Any]) -> str:
-    """One line of the numbers from :func:`guide_metrics`, for a harness to print."""
+    """One line of the numbers from ``guide_metrics``, for a harness to print."""
     if not metrics['faces']:
         return 'guide unseen (0 faces{})'.format(
             ', {} poles'.format(metrics['poles']) if metrics['poles'] else '')

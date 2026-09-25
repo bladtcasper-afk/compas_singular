@@ -164,7 +164,7 @@ def loop_parameter(point: list[float], loop: list[list[float]], cumulative: list
     loop : list[[x, y, z]]
         Open, the last point is not the first.
     cumulative : list[float], optional
-        :func:`loop_arc_lengths`' second value, when the caller already has it.
+        ``loop_arc_lengths``' second value, when the caller already has it.
     """
     if cumulative is None:
         cumulative = loop_arc_lengths(loop)[1]
@@ -426,7 +426,7 @@ def discretise_boundary(
 
 
 def resample_loop(points: list[list[float]], spacing: float | None = None) -> list[list[float]]:
-    """One loop through :func:`discretise_boundary`, with no scale rule."""
+    """One loop through ``discretise_boundary``, with no scale rule."""
     loop, _ = discretise_boundary(points, spacing=spacing,
                                   alpha=None, d_min=None)
     return loop

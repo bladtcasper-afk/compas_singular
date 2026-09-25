@@ -105,12 +105,12 @@ def describe(mesh: Mesh | None, metrics: dict[str, Any], limits: dict[str, Any] 
     metrics : dict
         From ``framefield.quality.mesh_quality``.
     limits : dict, optional
-        Thresholds. Defaults to :data:`DEFAULT_THRESHOLDS`.
+        Thresholds. Defaults to ``DEFAULT_THRESHOLDS``.
 
     Returns
     -------
     dict
-        ``reading`` (a paragraph), ``verdict`` (one of :data:`BANDS`),
+        ``reading`` (a paragraph), ``verdict`` (one of ``BANDS``),
         ``bands`` (per metric), and ``worst_face_at`` (a handle, or None).
     """
     if not metrics:

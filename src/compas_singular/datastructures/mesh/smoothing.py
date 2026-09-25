@@ -1,6 +1,6 @@
 """Smoothing and relaxation of a mesh, in place, with vertices held on points, curves or surfaces.
 
-Default is :func:`boundary_constrained_smoothing`; prefer ``'area'`` on a graded mesh.
+Default is ``boundary_constrained_smoothing``; prefer ``'area'`` on a graded mesh.
 """
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ __all__ = [
 
 
 #: What a vertex can be constrained to: a point, a polyline, a sequence of points, a curve
-#: or a surface. See :func:`closest_point_on_constraint`.
+#: or a surface. See ``closest_point_on_constraint``.
 Constraint = Any
 
 #: The smoothing algorithms accepted by the ``algorithm`` parameters.
@@ -69,20 +69,20 @@ def closest_point_on_constraint(constraint: Constraint, xyz: list[float], discre
 
     Parameters
     ----------
-    constraint : None | :class:`compas.geometry.Point` | [float, float, float] | :class:`compas.geometry.Polyline` | sequence[point] | :class:`compas.geometry.Curve` | Any
+    constraint : None | compas.geometry.Point | [float, float, float] | compas.geometry.Polyline | sequence[point] | compas.geometry.Curve | Any
         The geometry to project onto:
 
         * ``None`` -- no constraint, None is returned;
-        * a :class:`compas.geometry.Point` or a bare ``[x, y, z]`` -- the point itself, i.e. a pin;
-        * a :class:`compas.geometry.Polyline` or any sequence of points -- the closest point
-          on that polyline, via :func:`compas.geometry.closest_point_on_polyline`;
-        * any other :class:`compas.geometry.Curve` -- a :class:`~compas.geometry.Line`, a
-          :class:`~compas.geometry.Circle`, a curve from ``compas_rhino``'s
+        * a ``compas.geometry.Point`` or a bare ``[x, y, z]`` -- the point itself, i.e. a pin;
+        * a ``compas.geometry.Polyline`` or any sequence of points -- the closest point
+          on that polyline, via ``compas.geometry.closest_point_on_polyline``;
+        * any other ``compas.geometry.Curve`` -- a ``compas.geometry.Line``, a
+          ``compas.geometry.Circle``, a curve from ``compas_rhino``'s
           ``curve_to_compas`` or from ``compas_occ`` -- the closest point *on the curve*, from
-          its own ``closest_point``. See :func:`_closest_point_on_curve` for the curves that
+          its own ``closest_point``. See ``_closest_point_on_curve`` for the curves that
           have none and fall back on their ``to_polyline`` discretisation;
         * any other object with a working ``closest_point`` method (a
-          :class:`~compas_singular.editing.GuideCurve`, a Rhino or OCC surface, ...) -- the
+          ``compas_singular.editing.GuideCurve``, a Rhino or OCC surface, ...) -- the
           result of that method;
         * anything else with a ``to_polyline`` -- the closest point on that discretisation.
     xyz : [float, float, float]
@@ -138,7 +138,7 @@ def closest_point_on_constraint(constraint: Constraint, xyz: list[float], discre
 
 
 #: Curve types whose missing ``closest_point`` has already been warned about by
-#: :func:`_closest_point_on_curve`. Once per type, not per call: smoothing projects every
+#: ``_closest_point_on_curve``. Once per type, not per call: smoothing projects every
 #: constrained vertex at every iteration, and a warning per call would put thousands of
 #: identical lines on Rhino's command line.
 _EXPLAINED_FALLBACKS = set()
@@ -219,7 +219,7 @@ def mesh_boundary_loops(mesh: Mesh) -> list[list[int]]:
 
     Parameters
     ----------
-    mesh : :class:`compas.datastructures.Mesh`
+    mesh : compas.datastructures.Mesh
         A mesh.
 
     Returns
@@ -250,12 +250,12 @@ def mesh_boundary_polylines(mesh: Mesh) -> list[Polyline]:
 
     Parameters
     ----------
-    mesh : :class:`compas.datastructures.Mesh`
+    mesh : compas.datastructures.Mesh
         A mesh.
 
     Returns
     -------
-    list[:class:`compas.geometry.Polyline`]
+    list[compas.geometry.Polyline]
         A closed polyline per mesh boundary.
 
     """
@@ -270,7 +270,7 @@ def mesh_boundary_corners(mesh: Mesh, corner_angle: float = pi / 6) -> list[int]
 
     Parameters
     ----------
-    mesh : :class:`compas.datastructures.Mesh`
+    mesh : compas.datastructures.Mesh
         A mesh.
     corner_angle : float, optional
         Threshold deviation angle, in radians. Default is ``pi / 6`` (30 degrees).
@@ -346,7 +346,7 @@ def automated_boundary_constraints(mesh: Mesh, curves: Sequence[Constraint] | No
 
     Parameters
     ----------
-    mesh : :class:`compas.datastructures.Mesh`
+    mesh : compas.datastructures.Mesh
         The mesh to constrain.
     curves : sequence, optional
         The boundary geometry to snap the boundary vertices to, as COMPAS polylines or
@@ -420,7 +420,7 @@ def constrained_smoothing(mesh: Mesh, kmax: int = 100, damping: float = 0.5, con
 
     Parameters
     ----------
-    mesh : :class:`compas.datastructures.Mesh`
+    mesh : compas.datastructures.Mesh
         A mesh to smooth, modified in place.
     kmax : int, optional
         Number of iterations for smoothing, per algorithm. Default is ``100``.
@@ -429,7 +429,7 @@ def constrained_smoothing(mesh: Mesh, kmax: int = 100, damping: float = 0.5, con
     constraints : dict[int, Constraint], optional
         Dictionary of constraints as vertex keys pointing to COMPAS geometry
         (points, polylines, curves or surfaces). Empty by default.
-        See :func:`closest_point_on_constraint` for the accepted geometry.
+        See ``closest_point_on_constraint`` for the accepted geometry.
     algorithm : {'centroid', 'area', 'centerofmass'} | sequence of them, optional
         Smoothing algorithm to apply. Classic centroid by default. A sequence of
         algorithms, such as ``['area', 'centroid']``, runs each in turn for ``kmax``
@@ -500,7 +500,7 @@ def boundary_constrained_smoothing(mesh: Mesh, curves: Sequence[Constraint] | No
 
     Parameters
     ----------
-    mesh : :class:`compas.datastructures.Mesh`
+    mesh : compas.datastructures.Mesh
         A mesh to smooth, modified in place.
     curves : sequence, optional
         The boundary geometry to snap the boundary vertices to, as COMPAS polylines or
@@ -511,7 +511,7 @@ def boundary_constrained_smoothing(mesh: Mesh, curves: Sequence[Constraint] | No
         Damping value for smoothing between 0 and 1. Default is ``0.5``.
     algorithm : {'centroid', 'area', 'centerofmass'} | sequence of them, optional
         Smoothing algorithm to apply, or several to run in turn.
-        Classic centroid by default. See :func:`constrained_smoothing`.
+        Classic centroid by default. See ``constrained_smoothing``.
     corner_angle : float, optional
         Threshold deviation angle for a boundary kink, in radians.
         Default is ``pi / 6`` (30 degrees).
@@ -545,12 +545,12 @@ def boundary_smoothing(mesh: Mesh, curves: Sequence[Constraint] | None = None, k
                        fix_corners: bool = True) -> dict[int, Constraint]:
     """Smooth only the boundary of a mesh, sliding its vertices along the boundary.
 
-    Unlike :func:`boundary_constrained_smoothing`, every interior vertex is fixed: the
+    Unlike ``boundary_constrained_smoothing``, every interior vertex is fixed: the
     boundary vertices are redistributed along the boundary and nothing else moves.
 
     Parameters
     ----------
-    mesh : :class:`compas.datastructures.Mesh`
+    mesh : compas.datastructures.Mesh
         A mesh to smooth, modified in place.
     curves : sequence, optional
         The boundary geometry to slide the boundary vertices along, as COMPAS polylines or
@@ -561,7 +561,7 @@ def boundary_smoothing(mesh: Mesh, curves: Sequence[Constraint] | None = None, k
         Damping value for smoothing between 0 and 1. Default is ``0.5``.
     algorithm : {'area', 'centroid', 'centerofmass'} | sequence of them, optional
         Smoothing algorithm to apply, or several to run in turn.
-        Area by default. See :func:`constrained_smoothing`.
+        Area by default. See ``constrained_smoothing``.
     corner_angle : float, optional
         Threshold deviation angle for a boundary kink, in radians.
         Default is ``pi / 6`` (30 degrees).
@@ -596,7 +596,7 @@ def region_smoothing(mesh: Mesh, vertices: Sequence[int] | dict[int, float], kma
 
     Parameters
     ----------
-    mesh : :class:`compas.datastructures.Mesh`
+    mesh : compas.datastructures.Mesh
         A mesh to smooth, modified in place.
     vertices : sequence[int] | dict[int, float]
         The region to smooth, either as the vertex keys of its core -- which are then
@@ -616,9 +616,9 @@ def region_smoothing(mesh: Mesh, vertices: Sequence[int] | dict[int, float], kma
         Dictionary of constraints as vertex keys pointing to COMPAS geometry, applied to
         the vertices of the region after every iteration. Constraints on vertices outside
         the region are ignored, since those vertices do not move. Default is None, in
-        which case :func:`automated_boundary_constraints` is used: a region touching the
+        which case ``automated_boundary_constraints`` is used: a region touching the
         boundary then slides along it instead of being dragged inward.
-        See :func:`closest_point_on_constraint` for the accepted geometry.
+        See ``closest_point_on_constraint`` for the accepted geometry.
 
     Returns
     -------
@@ -755,7 +755,7 @@ def relaxation(mesh: Mesh, fixed: str | Sequence[int] = 'corners', constraints: 
 
     Parameters
     ----------
-    mesh : :class:`compas.datastructures.Mesh`
+    mesh : compas.datastructures.Mesh
         A mesh to relax, modified in place.
     fixed : {'corners', 'boundary'} | sequence[int], optional
         The vertices that do not move: ``'corners'`` (default) for the boundary vertices at

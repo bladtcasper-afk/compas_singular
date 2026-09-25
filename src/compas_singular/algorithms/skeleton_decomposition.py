@@ -79,16 +79,16 @@ class SkeletonDecomposition(Skeleton):
         self.flip_angle_limit = pi / 2.
         #: How far each copy of a duplicated vertex moves toward its own
         #: neighbour centroid, as a fraction of that distance. See
-        #: :meth:`solve_triangular_faces`.
+        #: ``solve_triangular_faces``.
         self.collapsed_edge_opening = 0.5
         self.repair_notes = []
 
         self.origin = None #skeleton, mesh or boundary
         self.inputs = {}
-        #: What :meth:`find_symmetry` found, or ``None``.
+        #: What ``find_symmetry`` found, or ``None``.
         self.symmetry_report = None
-        #: The ``poles`` :attr:`mesh` was built with, as a rounded tuple. The
-        #: cache key of :meth:`coarse_mesh` -- see there.
+        #: The ``poles`` ``mesh`` was built with, as a rounded tuple. The
+        #: cache key of ``coarse_mesh`` -- see there.
         self._mesh_poles = None
 
     @classmethod
@@ -136,7 +136,7 @@ class SkeletonDecomposition(Skeleton):
             ``markdowns/HOW_IT_WORKS.md`` section 5 for what still does not work.
         point_features : list[[x, y, z]], optional
             Points the decomposition must pass through. They become the POLES of
-            the layout, and :meth:`coarse_mesh` takes them from here.
+            the layout, and ``coarse_mesh`` takes them from here.
         target_length : float, optional
             Background spacing the walls are discretised to, not the quad size.
             ``None`` uses ``alpha`` times the bounding-box diagonal; pass
@@ -144,7 +144,7 @@ class SkeletonDecomposition(Skeleton):
         alpha : float, optional
             Fraction of the bounding-box diagonal to use as the target length
             when none is given. Thesis eq. 4.1; see
-            :func:`~compas_singular.geometry.discretise_boundary`.
+            ``compas_singular.geometry.discretise_boundary``.
         d_min : int, optional
             Fewest points per boundary loop, whatever the target length says.
 
@@ -201,11 +201,11 @@ class SkeletonDecomposition(Skeleton):
     def find_symmetry(self, tol: float | None = None, include: Iterable[str] = ('walls', 'holes', 'guides', 'poles'), max_order: int = 12) -> SymmetryReport:
         """Detect the symmetry of the domain (walls, holes, curve and point features).
 
-        The result is kept on :attr:`symmetry_report`.
+        The result is kept on ``symmetry_report``.
 
         Returns
         -------
-        :class:`compas_singular.symmetry.SymmetryReport`
+        compas_singular.symmetry.SymmetryReport
             ``print`` it for the group and its keys; ``report.geometry()`` gives
             the centre, mirror lines and rotation arcs to draw.
         """
@@ -223,17 +223,17 @@ class SkeletonDecomposition(Skeleton):
         Parameters
         ----------
         keys : list[str], optional
-            Keys from :meth:`find_symmetry` -- ``['M0', 'M90']``. The subgroup they
+            Keys from ``find_symmetry`` -- ``['M0', 'M90']``. The subgroup they
             GENERATE is enforced. ``None`` enforces everything detected.
         centre : {'route'}
         seam : float, optional
             Rotation-only groups: the angle of the first seam, radians.
         report : SymmetryReport, optional
-            Defaults to :attr:`symmetry_report`, detected now if missing.
+            Defaults to ``symmetry_report``, detected now if missing.
 
         Returns
         -------
-        :class:`compas_singular.symmetry.SymmetricUnit`
+        compas_singular.symmetry.SymmetricUnit
         """
         from compas_singular.symmetry import build_unit
         from compas_singular.symmetry.routes import mesher_for
@@ -479,7 +479,7 @@ class SkeletonDecomposition(Skeleton):
         ----------
         poles : list[[x, y, z]], optional
             Preferred pole positions. ``None`` takes them from the
-            ``point_features`` of :meth:`from_boundary`, or none at all for a
+            ``point_features`` of ``from_boundary``, or none at all for a
             decomposition built from a mesh or a skeleton. An explicit list wins.
             Different poles miss the cache.
         force : bool, optional
@@ -512,7 +512,7 @@ class SkeletonDecomposition(Skeleton):
         Parameters
         ----------
         coarse : CoarseQuadMesh, optional
-            The layout to describe. Defaults to :attr:`mesh`.
+            The layout to describe. Defaults to ``mesh``.
         wall_sampling : float, optional
             How finely to resample the walls. Defaults to a quarter of the
             background ``target_length``, the ratio ``CMD_coarse_mesh`` uses.
@@ -530,7 +530,7 @@ class SkeletonDecomposition(Skeleton):
         Raises
         ------
         ValueError
-            If this decomposition was not built by :meth:`from_boundary`, so
+            If this decomposition was not built by ``from_boundary``, so
             there are no walls to derive the curves from.
         """
         from compas_singular.datastructures import coarse_edges_to_curves
@@ -941,7 +941,7 @@ class SkeletonDecomposition(Skeleton):
     def store_pole_data(self, poles: list[list[float]]) -> None:
         """Record, for every triangular face, which corner is the pole.
 
-        Triangles without a point feature at a corner get one chosen by :meth:`_choose_pole`.
+        Triangles without a point feature at a corner get one chosen by ``_choose_pole``.
 
         Parameters
         ----------

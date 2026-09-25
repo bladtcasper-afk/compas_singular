@@ -177,7 +177,7 @@ class SegmentHash(object):
         slacks: Sequence[float] | None = None,
     ) -> None:
         """Add each segment; ``slacks[i]`` is how far segment ``i`` may lie from
-        the curve it samples (see :func:`chord_sags`)."""
+        the curve it samples (see ``chord_sags``)."""
         n = len(points)
         if n == 1:
             self.add_point(points[0], tag)

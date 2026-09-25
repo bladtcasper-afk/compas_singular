@@ -1,6 +1,6 @@
 """The session of one Rhino document, stored inside the document and undone with Rhino's Ctrl+Z.
 
-Commands edit a copy, assign it back, then call :meth:`RhinoSession.record`.
+Commands edit a copy, assign it back, then call ``RhinoSession.record``.
 """
 from __future__ import absolute_import
 from __future__ import annotations
@@ -46,7 +46,7 @@ def display_options() -> dict[str, dict[str, Any]]:
 
 
 class RhinoSession(SingularSession):
-    """A :class:`~compas_singular.session.SingularSession` stored in a Rhino document.
+    """A ``compas_singular.session.SingularSession`` stored in a Rhino document.
 
     Attributes
     ----------
@@ -77,7 +77,7 @@ class RhinoSession(SingularSession):
     @property
     def scene(self) -> Scene:
         """The compas ``Scene`` that draws this session's items. Never saved: it
-        is rebuilt from the items (see :mod:`compas_singular.session`)."""
+        is rebuilt from the items (see ``compas_singular.session``)."""
         if self._scene is None:
             from compas.scene import Scene
 

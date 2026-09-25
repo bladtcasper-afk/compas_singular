@@ -41,7 +41,7 @@ class CoarseQuadMesh(QuadMesh):
         self.attributes['edge_coarse_to_dense'] = {}
         self.attributes['quad_mesh'] = None
         self.attributes['polygonal_mesh'] = None
-        # The SHAPE of each coarse edge, when it is known. See :meth:`edges_to_curves`.
+        # The SHAPE of each coarse edge, when it is known. See ``edges_to_curves``.
         self.attributes['edges_to_curves'] = []
         self.attributes['decomposition_type'] = None
 
@@ -88,7 +88,7 @@ class CoarseQuadMesh(QuadMesh):
         attribute_density : bool, optional
             Keep density data of dense quad mesh and inherit it as aatribute.
         strict : bool, optional
-            Passed to :meth:`QuadMesh.singularity_polyedge_decomposition`. Default is
+            Passed to ``QuadMesh.singularity_polyedge_decomposition``. Default is
             False. Setting it to True changes the resulting coarse layout.
 
         Returns
@@ -198,7 +198,7 @@ class CoarseQuadMesh(QuadMesh):
             [list(point) for point in polyline] for polyline in (polylines or [])]
 
     def _filtered_edges_to_curves(self, boundary_curvature: bool, skeleton_curvature: bool) -> dict[tuple[int, int], list[list[float]]]:
-        """The stored :meth:`edges_to_curves`, filtered by the boundary and skeleton curvature toggles.
+        """The stored ``edges_to_curves``, filtered by the boundary and skeleton curvature toggles.
 
         Parameters
         ----------
@@ -227,7 +227,7 @@ class CoarseQuadMesh(QuadMesh):
             The edge, in the direction it is being densified.
         d : int
             The strip density -- ``d + 1`` points are returned, matching
-            :meth:`edge_point`.
+            ``edge_point``.
         edges_to_curves : dict or None
 
         Returns
@@ -439,7 +439,7 @@ class CoarseQuadMesh(QuadMesh):
         Parameters
         ----------
         boundary_curvature : bool, optional
-            Use the shape :meth:`edges_to_curves` has stored for edges on the
+            Use the shape ``edges_to_curves`` has stored for edges on the
             layout's own boundary, instead of chording them. Defaults to True.
             Ignored -- treated as True -- when ``overwrite_edges_to_curves`` is
             given.
@@ -450,7 +450,7 @@ class CoarseQuadMesh(QuadMesh):
             ``overwrite_edges_to_curves`` is given.
         overwrite_edges_to_curves : dict, optional
             A dictionary with edges (u, v) pointing to a curve for
-            densification, overriding whatever :meth:`edges_to_curves` has
+            densification, overriding whatever ``edges_to_curves`` has
             stored -- for every edge, regardless of ``boundary_curvature`` /
             ``skeleton_curvature``. The curves are lists of XYZ points.
         field : optional

@@ -105,7 +105,7 @@ def from_curves(
         Least-squares weight, or ``None`` for hard. Soft by default: a guide
         that disagrees with a wall should bend, not break the solve.
     skip_boundary : bool, optional
-        Leave boundary vertices to :func:`from_boundary`; the wall must win.
+        Leave boundary vertices to ``from_boundary``; the wall must win.
 
     Returns
     -------
