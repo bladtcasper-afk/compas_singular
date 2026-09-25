@@ -1,28 +1,6 @@
-"""**The session of one Rhino document, kept inside that document.**
+"""The session of one Rhino document, stored inside the document and undone with Rhino's Ctrl+Z.
 
-Every command starts with :meth:`RhinoSession.current` and, if it changed
-something, ends with :meth:`RhinoSession.record`::
-
-    session = RhinoSession.current()
-    coarse = session.coarse.copy()          # edit a copy ...
-    coarse.set_strip_density(3, 8)
-    session.coarse = coarse                 # ... and hand it back when done
-    session.record('Densities')
-
-``record`` brings the permanent display of the layout and the dense mesh up to
-date (:meth:`~RhinoSession.draw`) and writes a snapshot of the whole session into
-the document (see :mod:`compas_singular.rhino.document`), both inside the
-command's undo record. Rhino's own Ctrl+Z and Ctrl+Y then restore the two
-together, and the next :meth:`~RhinoSession.current` notices the document holds
-a different revision and reloads. So :meth:`undo` and :meth:`redo` are not used
-here; they are Rhino's.
-
-**Edit a copy, assign it back, then record.** The session in memory is reused
-from one command to the next as long as the document holds the revision it last
-wrote. A command that changed an item in place and was then cancelled would
-leave that change in memory, and the next command would build on it. Assigning
-back only on the way to ``record`` keeps what is in memory equal to what is in
-the document -- and it is how :meth:`~RhinoSession.draw` knows what changed.
+Commands edit a copy, assign it back, then call :meth:`RhinoSession.record`.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -57,13 +35,7 @@ __all__ = ['RhinoSession']
 
 
 def display_options() -> dict[str, dict[str, Any]]:
-    """How the permanent display draws each item, by item name.
-
-    The same layers the commands always baked to. The layout's parts -- poles,
-    edge curves, the polylines those come from -- are drawn by its scene object
-    too. The dense mesh leaves the sublayers of ``QuadMesh`` alone: ``Edited``,
-    ``Smoothened`` and ``Dual`` belong to other commands.
-    """
+    """How the permanent display draws each item, by item name."""
     from compas_singular.rhino.project import layer_path
     return {
         'coarse': dict(layer=layer_path('Mesh'), show_faces=True, joined=True,
@@ -93,6 +65,10 @@ class RhinoSession(SingularSession):
     #: The items that have a permanent display.
     DISPLAYED = ('coarse', 'dense')
 
+    #: The user-text key every drawn object carries, its value the item's name.
+    #: Stored in the object, so it survives saving the ``.3dm`` and Ctrl+Z.
+    ITEM_KEY = 'compas_singular.item'
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super(RhinoSession, self).__init__(*args, **kwargs)
         self.doc = None
@@ -115,12 +91,7 @@ class RhinoSession(SingularSession):
 
     @classmethod
     def current(cls, doc: Any = None) -> RhinoSession:
-        """The session of ``doc`` (default: the active document).
-
-        Reloaded from the document when it holds a different revision than the
-        one in memory: after Ctrl+Z or Ctrl+Y, after opening a ``.3dm``, and on
-        the first command of a Rhino session.
-        """
+        """The session of ``doc`` (default: the active document), reloaded when the document's revision differs."""
         doc = doc or sc.doc
         revision = document.read_revision(doc)
         session = cls._sessions.get(doc.RuntimeSerialNumber)
@@ -137,22 +108,13 @@ class RhinoSession(SingularSession):
         text = document.read_snapshot(doc) if revision else None
         if text:
             session.take(compas.json_loads(text))
-        else:
-            # A document from before sessions existed, or a new one.
-            from compas_singular.rhino.legacy import read_legacy
-            read_legacy(session)
         # The document already shows what it holds: Rhino restored the display
         # together with the snapshot, or it was drawn when the snapshot was.
         session._drawn = {name: getattr(session, name) for name in cls.DISPLAYED}
         return session
 
     def record(self, name: str) -> None:
-        """Bring the display up to date and write this session into its document,
-        both as part of the running command.
-
-        ``name`` is for the reader of the command: Rhino's undo list names the
-        step after the command itself.
-        """
+        """Bring the display up to date and write this session into its document, inside the running command."""
         previous = rs.EnableRedraw(False)
         try:
             self.draw()
@@ -167,22 +129,24 @@ class RhinoSession(SingularSession):
     # --------------------------------------------------------------------------
 
     def draw(self) -> None:
-        """Redraw every displayed item that is not the object drawn last time.
-
-        By the copy rule a changed item is always a NEW object, so an identity
-        check is the whole test, and a record that only changed settings redraws
-        nothing.
-        """
+        """Redraw every displayed item whose object is not the one drawn last time."""
         options = display_options()
         for name in self.DISPLAYED:
             item = getattr(self, name)
             if name in self._drawn and self._drawn[name] is item:
                 continue
-            self._draw_item(item, options[name])
+            self._draw_item(name, item, options[name])
             self._drawn[name] = item
 
-    def _draw_item(self, item: Any, options: dict[str, Any]) -> None:
-        """Clear the item's layers and draw it there; with ``None``, only clear."""
+    def item_of(self, guid: Any) -> tuple[str, Any] | None:
+        """The session item a document object shows, as ``(name, item)``, or ``None``."""
+        name = rs.GetUserText(guid, self.ITEM_KEY)
+        item = getattr(self, name) if name in self.DISPLAYED else None
+        return (name, item) if item is not None else None
+
+    def _draw_item(self, name: str, item: Any, options: dict[str, Any]) -> None:
+        """Clear the item's layers and draw it there, every object tagged with
+        its ``name``; with ``None``, only clear."""
         from compas_singular.rhino.project import ensure_layers
 
         ensure_layers()
@@ -195,5 +159,6 @@ class RhinoSession(SingularSession):
             return
         display = self.scene.add(item, **options)
         display.clear()
-        display.draw()
+        for guid in display.draw():
+            rs.SetUserText(guid, self.ITEM_KEY, name)
         self.scene.remove(display)

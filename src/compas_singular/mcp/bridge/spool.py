@@ -1,40 +1,6 @@
-"""**The request/response file protocol, shared by the server and by Rhino.**
+"""The request/response file protocol between the MCP server and Rhino: one directory, no locks.
 
-One directory, four kinds of file, and no locks::
-
-    <id>.req.json     a request the server posted and Rhino has not taken
-    <id>.req.taken    a request Rhino has claimed and is working on
-    <id>.resp.json    the answer, which the server is polling for
-    link.json         Rhino's heartbeat: who is attached, and to what
-
-**Every write is temp-then-rename.** ``os.replace`` is atomic on both Windows and
-POSIX, so a reader either sees the previous file or the complete new one and
-never a half-written buffer. This matters more than it looks: the server polls in
-a tight loop, so it WILL read a response file the instant it appears, and a
-plain ``open(path, 'w')`` would hand it a truncated document a measurable share
-of the time.
-
-**A request is claimed by renaming it, not by a lock.** ``take`` renames
-``.req.json`` to ``.req.taken``; the rename either succeeds or raises, so two
-readers cannot both get the same job and no lock file has to be cleaned up after
-a crash. Ids sort lexically in arrival order, so the oldest request is simply the
-first name in the sorted listing.
-
-**Nothing here ever blocks forever.** :func:`wait` polls to a deadline and then
-returns a refusal describing what it saw -- whether the link was attached at all,
-and how many requests were queued ahead. An MCP tool call that hangs is worse
-than one that fails, because the client has no way to interrupt it.
-
-**A crash leaves only stale files, never a stuck queue.** If Rhino dies holding a
-``.req.taken``, nothing waits on it; :func:`prune` removes it once it is older
-than ``max_age``, and the server has long since returned a timeout to its caller.
-
-**A request nobody is waiting for is never served.** A timed-out ``push`` left on
-the queue would bake when Rhino next went idle -- after the caller had been told
-it failed, and so after it had probably retried, baking twice. So :func:`wait`
-withdraws its request on timeout, and every request carries an ``expires`` stamp
-that :func:`take` enforces, which covers a server that died mid-wait and never
-got to withdraw anything.
+Writes are temp-then-rename, claims are renames, and nothing blocks past its deadline.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -95,14 +61,7 @@ HEARTBEAT_SECONDS = 1.0
 
 
 def default_directory() -> str:
-    """The per-user directory the spool lives in.
-
-    ``$COMPAS_SINGULAR_MCP_SPOOL`` wins if set. Otherwise ``%LOCALAPPDATA%`` on
-    Windows, ``$XDG_RUNTIME_DIR`` or ``$XDG_CACHE_HOME`` or ``~/.cache``
-    elsewhere, and the system temp directory if none of those resolve.
-
-    Deliberately NOT ``compas_singular.TEMP``, which is computed relative to the
-    source tree and lands inside ``site-packages`` under a non-editable install.
+    """The per-user spool directory: ``$COMPAS_SINGULAR_MCP_SPOOL``, else a per-user cache or temp dir.
 
     Returns
     -------
@@ -192,11 +151,7 @@ _COUNTER = [0]
 
 
 def new_id() -> str:
-    """A request id that sorts lexically into arrival order.
-
-    Timestamp to the microsecond plus a process-local counter, because two posts
-    inside the same microsecond are possible and a collision would silently make
-    one request answer the other.
+    """A request id that sorts lexically into arrival order (timestamp plus counter).
 
     Returns
     -------
@@ -244,11 +199,9 @@ def post(verb: str, args: dict[str, Any] | None = None, directory: str | None = 
 
 
 def wait(request_id: str, timeout: float = DEFAULT_TIMEOUT, directory: str | None = None) -> dict[str, Any]:
-    """Poll for a response until it arrives or the deadline passes.
+    """Poll for a response until it arrives or ``timeout`` passes; never raises.
 
-    **Never raises and never blocks past** ``timeout``. A deadline reached is a
-    refusal dict, not an exception, because the caller is an MCP tool and the
-    client on the other end cannot interrupt a hung call.
+    A timeout withdraws the request and returns a refusal saying why.
 
     Parameters
     ----------
@@ -344,13 +297,7 @@ def pending(directory: str | None = None) -> list[str]:
 # ==============================================================================
 
 def take(directory: str | None = None) -> tuple[str, str, dict[str, Any]] | None:
-    """Claim the oldest request, atomically. ``None`` if there is nothing to do.
-
-    The claim is a rename, so two callers cannot both get the same job: the
-    loser's ``os.replace`` raises and it moves on to the next name.
-
-    An expired request is dropped rather than served: whoever posted it has
-    already been told it timed out.
+    """Claim the oldest unexpired request by renaming it. ``(request_id, verb, args)`` or ``None``.
 
     Returns
     -------
@@ -388,11 +335,7 @@ def take(directory: str | None = None) -> tuple[str, str, dict[str, Any]] | None
 
 
 def answer(request_id: str, ok: bool, result: Any = None, error: str | None = None, directory: str | None = None) -> None:
-    """Write the response and release the claim.
-
-    The response is written BEFORE the claim is removed, so a crash between the
-    two leaves a stale ``.taken`` file that :func:`prune` collects -- rather than
-    a request the server is still waiting on with no answer coming.
+    """Write the response, then release the claim.
 
     Parameters
     ----------
@@ -421,11 +364,7 @@ _LAST_BEAT = [0.0]
 
 
 def heartbeat(document: str | None = None, directory: str | None = None, force: bool = False) -> None:
-    """Record that the link is alive, at most once a second.
-
-    Rate-limited because this is called from Rhino's idle handler, which fires
-    many times a second and would otherwise spend that time writing a file
-    nobody reads that often.
+    """Record that the link is alive, at most once a second unless ``force``.
 
     Parameters
     ----------

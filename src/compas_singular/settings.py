@@ -1,12 +1,6 @@
-"""The project settings: one typed model, stored in the session.
+"""The project settings: one flat, typed pydantic model, stored in the session.
 
-Flat on purpose: eight values do not need groups. The field names are the keys
-the Rhino commands have always read, so ``settings.model_dump()`` is the dict
-they expect. The one rename, ``guide_allignment`` -> ``guide_alignment``, still
-reads the old spelling, so a document or file written before it loads.
-
-A pydantic model, like ``compas_session.Settings`` and RhinoVAULT's
-``RVSettings``: typed, with defaults, and editable field by field in a form.
+``settings.model_dump()`` is the dict the Rhino commands read; the old ``guide_allignment`` spelling still loads.
 """
 from typing import Optional
 from typing import Union

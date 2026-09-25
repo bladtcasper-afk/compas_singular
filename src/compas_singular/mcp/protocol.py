@@ -1,40 +1,6 @@
-"""**JSON-RPC 2.0 over stdio: the whole of MCP's transport, in the standard library.**
+"""JSON-RPC 2.0 over stdio for MCP, in the standard library (Rhino runs Python 3.9).
 
-The official ``mcp`` SDK needs Python 3.10 and this server runs on Rhino's
-interpreter, which is 3.9.10. That is the reason this file exists, but it is not
-the only argument for it: the protocol is a few hundred lines, and the server then
-has no third-party dependency at all.
-
-**Messages are newline-delimited JSON, one per line.** Not ``Content-Length``
-framed -- that is the Language Server Protocol, which MCP resembles but does not
-copy. A message may not contain a raw newline, which ``json.dumps`` guarantees
-for us since it escapes them inside strings.
-
-**Nothing may write to stdout except this module.** One stray ``print`` in a
-library function corrupts the stream and the client sees a parse error with no
-useful cause -- and this library does print: ``helpers.read_coarse`` prints an
-object, ``apply_densities`` prints when verbose. So :func:`serve` captures the
-real stdout for itself and rebinds ``sys.stdout`` to stderr for the whole run.
-A print from anywhere below then lands in the client's log, where it is merely
-noise, instead of in the protocol stream, where it is fatal.
-
-**A notification gets no reply, ever.** A JSON-RPC message with no ``id`` is a
-notification; answering one is a protocol violation that some clients treat as
-fatal. The dispatcher returns ``None`` for those and :func:`serve` writes nothing.
-
-**A tool may attach a picture.** A result carrying :data:`IMAGE_KEY` has it
-lifted out into an ``image`` content block beside the text, so the base64 never
-appears in the JSON the model reads as a result. The protocol stays ignorant of
-what the picture is of.
-
-**A failing TOOL is not a failing CALL.** A tool that refuses returns a normal
-result with ``isError`` set, because the refusal and its reason are what the
-model needs to read and act on. JSON-RPC error objects are reserved for the
-protocol itself -- unknown method, malformed params, unparseable line.
-
-This module knows nothing about meshes. It is handed a *handler* object and asks
-it for tools, resources and prompts; :mod:`compas_singular.mcp.server` supplies
-one. That is what makes the protocol testable with a fake in ``test_protocol.py``.
+Newline-delimited; stdout is reserved for protocol frames and ``print`` goes to stderr.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -95,13 +61,7 @@ IMAGE_KEY = '_image'
 
 
 def _text_content(payload: Any) -> list[dict[str, Any]]:
-    """A result dict as MCP's one and only universally understood content block.
-
-    Tools in this package return plain dicts, the way every other tool layer in
-    this library does. The client wants content blocks, so the dict is rendered
-    as indented JSON inside a text block: readable in a transcript, and parseable
-    by a model without a schema negotiation.
-    """
+    """A result dict as an MCP text content block of indented JSON."""
     if isinstance(payload, str):
         text = payload
     else:
@@ -144,12 +104,7 @@ class Dispatcher(object):
     # --------------------------------------------------------------------
 
     def capabilities(self) -> dict[str, Any]:
-        """Advertise only what the handler actually implements.
-
-        Claiming a capability the handler cannot serve means the client calls
-        ``resources/list`` and gets a method-not-found, which some clients treat
-        as a broken server rather than an empty one.
-        """
+        """Advertise only what the handler actually implements."""
         capabilities = {}
         if hasattr(self.handler, 'list_tools'):
             capabilities['tools'] = {}
@@ -312,14 +267,9 @@ def _error_reply(message_id: Any, code: int, message: str, data: Any = None) -> 
 # ==============================================================================
 
 def serve(dispatcher: Dispatcher, stdin: Any = None, stdout: Any = None, guard: bool = True) -> None:
-    """Read newline-delimited JSON from stdin, write replies to stdout.
+    """Read newline-delimited JSON from stdin and write replies to stdout until stdin closes.
 
-    Returns when stdin closes, which is how an MCP client says it is done.
-
-    **Rebinds** ``sys.stdout`` **to stderr for the duration.** The real stdout is
-    captured here first and used only for protocol frames. Any ``print`` in
-    library code below then goes to the client's log instead of corrupting the
-    stream -- see the module docstring for why that is not hypothetical.
+    Rebinds ``sys.stdout`` to stderr for the duration unless ``guard`` is off.
 
     Parameters
     ----------

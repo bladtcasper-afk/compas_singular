@@ -17,29 +17,20 @@ __all__ = [
     'discretise_line',
     'distance_to_loop',
     'distance_to_polyline',
+    'loop_arc_lengths',
+    'loop_parameter',
+    'near_loop',
+    'point_at_length',
+    'points_in_polygon_xy',
+    'polyline_length',
     'project_on_polyline',
     'resample_loop',
+    'signed_area',
 ]
 
 
 def closest_on_polyline(point: list[float], points: list[list[float]], closed: bool = False) -> tuple[int, float, list[float], float]:
-    """``(segment index, t, closest point, distance)`` on a polyline.
-
-    The richest of this module's projection results: distance, the point itself,
-    and WHICH segment it landed on. A caller wanting only one of those -- a
-    distance, a tangent, an arc length -- derives it from here rather than
-    running the segment loop again.
-
-    ``t`` is clamped to ``[0, 1]``, so the result is the closest point on the
-    polyline itself and not merely its nearest vertex.
-
-    The projection is in 3D, which for a polyline lying in ``z = 0`` reduces
-    EXACTLY to the planar one -- ``abz`` is then zero, so it contributes nothing
-    to ``length2``, nothing to ``t``, and leaves the closest point at ``z = 0``
-    (verified bit-identical over 30 000 random cases, open and closed). That is
-    why there is no planar flag: the flat case is not a special case. A polyline
-    at a constant ``z != 0`` does differ -- the result lands on the polyline
-    rather than on its shadow, which is the intended reading.
+    """``(segment index, t, closest point, distance)`` on a polyline, in 3D.
 
     Parameters
     ----------
@@ -82,14 +73,7 @@ def closest_on_polyline(point: list[float], points: list[list[float]], closed: b
 
 
 def project_on_polyline(point: list[float], points: list[list[float]]) -> tuple[float, float, float]:
-    """``(distance, arclength, total length)`` for a point near an OPEN polyline, in XY.
-
-    Open, not closed: joining last to first would invent a segment an arc does
-    not have. :func:`distance_to_loop` is the closed version.
-
-    The arclength is what tells "this corner sits at the END of the arc" apart
-    from "this arc runs THROUGH that corner" -- a distinction the distance alone
-    cannot make, and the reason this returns more than a distance.
+    """``(distance, arclength, total length)`` for a point near an open polyline, in XY.
 
     Parameters
     ----------
@@ -125,13 +109,7 @@ def distance_to_polyline(point: list[float], points: list[list[float]]) -> float
 
 
 def distance_to_loop(p: list[float], loop: list[list[float]]) -> float:
-    """Shortest distance from a point to a CLOSED polyline, in XY.
-
-    Distance to the polyline itself, not to its nearest vertex: ``t`` is clamped
-    to ``[0, 1]`` so the foot of the perpendicular is used whenever it falls
-    inside a segment, and only otherwise an endpoint.
-
-    The loop is stored open -- the closing segment is added here.
+    """Shortest distance from a point to a closed polyline (stored open), in XY.
 
     Parameters
     ----------
@@ -159,13 +137,124 @@ def distance_to_loop(p: list[float], loop: list[list[float]]) -> float:
     return best
 
 
-def bounding_box_diagonal(*loops: list[list[float]]) -> float:
-    """The diagonal ``D`` of the TOTAL bounding box of every loop given, in XY.
+def polyline_length(points: list[list[float]]) -> float:
+    """Total length of an OPEN polyline."""
+    return sum(distance_point_point(a, b) for a, b in pairwise(points))
 
-    The scale the thesis measures a discretisation against -- see
-    :func:`discretise_boundary`. Total, so a hole that pokes outside its outer
-    boundary still counts; for a valid domain the inners are inside the outer
-    and this is the outer's own bounding box.
+
+def loop_arc_lengths(loop: list[list[float]]) -> tuple[list[float], list[float]]:
+    """``(segment lengths, cumulative arc length)`` of a CLOSED loop given open.
+
+    ``cumulative`` has one entry per vertex plus a last one, the loop's total
+    length, so segment ``i`` runs from ``cumulative[i]`` to ``cumulative[i + 1]``.
+    """
+    ring = list(loop) + list(loop[:1])
+    seg = [distance_point_point(a, b) for a, b in pairwise(ring)]
+    cum = [0.0]
+    for s in seg:
+        cum.append(cum[-1] + s)
+    return seg, cum
+
+
+def loop_parameter(point: list[float], loop: list[list[float]], cumulative: list[float] | None = None) -> tuple[float, float]:
+    """``(distance, arc length)`` of the point of a CLOSED loop closest to ``point``.
+
+    Parameters
+    ----------
+    point : [x, y, z]
+    loop : list[[x, y, z]]
+        Open, the last point is not the first.
+    cumulative : list[float], optional
+        :func:`loop_arc_lengths`' second value, when the caller already has it.
+    """
+    if cumulative is None:
+        cumulative = loop_arc_lengths(loop)[1]
+    i, t, _q, d = closest_on_polyline(point, loop, closed=True)
+    return d, cumulative[i] + t * (cumulative[i + 1] - cumulative[i])
+
+
+def point_at_length(chain: list[list[float]], cumulative: list[float], s: float, tol: float = 1e-12) -> list[float]:
+    """The point at arc length ``s`` along an open chain, by linear interpolation.
+
+    For a closed loop pass the ring (the loop with its first point repeated at
+    the end) and wrap ``s`` yourself. Beyond either end, the last point.
+    """
+    for i, (c0, c1) in enumerate(zip(cumulative, cumulative[1:])):
+        if c0 - tol <= s <= c1 + tol:
+            a, b = chain[i], chain[i + 1]
+            span = c1 - c0
+            t = 0.0 if span == 0 else (s - c0) / span
+            return [a[k] + (b[k] - a[k]) * t for k in range(3)]
+    return [float(c) for c in chain[-1]]
+
+
+def signed_area(loop: list[list[float]]) -> float:
+    """Signed area of a closed polygon in XY: positive when counter-clockwise."""
+    return 0.5 * sum(p[0] * q[1] - q[0] * p[1] for p, q in zip(loop, loop[1:] + loop[:1]))
+
+
+def points_in_polygon_xy(points: list[list[float]], polygon: list[list[float]]) -> list[bool]:
+    """``compas.geometry.is_point_in_polygon_xy`` for many points at once.
+
+    The same ray-crossing test with the same arithmetic, so every answer --
+    including a point exactly on an edge -- is the one compas gives.
+    """
+    import numpy as np
+
+    if not len(points):
+        return []
+    pts = np.asarray([[p[0], p[1]] for p in points], dtype=float)
+    poly = [(p[0], p[1]) for p in polygon]
+    inside = np.zeros(len(pts), dtype=bool)
+    x, y = pts[:, 0], pts[:, 1]
+    for i in range(-1, len(poly) - 1):
+        x1, y1 = poly[i]
+        x2, y2 = poly[i + 1]
+        cross = (y > min(y1, y2)) & (y <= max(y1, y2)) & (x <= max(x1, x2))
+        if x1 != x2:
+            if y1 == y2:
+                continue
+            xinters = (y - y1) * (x2 - x1) / (y2 - y1) + x1
+            cross &= x <= xinters
+        inside ^= cross
+    return inside.tolist()
+
+
+def near_loop(points: list[list[float]], loop: list[list[float]], radius: float, chunk: int = 2048) -> list[bool]:
+    """``distance_to_loop(p, loop) < radius`` for many points at once, exactly."""
+    import numpy as np
+
+    if not len(points):
+        return []
+    ring = [(p[0], p[1]) for p in loop] + [(loop[0][0], loop[0][1])] if len(loop) else []
+    seg = np.array([[a[0], a[1], b[0] - a[0], b[1] - a[1]] for a, b in pairwise(ring)], dtype=float).reshape(-1, 4)
+    seg = seg[seg[:, 2] * seg[:, 2] + seg[:, 3] * seg[:, 3] != 0.0]
+    if not len(seg):
+        return [False] * len(points)
+    ax, ay, abx, aby = (seg[:, k][None, :] for k in range(4))
+    length2 = abx * abx + aby * aby
+    margin = 1e-9 * abs(radius) + 1e-12
+    out = []
+    for start in range(0, len(points), chunk):
+        part = points[start:start + chunk]
+        pts = np.asarray([[p[0], p[1]] for p in part], dtype=float)
+        px, py = pts[:, 0:1], pts[:, 1:2]
+        t = np.clip(((px - ax) * abx + (py - ay) * aby) / length2, 0.0, 1.0)
+        dx = ax + abx * t - px
+        dy = ay + aby * t - py
+        d = np.sqrt(dx * dx + dy * dy).min(axis=1)
+        for p, dist in zip(part, d.tolist()):
+            if dist < radius - margin:
+                out.append(True)
+            elif dist > radius + margin:
+                out.append(False)
+            else:
+                out.append(distance_to_loop(p, loop) < radius)
+    return out
+
+
+def bounding_box_diagonal(*loops: list[list[float]]) -> float:
+    """The diagonal of the total XY bounding box of every loop given.
 
     Parameters
     ----------
@@ -214,12 +303,7 @@ def _subdivide(loop: list[list[float]], spacing: float) -> list[list[float]]:
 
 
 def _subdivide_chain(chain: list[list[float]], spacing: float) -> list[list[float]]:
-    """Subdivide EACH segment of an OPEN chain so that none exceeds ``spacing``.
-
-    The loop version closes the chain and drops every segment's end point. An
-    open chain must keep its last point: a curve feature's extremity decides
-    whether it lands on a wall, and moving it is exactly what must not happen.
-    """
+    """Subdivide each segment of an open chain so none exceeds ``spacing``, keeping both ends."""
     out = []
     for a, b in pairwise(chain):
         n = max(1, int(ceil(distance_point_point(a, b) / spacing)))
@@ -244,24 +328,9 @@ def _clean_chain(points: list[list[float]]) -> list[list[float]]:
 
 
 def discretise_line(line: list[list[float]], spacing: float | None) -> list[list[float]]:
-    """Discretise ONE open curve at ``spacing``, per thesis eq. 4.1.
+    """Discretise one open curve at ``spacing`` (thesis eq. 4.1), keeping its extremities.
 
-    Deliberately separate from :func:`discretise_boundary` rather than a flag on
-    it. A boundary is a closed loop whose closing segment is subdivided like any
-    other and whose first point is also its last; a line is open, and its two
-    EXTREMITIES must survive untouched -- whether a curve feature's end lands on
-    a wall decides whether the layout gets a node there, so moving it is exactly
-    what must not happen. The two conventions do not belong in one function.
-
-    Pass the spacing the walls were discretised at. A feature is cut into the
-    Delaunay along its own segments, so a segment longer than the surrounding
-    sampling is not a Delaunay edge at all and the cut does not happen there.
-
-    Measured on the Fig 4.17 diagonal against a wall sampled at 0.2: a 2-point
-    guide -- what a straight polyline drawn in Rhino gives, since
-    ``curve_points`` takes a polyline at its own vertices -- leaves its single
-    segment missing from the triangulation, and the layout comes back as though
-    there were no feature at all.
+    Pass the wall spacing, or a 2-point guide never becomes a Delaunay edge.
 
     Parameters
     ----------
@@ -274,7 +343,6 @@ def discretise_line(line: list[list[float]], spacing: float | None) -> list[list
     Returns
     -------
     list[[x, y, z]]
-
     """
     points = _clean_chain(line)
     if spacing is None or len(points) < 2:
@@ -292,33 +360,9 @@ def discretise_boundary(
     d_min: int | None = 5,
     spacing: float | None = None,
 ) -> tuple[list[list[float]], list[list[list[float]]]]:
-    """Discretise closed boundary loops, per Oval's thesis eq. 4.1.
+    """Discretise closed boundary loops per thesis eq. 4.1, ``d_i = max(ceil(l_i / (alpha D)), d_min)``.
 
-    The number of points of each curve ``i`` is
-
-        d_i = max(d_scale, d_min),  d_scale = ceil(l_i / (alpha * D))
-
-    with ``l_i`` the length of the curve, ``D`` a scale of the surface -- here
-    the diagonal of the total bounding box -- and ``alpha`` a percentage of it.
-    The thesis reports good results for ``d_min`` between 5 and 10 and ``alpha``
-    between 0.01 and 0.05.
-
-    **Every input point survives.** Each SEGMENT is subdivided on its own, which
-    is what keeps a corner a corner; this is deliberately not compas's
-    ``Polyline.divide_by_length``, which divides by arclength from one end and
-    walks straight past a corner, so a resampled square comes back with its
-    corners rounded off the point list.
-
-    Both front ends discretise their walls with this. The skeleton route reads
-    the medial axis off a Delaunay triangulation of the boundary POINTS, so a
-    four-point square gives a two-triangle mesh with no interior structure and a
-    caricature decomposition. The field route wants the same sampling for a
-    different reason: a sampled arc turning more than 45 degrees between two
-    points reads as a CORNER to a cross field.
-
-    ``ceil``, not ``round``: ``d_scale`` is an upper integer value, so
-    ``spacing`` is a bound and not an average. Rounding to nearest left
-    segments up to 1.5x the target -- measured 1.12x on a 28-point disc at 0.5.
+    Every input point survives; each segment is subdivided on its own.
 
     Parameters
     ----------
@@ -383,12 +427,7 @@ def discretise_boundary(
 
 
 def resample_loop(points: list[list[float]], spacing: float | None = None) -> list[list[float]]:
-    """One loop through :func:`discretise_boundary`, with no scale rule.
-
-    ``spacing`` is the maximum segment length, and ``None`` returns the loop
-    unchanged. New code should call :func:`discretise_boundary`, which also
-    applies eq. 4.1.
-    """
+    """One loop through :func:`discretise_boundary`, with no scale rule."""
     loop, _ = discretise_boundary(points, spacing=spacing,
                                   alpha=None, d_min=None)
     return loop

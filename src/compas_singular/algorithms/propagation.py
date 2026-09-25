@@ -61,15 +61,9 @@ def quadrangulate_mesh(mesh: Mesh, sources: list[int]) -> None:
 
 
 def quadrangulate_faces(mesh: Mesh, face_sources: dict[int, list[int]], max_faces: int | None = None) -> bool:
-    """Quadrangulate the polygonal faces of a mesh, each from ITS OWN sources.
+    """Quadrangulate the polygonal faces of a mesh, each from its own sources, in place.
 
-    :func:`quadrangulate_mesh` takes one list of sources for the whole mesh. That
-    is not enough for the seams of a curve feature: a discrepancy is a
-    straight-through vertex of the face on one side of the feature and a genuine
-    corner of the faces on the other. On a straight feature both discrepancies of
-    a patch pair sit in both faces, so each face sees two sources and three
-    corners, and :func:`quadrangulate_face` -- which needs exactly four corners --
-    leaves it alone.
+    Returns False if stopped at ``max_faces``; the mesh should then be discarded.
 
     Parameters
     ----------
@@ -85,17 +79,6 @@ def quadrangulate_faces(mesh: Mesh, face_sources: dict[int, list[int]], max_face
     bool
         False if the propagation was stopped at ``max_faces``. The mesh is then
         left part-way and should be discarded.
-
-    Notes
-    -----
-    A vertex the propagation creates lies on a straight edge, and is a source
-    only in the faces it still passes straight through. Once the face it was
-    added to is split, it is a genuine corner of the new faces; a second strip
-    crossing the same region must not treat it as a source there.
-
-    A strip can close on itself -- around a crossing of two features, say -- and
-    then never ends. ``max_faces`` is what stops it.
-
     """
     created = set()
     todo = [fkey for fkey in mesh.faces() if len(mesh.face_vertices(fkey)) > 4]

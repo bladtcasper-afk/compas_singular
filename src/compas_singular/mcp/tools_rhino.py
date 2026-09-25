@@ -1,30 +1,6 @@
-"""**Pulling geometry out of a live Rhino document, and pushing a mesh back.**
+"""MCP tools that pull geometry from a live Rhino document and push meshes back, via the file spool.
 
-The server is standalone: everything else in this package works with Rhino
-closed, on a mesh read from a file. These tools are the exception, and all of
-them go through :mod:`~compas_singular.mcp.bridge.spool` -- a request written to
-disk, taken by ``CMD_mcp_link`` on Rhino's main thread, answered on disk. No
-socket, no thread, and nothing here imports a Rhino module.
-
-**A pull is free; a push is not.** ``rhino_pull`` and ``rhino_status`` read and
-change nothing, so they are marked read-only. ``rhino_push`` writes into a
-document a person has open, which is why it is marked destructive and open-world
-and why the link keeps the previous mesh on a ``::MCP::Before`` layer.
-``rhino_push_coarse`` is the same for a coarse layout, written to the four
-``Skeleton::`` layers and the side-car the ``CMD_`` commands read, so a layout
-built or edited here carries on in Rhino.
-
-**Never round-trip a mesh mid-session.** ``bake_mesh`` goes through Rhino's
-``Point3f``, so a push followed by a pull comes back single precision -- about
-2e-6 on a 20-unit plate, measured, and recorded at the top of
-``rhino/coarse_curves.py``. The server holds the authoritative double-precision
-mesh and Rhino holds a copy for display. Pull once, improve as many times as it
-takes, push at the end.
-
-**A timeout is a refusal with a cause, not a hang.** Rhino may be inside a
-command, in which case the link defers rather than touching the document
-underneath the person using it. The wait returns and says which of the two it
-was -- no link attached, or attached and busy -- because the fix is different.
+Pull once, improve, push at the end: a round trip loses precision to ``Point3f``.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -65,18 +41,7 @@ def _ask(verb: str, args: dict[str, Any] | None = None, timeout: float = 30.0) -
 
 
 def unseen_refusal(session: MeshSession) -> dict[str, Any] | None:
-    """A refusal if the current mesh has not been rendered since it changed.
-
-    The quality numbers cannot see a mesh that has left its boundary, ignored a
-    guide, or dropped a point feature, and they cannot see a polyedge that
-    kinks. Every one of those is obvious in a picture and none of them is in
-    ``mesh_quality``. So a result is not delivered until somebody has looked at
-    it: one extra call, against shipping a mesh that measures well and is
-    visibly wrong.
-
-    Shared by ``rhino_push`` and ``save_mesh`` so the rule, and its wording, is
-    one thing rather than two that drift.
-    """
+    """A refusal if the current mesh has not been rendered since it changed."""
     if session.visually_current:
         return None
     return {'ok': False,
@@ -294,14 +259,7 @@ def _t_rhino_push(session: MeshSession, layer: str = DEFAULT_LAYER, timeout: flo
 # ==============================================================================
 
 def _float32_collapsed(mesh: CoarsePseudoQuadMesh) -> list[str]:
-    """Faces Rhino would refuse, as handles: two corners equal at single precision.
-
-    ``rs.AddMesh`` stores ``Point3f``, and ONE face with two coincident corners
-    -- any two, diagonals included -- makes Rhino refuse the WHOLE mesh, not the
-    face (measured against openNURBS 8; see the rhino-add-refusals note). A
-    pseudo-quad is fine: it is written as three corners, not four with one
-    repeated. So this checks the corners as written.
-    """
+    """Faces Rhino would refuse, as handles: two corners equal at single precision."""
     import struct
 
     def f32(point: Any) -> tuple[float, ...]:
@@ -332,15 +290,15 @@ def unseen_coarse_refusal(session: MeshSession) -> dict[str, Any] | None:
 @tool(
     'rhino_push_coarse',
     'Write the coarse layout into the open Rhino document exactly where the '
-    'CMD_ commands keep one -- TopologyProblem::Skeleton::Mesh, ::Poles, '
-    '::Polylines and ::EdgeCurves -- plus the side-car beside the document '
-    'that carries what a bake cannot (strips, densities, patterns). After it, '
-    'CMD_densities, CMD_quad_mesh and CMD_edit_coarse_mesh carry on from this '
-    'layout in Rhino. WRITES TO A DOCUMENT SOMEBODY HAS OPEN: what was on those '
-    'layers moves to Skeleton::MCP::Before, the side-car it replaces is kept as '
-    'coarse_before.json, and the write is one undo step named "MCP push '
-    'coarse". REFUSES until the current layout has been drawn and looked at -- '
-    'call coarse_inspect with image=true first.',
+    'CMD_ commands keep one -- the document\'s session, with its strips, '
+    'densities, patterns and edge shapes, drawn on TopologyProblem::Skeleton::'
+    'Mesh, ::Poles, ::Polylines and ::EdgeCurves. After it, CMD_densities, '
+    'CMD_quad_mesh and CMD_edit_coarse_mesh carry on from this layout in Rhino. '
+    'WRITES TO A DOCUMENT SOMEBODY HAS OPEN: what was drawn on those layers '
+    'moves to Skeleton::MCP::Before, and the write is one undo step named "MCP '
+    'push coarse" that takes the layout and its drawing back together. REFUSES '
+    'until the current layout has been drawn and looked at -- call '
+    'coarse_inspect with image=true first.',
     properties={
         'timeout': {'type': 'number',
                     'description': 'Seconds to wait for Rhino. Default 30.'},
@@ -371,35 +329,28 @@ def _t_rhino_push_coarse(session: MeshSession, timeout: float = 30.0) -> dict[st
                           'up.'.format(len(collapsed), collapsed[0]),
                 'patches': collapsed[:5]}
 
-    edge_curves, shaped = [], []
+    edge_curves = []
     for u, v in coarse.edges():
         curve = mapping.get((u, v)) or list(reversed(mapping.get((v, u)) or []))
         if len(curve) < 2:
             curve = [list(coarse.vertex_coordinates(u)), list(coarse.vertex_coordinates(v))]
-        curve = [list(p) for p in curve]
-        edge_curves.append(curve)
-        if len(curve) > 2:
-            shaped.append(curve)
+        edge_curves.append([list(p) for p in curve])
 
     layout = coarse.copy()
     layout.attributes['quad_mesh'] = None
     layout.attributes['polygonal_mesh'] = None
-    # ``mapping`` -- already computed above for ``edge_curves``/``shaped`` -- goes
-    # on the layout too, so CMD_quad_mesh (or a later coarse_load) can read it
-    # straight off the side-car instead of losing it the moment this JSON is
-    # written.
+    # ``mapping`` goes on the layout, so CMD_quad_mesh (or a later coarse_load)
+    # reads the edge shapes straight off it.
     layout.set_edges_to_curves(mapping)
+    # Replaced, not kept: a layout pulled from Rhino still carries the polylines
+    # of the layout it was BEFORE this session edited it. Every edge, so
+    # CMD_quad_mesh's traced-branch lookup finds the curves this session made --
+    # a drawn cut, a warped corner -- and not only the ones its own
+    # decomposition would have traced.
+    layout.set_shape_polylines(edge_curves)
     tools_coarse._patterns(layout)
-    side_car = compas.json_dumps(layout)
 
-    args = {'layout': wire.mesh_to_wire(coarse),
-            # Every SHAPED edge, so CMD_quad_mesh's traced-branch lookup finds
-            # the curves this session made -- a drawn cut, a warped corner --
-            # and not only the ones its own decomposition would have traced.
-            'polylines': shaped,
-            'edge_curves': edge_curves,
-            'side_car': side_car}
-    reply = _ask('push_coarse', args, timeout=timeout)
+    reply = _ask('push_coarse', {'coarse': compas.json_dumps(layout)}, timeout=timeout)
     if not reply.get('ok'):
         return {'ok': False, 'reason': reply.get('reason', 'the push failed'),
                 'link': reply.get('link'), 'timed_out': reply.get('timed_out'),
@@ -413,20 +364,13 @@ def _t_rhino_push_coarse(session: MeshSession, timeout: float = 30.0) -> dict[st
            'strips': len(list(coarse.strips())),
            'poles': result.get('poles'),
            'edge_curves': result.get('edge_curves'),
-           'shaped_edges': result.get('polylines'),
-           'side_car': result.get('side_car'),
+           'shaped_edges': sum(1 for curve in edge_curves if len(curve) > 2),
            'kept_previous_on': result.get('before_layer'),
-           'side_car_before': result.get('side_car_before'),
            'undo_record': result.get('undo_record'),
-           'reading': 'Baked {} patches onto {}. Run CMD_densities or '
+           'reading': 'Drew {} patches onto {}. Run CMD_densities or '
                       'CMD_quad_mesh in Rhino to carry on from it.'.format(
                           coarse.number_of_faces(),
                           (result.get('layers') or {}).get('mesh', 'Skeleton::Mesh'))}
-    skipped = (result.get('polylines_skipped') or 0) + (result.get('edge_curves_skipped') or 0)
-    if skipped:
-        out['warning'] = ('Rhino refused {} curve(s) -- coincident points at the '
-                          'document tolerance. Those edges densify as straight '
-                          'chords in CMD_quad_mesh.'.format(skipped))
     return out
 
 
@@ -434,72 +378,20 @@ def _t_rhino_push_coarse(session: MeshSession, timeout: float = 30.0) -> dict[st
 # pulling a coarse layout back
 # ==============================================================================
 
-def _layout_from_pull(result: dict[str, Any]) -> tuple[CoarsePseudoQuadMesh, str, dict[str, Any]]:
-    """``(layout, source, notes)`` from what ``pull_coarse`` sent back.
-
-    The same decision ``CMD_start.read_layout`` makes, taken here rather than in
-    the link: prefer the side-car, which carries strips / densities / patterns,
-    but only when its rounded corners are the corners on ``Skeleton::Mesh``.
-    When they are not -- corners moved in ``CMD_edit_coarse_mesh``, say -- the
-    baked mesh is the truth, and the side-car's densities and patterns are
-    carried onto it by position rather than thrown away.
-    """
+def _layout_from_pull(result: dict[str, Any]) -> CoarsePseudoQuadMesh:
+    """The layout ``pull_coarse`` sent back, with its shape polylines as user curves."""
     import compas
-    from compas.tolerance import TOL
-    from compas_singular.datastructures import CoarsePseudoQuadMesh
     from compas_singular.mcp import tools_coarse
 
-    payload = result['layout']
-    baked = CoarsePseudoQuadMesh.from_vertices_and_faces_with_poles(
-        payload['vertices'], payload['faces'], payload.get('poles') or [])
-
-    def corners(mesh: Any) -> set:
-        return set(TOL.geometric_key(mesh.vertex_coordinates(v)) for v in mesh.vertices())
-
-    notes = {}
-    cached = None
-    text = result.get('side_car')
-    if text:
-        try:
-            cached = compas.json_loads(text)
-        except Exception as exc:
-            notes['side_car'] = 'unreadable ({}: {}), ignored'.format(
-                type(exc).__name__, exc)
-            cached = None
-        if cached is not None and not hasattr(cached, 'strips'):
-            notes['side_car'] = 'holds a {}, not a layout, ignored'.format(
-                type(cached).__name__)
-            cached = None
-
-    if cached is not None and corners(cached) == corners(baked):
-        layout, source = cached, 'side-car'
-        if not list(layout.strips()):
-            layout.collect_strips()
-        densities = layout.get_strip_densities()
-        for skey in layout.strips():
-            densities.setdefault(skey, 1)
-    else:
-        layout, source = baked, 'document'
+    layout = compas.json_loads(result['coarse'])
+    if not hasattr(layout, 'strips'):
+        raise TypeError('the session holds a {}, not a layout'.format(type(layout).__name__))
+    if not list(layout.strips()):
         layout.collect_strips()
-        layout.set_strips_density(1)
-        if cached is not None:
-            if not list(cached.strips()):
-                cached.collect_strips()
-            tools_coarse._carry_densities(cached, layout)
-            tools_coarse._carry_patterns(cached, layout)
-            notes['side_car'] = ('describes a DIFFERENT layout ({} vs {} corners) '
-                                 '-- the mesh in the document was used, and the '
-                                 "side-car's densities and patterns carried onto "
-                                 'it by position'.format(
-                                     cached.number_of_vertices(),
-                                     baked.number_of_vertices()))
-        else:
-            notes.setdefault('side_car', 'none beside the document -- every '
-                                         'strip starts at density 1')
+    densities = layout.get_strip_densities()
+    for skey in layout.strips():
+        densities.setdefault(skey, 1)
 
-    # Every shaped edge on Skeleton::Polylines that is an edge of THIS layout
-    # becomes a user curve: that is what densifying lays over the walls, and
-    # what the editors carry through a cut or a corner move.
     def key2(point: Any) -> tuple[float, float]:
         return (round(point[0], 3), round(point[1], 3))
 
@@ -510,7 +402,7 @@ def _layout_from_pull(result: dict[str, Any]) -> tuple[CoarsePseudoQuadMesh, str
         edge_ends.add((a, b))
         edge_ends.add((b, a))
     extra = []
-    for curve in result.get('polylines') or []:
+    for curve in layout.shape_polylines():
         if len(curve) < 3:
             continue
         ends = (key2(curve[0]), key2(curve[-1]))
@@ -521,23 +413,18 @@ def _layout_from_pull(result: dict[str, Any]) -> tuple[CoarsePseudoQuadMesh, str
         known.add((ends[1], ends[0]))
     if extra:
         layout.attributes['user_curves'] = tools_coarse._user_curves(layout) + extra
-    notes['shaped_edges_read'] = len(extra)
-    return layout, source, notes
+    return layout
 
 
 @tool(
     'rhino_pull_coarse',
     'Take a COARSE LAYOUT out of the open Rhino document into this session -- '
-    'the one CMD_coarse_mesh / CMD_edit_coarse_mesh / CMD_densities keep on '
-    'TopologyProblem::Skeleton, or one rhino_push_coarse wrote -- with its '
-    'strips, densities and patterns from the side-car beside the document, its '
-    'edge shapes from Skeleton::Polylines, and the domain. The counterpart of '
-    'rhino_push_coarse: edit in Rhino, pull back, keep editing here. If corners '
-    'moved in Rhino so the side-car no longer matches, the document mesh wins '
-    "and the side-car's densities and patterns are carried onto it by "
-    'position (source says which happened). Replaces the coarse layout held and '
-    'its undo; if the domain differs, the dense mesh is dropped too. Reads the '
-    'document and changes nothing in it.',
+    'the one CMD_coarse_mesh / CMD_edit_coarse_mesh / CMD_densities keep in the '
+    'document\'s session, or one rhino_push_coarse wrote -- with its strips, '
+    'densities, patterns and edge shapes, and the domain. The counterpart of '
+    'rhino_push_coarse: edit in Rhino, pull back, keep editing here. Replaces '
+    'the coarse layout held and its undo; if the domain differs, the dense mesh '
+    'is dropped too. Reads the document and changes nothing in it.',
     properties={
         'spacing': {
             'type': 'number',
@@ -555,14 +442,13 @@ def _t_rhino_pull_coarse(session: MeshSession, spacing: float = 0.125, timeout: 
         return {'ok': False, 'reason': reply.get('reason', 'the pull failed'),
                 'link': reply.get('link'), 'timed_out': reply.get('timed_out')}
     result = reply.get('result') or {}
-    if not result.get('layout'):
+    if not result.get('coarse'):
         return {'ok': False,
-                'reason': 'there is no coarse layout on '
-                          'TopologyProblem::Skeleton::Mesh in {} -- run '
+                'reason': 'the session of {} holds no coarse layout -- run '
                           'CMD_coarse_mesh there, or rhino_push_coarse one from '
                           'here, first'.format(result.get('document'))}
     try:
-        layout, source, notes = _layout_from_pull(result)
+        layout = _layout_from_pull(result)
     except Exception as exc:
         return {'ok': False,
                 'reason': 'the layout Rhino sent could not be rebuilt: '
@@ -584,10 +470,8 @@ def _t_rhino_pull_coarse(session: MeshSession, spacing: float = 0.125, timeout: 
     session.coarse = layout
     session.decomposition = None
     session._coarse_undo = []
-    entry = session.record('rhino_pull_coarse', source=source,
-                           faces=layout.number_of_faces())
+    entry = session.record('rhino_pull_coarse', faces=layout.number_of_faces())
     out = {'ok': True, 'step': entry['step'], 'document': result.get('document'),
-           'source': source,
            'faces': layout.number_of_faces(),
            'strips': len(list(layout.strips())),
            'densities': dict((str(k), d) for k, d in layout.get_strip_densities().items()),
@@ -595,8 +479,8 @@ def _t_rhino_pull_coarse(session: MeshSession, spacing: float = 0.125, timeout: 
            'poles': tools_coarse._pole_handles(layout),
            'walls': len(session.walls), 'guides': len(session.guides),
            'point_features': len(session.points),
+           'shaped_edges_read': len(tools_coarse._user_curves(layout)),
            'dense_mesh_dropped': dropped}
-    out.update(notes)
     if not walls:
         out['warning'] = ('no boundary curves came back from Outer/Inner, so '
                           'curved boundary edges will densify as straight '

@@ -132,16 +132,11 @@ class QuadMesh(Mesh):
     # --------------------------------------------------------------------------
 
     def is_strip_face(self, fkey: int) -> bool:
-        """Whether a strip can cross this face: it has four sides.
-
-        A face of any other degree has no opposite edge, so a strip walk treats it
-        as it treats the boundary and stops there. ``PseudoQuadMesh`` also admits
-        its pole triangles.
-        """
+        """Whether a strip can cross this face: it has four sides."""
         return len(self.face_vertices(fkey)) == 4
 
     def face_opposite_edge(self, u: int, v: int) -> tuple[int, int] | None:
-        """Returns the opposite edge in the quad face.
+        """Returns the opposite edge in the quad face, or ``None`` on a boundary or a non-quad face.
 
         Parameters
         ----------
@@ -156,17 +151,6 @@ class QuadMesh(Mesh):
             The opposite edge.
             None if (u, v) is a boundary halfedge, i.e. has no face, or if its face
             is not a quad.
-
-        Notes
-        -----
-        The ``None`` for a face that is not a quad is not a formality. Without it
-        a triangle ``[u, v, w]`` answered ``(w, u)`` -- an ADJACENT edge -- so a
-        strip walk turned a corner inside it and carried on. Measured on a dense
-        mesh read back from Rhino, where a pole fan is plain triangles: strips
-        through the fan came out 13 edges long instead of 7, and ``add_strip``
-        raised on 10 of 13 lines that never went near the pole, because it updates
-        those corrupted strips.
-
         """
 
         fkey = self.halfedge[u][v]
@@ -186,19 +170,8 @@ class QuadMesh(Mesh):
         v : hashable
             A vertex key.
         strict : bool, optional
-            Use the stricter crossing rules. Default is False, i.e. the historical
-            behaviour.
-
-            The default rules decide on vertices alone, which mis-steers a walk in
-            two cases. They turn an interior polyedge onto a boundary when ``u``
-            merely *is* a boundary vertex without the edge ``(u, v)`` being a
-            boundary edge, and they cannot tell a boundary loop from a boundary.
-            With ``strict=True`` the crossing is decided on edges instead: step
-            across ``v`` only if ``v`` is a regular interior vertex, or if both
-            ``(u, v)`` and the edge walked to are boundary edges.
-
-            This is the engine under :meth:`collect_polyedge` and therefore under
-            the whole coarse-layout pipeline, so switching it changes decompositions.
+            Decide the crossing on edges rather than vertices. Default is False,
+            the historical behaviour; switching it changes decompositions.
 
         Returns
         -------
@@ -574,15 +547,8 @@ class QuadMesh(Mesh):
         Parameters
         ----------
         legacy : bool, optional
-            Use the historical implementation. Default is True.
-
-            The legacy graph is quadratic in the number of polyedges and emits, for
-            every non-singular vertex, an edge to the *first* polyedge containing
-            that vertex -- which is usually the polyedge itself. Roughly half of the
-            edges it returns are therefore self-loops (u, u). With ``legacy=False``
-            each non-singular vertex contributes one edge between the two polyedges
-            that actually cross there, and vertices that are not a crossing are
-            skipped.
+            Use the historical implementation, about half of whose edges are
+            self-loops. Default is True; ``False`` gives one edge per crossing.
 
         Returns
         -------
@@ -678,7 +644,7 @@ class QuadMesh(Mesh):
         return len(list(self.strips()))
 
     def collect_strip(self, u0: int, v0: int, both_sides: bool = True) -> list[tuple[int, int]]:
-        """Returns all the edges in the strip of the input edge.
+        """Returns all the edges in the strip of the input edge; a non-quad face ends it like the boundary.
 
         Parameters
         ----------
@@ -694,12 +660,6 @@ class QuadMesh(Mesh):
         -------
         strip : list
             The list of the edges in strip.
-
-        Notes
-        -----
-        A face that is not a quad ends the strip exactly like the boundary does --
-        see :meth:`is_strip_face` -- so on a mesh with polygons a strip runs from
-        wall or polygon to wall or polygon.
         """
 
         if not self._crosses(u0, v0):
@@ -782,13 +742,9 @@ class QuadMesh(Mesh):
         return self.strips(data=True)
 
     def add_strip(self, polyedge: list[int], open_strip: bool = True, project: Callable[[list[float]], list[float]] | None = None) -> tuple[int, dict[int, tuple[int, int]]]:
-        """**Add a strip along** ``polyedge``. ``(new strip key, {old vertex: pair})``.
+        """Add a strip along ``polyedge``. ``(new strip key, {old vertex: pair})``.
 
-        With ``open_strip`` (the default) the two copies of each vertex are
-        placed at thirds of the span across it; ``False`` leaves them on top of
-        the vertex they replace, so the strip has zero width. ``project`` moves a
-        pair opened on the boundary back onto it. See
-        :mod:`~compas_singular.datastructures.mesh_quad.grammar.add_strip`.
+        See :mod:`~compas_singular.datastructures.mesh_quad.grammar.add_strip`.
         """
         return add_strip(self, polyedge, open_strip=open_strip, project=project)
 
@@ -800,11 +756,9 @@ class QuadMesh(Mesh):
         return add_strips(self, polyedges, open_strip=open_strip, project=project)
 
     def delete_strip(self, skey: int) -> dict[int, int]:
-        """**Delete the strip** ``skey``. ``{old vertex: the vertex it merged into}``.
+        """Delete the strip ``skey``, welding its sides. ``{old vertex: the vertex it merged into}``.
 
-        Welds the two sides together, takes any strip it fully consumes with it,
-        and repoints ``attributes['face_pole']``. Vertices MOVE -- see
-        :mod:`~compas_singular.datastructures.mesh_quad.grammar.delete_strip`.
+        See :mod:`~compas_singular.datastructures.mesh_quad.grammar.delete_strip`.
         """
         return delete_strip(self, skey)
 

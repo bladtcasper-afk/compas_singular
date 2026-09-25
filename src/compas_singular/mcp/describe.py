@@ -1,25 +1,6 @@
-"""**Turning the metric dict into a reading somebody can act on.**
+"""Turn a metric dict into a reading: the worst element as a handle, how concentrated, and a verdict.
 
-``min_angle: 12.3`` is a number. It does not say where the bad element is,
-whether one face is dragging the figure down or the whole mesh is like that, or
-whether 12.3 is a defect worth fixing on this mesh at all. A model handed only
-the number will either ignore it or over-react to it, and both are wasted steps.
-
-So every report carries a reading as well as the numbers: what the worst element
-is, where it is (as a handle -- ``worst_face`` is a face KEY, which must never
-cross the protocol), how concentrated the problem is, and a one-word verdict.
-
-**The thresholds are data, not code.** They live in
-``library/thresholds.json`` and are read through
-:func:`~compas_singular.mcp.library.thresholds`, so what counts as "good" can be
-retuned for a project without touching this file or cutting a release. The
-defaults below are the fallback when that file is missing or unreadable, so the
-server still starts and still says something sensible.
-
-**It reports, it does not decide.** Nothing here refuses a mesh or blocks a
-step. ``framefield.relax`` has a real gate with real measurements behind it; a
-verdict from this module is a summary for a reader, and calling it a pass or a
-fail would give it an authority it has not earned.
+Thresholds come from ``library/thresholds.json``; it reports, it never gates.
 """
 from __future__ import absolute_import
 from __future__ import division

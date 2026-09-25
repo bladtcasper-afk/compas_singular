@@ -66,18 +66,7 @@ class Mesh(Mesh):
     # in 2.3 kB.
 
     def save_to_json(self, filepath: str, pretty: bool = False) -> str:
-        """Write the mesh and everything in :attr:`attributes` to ``filepath``.
-
-        ``to_json`` with two differences worth having: the parent directory is
-        created if it does not exist (``to_json`` raises ``FileNotFoundError``),
-        and the path is returned so a caller can report where it went.
-
-        Extra state goes in :attr:`attributes` rather than a second file -- it
-        is a plain dict and it round-trips::
-
-            coarse.attributes['route'] = 'skeleton'
-            coarse.attributes['solve'] = {'target_length': 0.5, 'mode': 'tangent'}
-            coarse.save_to_json(path)
+        """Write the mesh and its :attr:`attributes` to ``filepath``, creating the folder. Returns ``filepath``.
 
         Parameters
         ----------
@@ -98,23 +87,9 @@ class Mesh(Mesh):
 
     @classmethod
     def load_from_json(cls, filepath: str, default: Any = None) -> Any:
-        """**Construct a mesh from what** :meth:`save_to_json` **wrote.**
+        """Construct a mesh from what :meth:`save_to_json` wrote; the class comes from the file.
 
-        The class comes from the FILE, not from ``cls``: compas stores a
-        ``dtype`` and dispatches on it, so a ``CoarsePseudoQuadMesh`` comes back
-        as one however it is asked for -- ``Mesh.load_from_json`` included.
-        ``cls`` still acts as an assertion, because ``Data.from_json`` refuses
-        anything that is not an instance of it ("The data in the file is not a
-        ..."), so asking through the class you expect is worth doing.
-
-        **Strip keys are repaired here.** JSON object keys are strings, so
-        ``attributes['strips']``, ``['strips_density']`` and ``['polyedges']``
-        come back keyed ``'0'``, ``'1'``, ... The mesh still densifies --
-        everything internal reads whatever keys it finds, verified identical
-        face counts -- but ``get_strip_density(0)`` raises ``KeyError`` and
-        ``sorted(strips())`` puts ``'10'`` before ``'2'``. Both are silent in
-        the ways that matter, so digit-string keys become ints again on the way
-        in and the round trip is invisible.
+        Digit-string strip keys are turned back into ints.
 
         Parameters
         ----------
@@ -140,10 +115,7 @@ class Mesh(Mesh):
 
     @classmethod
     def __from_data__(cls, data: dict) -> Any:
-        """Every way a mesh is decoded comes through here, so the key repair
-        :meth:`load_from_json` describes is done HERE. A mesh inside a larger
-        JSON document (a session) is decoded without ever touching
-        ``load_from_json``, and used to come back with ``'3'`` polyedge keys."""
+        """Decode a mesh, repairing digit-string strip and polyedge keys back into ints."""
         mesh = super(Mesh, cls).__from_data__(data)
         for key in ('strips', 'strips_density', 'polyedges', 'edges_to_curves', 'dense_pattern', 'decomposition_type'):
             table = mesh.attributes.get(key)

@@ -1,33 +1,6 @@
-"""**Add a strip along a polyedge, and open it by an exact rule.**
+"""Add a strip along a polyedge (thesis 5.3.1) and, by default, open it by an exact thirds rule.
 
-``add_strip`` splits every vertex of the polyedge in two and fills the band
-between the copies, which is thesis 5.3.1. Both copies are created AT THE
-POSITION of the vertex they replace, so the new strip has **zero width** until
-something separates them.
-
-``open_strip=True`` (the default) separates them with :func:`open_added_strip`:
-the new pair goes at one third and two thirds of the span the polyedge crossed,
-and pairs on the boundary are handed to an optional ``project`` callable (the
-coarse editor passes its wall projection). That moves ONLY the new pairs -- it
-is a rule, not smoothing; nothing else in the mesh moves.
-
-``open_strip=False`` is topology only, for callers that position the new pair
-themselves:
-
-* :meth:`~compas_singular.editing.DenseMeshEditor.relax` -- centroid smoothing
-  with every boundary ring held except the new pair;
-* ``guide_lines.guide_band_mesh`` -- snaps the two rails onto the guide.
-
-**A caller that opens neither way leaves coincident vertices**, which survive
-``is_manifold`` but collapse a face to zero area -- and at float32 that is enough
-to make a whole Rhino mesh fail to bake.
-
-This module replaced a second implementation that lived in ``grammar_pattern.py``
-until 2026-09-18. That one duplicated the whole polyedge in a single pass, keyed
-by vertex, so a polyedge visiting the same vertex twice deleted it twice; it also
-ended with a 20-iteration constrained smooth of the WHOLE mesh. The walk below
-consumes the polyedge one vertex at a time and re-derives the remainder, which is
-what makes U-turns and self-crossings tractable -- see ``add_strip``.
+With ``open_strip=False`` the new vertex pairs stay coincident until the caller separates them.
 """
 from __future__ import annotations
 
@@ -58,11 +31,7 @@ __all__ = [
 
 
 def add_strips(mesh: QuadMesh, polyedges: list[list[int]], open_strip: bool = True, project: Callable[[list[float]], list[float]] | None = None) -> list[int]:
-    """Add a strip along each polyedge, in order. See :func:`add_strip`.
-
-    The polyedges still to come are re-derived after every insertion: an
-    insertion renumbers and replaces the very vertices they are written in terms
-    of, so a polyedge collected before the first strip is meaningless after it.
+    """Add a strip along each polyedge in order, re-deriving the remaining polyedges after each insertion.
 
     Parameters
     ----------
@@ -96,16 +65,9 @@ def add_strips(mesh: QuadMesh, polyedges: list[list[int]], open_strip: bool = Tr
 
 
 def add_strip(mesh: QuadMesh, polyedge: list[int], open_strip: bool = True, project: Callable[[list[float]], list[float]] | None = None) -> tuple[int, dict[int, tuple[int, int]]]:
-    """**Add a strip along** ``polyedge``, opened by :func:`open_added_strip` by default.
+    """Add a strip along ``polyedge``, opened by :func:`open_added_strip` by default.
 
-    Each vertex ``Vi`` of the polyedge becomes two, ``Vi`` is substituted by the
-    left copy in the faces on one side and by the right copy in those on the
-    other, and the band between them is the new strip (thesis 5.3.1). Strip
-    LABELS are preserved, so densities set per strip survive this.
-
-    The polyedge is consumed. Pass a copy to keep yours -- and note that
-    ``mesh.attributes['polyedges']`` hands out its own lists, so passing one
-    straight in corrupts it.
+    The polyedge is consumed; self-crossing polyedges still raise in ``update_strip_data``.
 
     Parameters
     ----------
@@ -131,17 +93,6 @@ def add_strip(mesh: QuadMesh, polyedge: list[int], open_strip: bool = True, proj
         left and right polyedges are the values of that map read in polyedge
         order; the pairs in it are exactly the vertices an opener has to
         separate.
-
-    Notes
-    -----
-    The walk takes one vertex per iteration and rebuilds what is left of the
-    polyedge through the two vertices just created
-    (``polyedge_from_to_via_vertices``). That is what lets a polyedge revisit a
-    vertex -- a U-turn or a self-crossing -- instead of deleting it twice.
-    Support for those is INCOMPLETE: the walk handles them, but
-    ``update_strip_data`` below does not, and a self-crossing polyedge such as
-    ``[1, 2, 8, 2, 3]`` still raises there. Guard with
-    ``is_polyedge_valid_for_strip_addition`` and keep polyedges simple.
     """
     if open_strip:
         # Measured BEFORE the walk: it deletes every vertex of the polyedge, so
@@ -312,14 +263,7 @@ def split_strips(mesh: QuadMesh, skey_to_n: dict[int, int], open_strip: bool = T
 
 
 def polyedge_sides(mesh: QuadMesh, polyedge: list[int]) -> dict[int, tuple[list[int], list[int]] | None]:
-    """``{vertex: (left neighbours, right neighbours)}`` across the polyedge.
-
-    Which side a neighbour is on is the sign of the cross product of the
-    polyedge's direction AT the vertex with the direction to the neighbour.
-    The direction is taken ACROSS the vertex -- from the one before to the one
-    after -- rather than along a single edge, so one kinked edge does not
-    decide it. A vertex with no direction maps to ``None``. Planar (xy) only.
-    """
+    """``{vertex: (left neighbours, right neighbours)}`` across the polyedge, in XY."""
     closed = polyedge[0] == polyedge[-1]
     seq = polyedge[:-1] if closed else polyedge
     count = len(seq)
@@ -355,31 +299,9 @@ def open_added_strip(
     on_boundary: Iterable[int] = (),
     project: Callable[[list[float]], list[float]] | None = None,
 ) -> int:
-    """**Give a new strip its width: redivide the two quads into three.**
+    """Give a new strip its width: place each new pair at thirds of the span across the old vertex.
 
-    :func:`add_strip` creates both copies of a vertex at the vertex's own
-    position, so the strip is degenerate until something separates them. The
-    span across the polyedge at a vertex ran from its left neighbour ``L``,
-    through the vertex, to its right neighbour ``R`` -- two quad widths. After
-    the insertion that same span carries three edges, so the two new vertices
-    belong at one third and two thirds of it.
-
-    This is an exact rule and moves nothing but the new pairs. It replaces the
-    20-iteration constrained smooth the old pattern grammar ran (``func_1``),
-    which slid coarse corners along a chorded boundary -- measured gaps of
-    0.096 / 0.071 / 0.130 ... 2.782 on a 4.389 loop, minimum angle 0.28 degrees.
-
-    Two cases need care and both are handled:
-
-    * **a vertex on the boundary.** ``L`` and ``R`` run along the wall, so
-      thirds of that span are still on the wall only if the wall is straight.
-      Both new vertices are passed through ``project`` when one is given.
-    * **a singularity on the polyedge.** A vertex of valence other than four
-      has more than one neighbour on a side, so each side contributes its
-      centroid rather than its single point. A side with NO neighbour at all
-      -- a valence-2 layout corner, say -- falls back to the vertex's own
-      position, which keeps the pair separated instead of leaving them
-      coincident.
+    Only the new pairs move; boundary pairs go through ``project``. Returns the number repositioned.
 
     Parameters
     ----------
@@ -464,14 +386,7 @@ def _boundary_vertex_set(mesh: QuadMesh) -> set[int]:
 
 
 def update_strip_data(mesh: QuadMesh, full_updated_polyedge: list[int], old_vkeys_to_new_vkeys: dict[int, tuple[int, int]], closed: bool = False) -> int:
-    """Bring ``attributes['strips']`` up to date after a strip was added.
-
-    ``closed`` matters: a closed polyedge arrives here without its repeated end
-    vertex, so ``pairwise`` used to skip the closing edge. The strip crossing it
-    was then treated as a PARALLEL strip and reached for a vertex the insertion
-    had deleted -- ``KeyError`` on every closed polyedge, measured 3 of 3 on the
-    rings around a hole in a densified plate.
-    """
+    """Bring ``attributes['strips']`` up to date after a strip was added, closing edge included."""
     sequence = full_updated_polyedge + full_updated_polyedge[:1] if closed else full_updated_polyedge
 
     # orthogonal strips

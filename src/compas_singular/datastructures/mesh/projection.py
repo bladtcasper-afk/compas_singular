@@ -1,17 +1,6 @@
-"""**Smoothing a mesh ON a surface** -- the 3D half of constrained smoothing.
+"""Smoothing a mesh on a surface: interior vertices on the surface, boundary vertices on its borders.
 
-:mod:`.smoothing` projects onto points and curves, which is all a planar domain
-needs. A mesh draped over a curved surface needs two more things: every interior
-vertex held ON the surface, and every boundary vertex held on the surface's
-BORDERS rather than on a polyline of the mesh's own boundary. This module adds
-those two, on top of :func:`.smoothing.constrained_smoothing`.
-
-Ported from ``compas_singular.rhino.constraints``, which took Rhino GUIDs and
-stopped importing under COMPAS 2. **Nothing here imports Rhino.** A surface or a
-curve is anything :func:`.smoothing.closest_point_on_constraint` can project onto
--- ``compas_rhino``'s ``RhinoSurface`` / ``RhinoCurve`` inside Rhino, an
-OCC-backed one outside it, a polyline -- and the borders and kinks the old Rhino
-surface wrapper found for itself are passed in.
+Nothing here imports Rhino; surfaces and curves are anything with ``closest_point``.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -26,8 +15,8 @@ from compas.geometry import Point
 from compas.geometry import closest_point_in_cloud
 from compas.geometry import distance_point_point
 
-from compas_singular.datastructures.mesh.smoothing import _closest_curve
-from compas_singular.datastructures.mesh.smoothing import _split_loop_at_corners
+from compas_singular.datastructures.mesh.smoothing import closest_curve
+from compas_singular.datastructures.mesh.smoothing import split_loop_at_corners
 from compas_singular.datastructures.mesh.smoothing import closest_point_on_constraint
 from compas_singular.datastructures.mesh.smoothing import constrained_smoothing
 from compas_singular.datastructures.mesh.smoothing import mesh_boundary_loops
@@ -65,12 +54,7 @@ class _NearestOf(object):
 
 
 def automated_smoothing_surface_constraints(mesh: Mesh, surface: Any, borders: Sequence[Any], kinks: Sequence[list[float]] | None = None) -> dict[int, Any]:
-    """Constrain every vertex of a mesh to a surface, its borders and its kinks.
-
-    Interior vertices go to the surface. Each boundary vertex goes to the border
-    curve it is nearest to NOW, and keeps that curve for the whole smoothing.
-    Each kink pins the boundary vertex nearest to it, so the corners of the
-    surface stay corners of the mesh.
+    """Constrain every vertex to a surface, each boundary vertex to its nearest border, and kinks to points.
 
     Parameters
     ----------
@@ -87,7 +71,6 @@ def automated_smoothing_surface_constraints(mesh: Mesh, surface: Any, borders: S
     -------
     dict
         Vertex keys pointing to the surface, a border curve or a :class:`compas.geometry.Point`.
-
     """
     constraints = {vertex: surface for vertex in mesh.vertices()}
 
@@ -107,12 +90,7 @@ def automated_smoothing_surface_constraints(mesh: Mesh, surface: Any, borders: S
 
 
 def automated_smoothing_constraints(mesh: Mesh, points: Sequence[list[float]] | None = None, curves: Sequence[Any] | None = None, surface: Any | None = None) -> dict[int, Any]:
-    """Constrain the vertices of a mesh to points, curves and a surface.
-
-    Every vertex goes to ``surface``. The boundary is then split at the vertices
-    the ``points`` pin, and each run between two of them goes to the curve it is
-    closest to on average -- :func:`.smoothing.automated_boundary_constraints`'s
-    rule, with the pinned vertices as the corners. Pins win over everything.
+    """Constrain the vertices of a mesh to pins, boundary curves and a surface; pins win.
 
     Parameters
     ----------
@@ -130,7 +108,6 @@ def automated_smoothing_constraints(mesh: Mesh, points: Sequence[list[float]] | 
     -------
     dict
         Vertex keys pointing to a point, curve or surface.
-
     """
     constraints = {}
 
@@ -146,8 +123,8 @@ def automated_smoothing_constraints(mesh: Mesh, points: Sequence[list[float]] | 
 
     if curves:
         for loop in mesh_boundary_loops(mesh):
-            for segment in _split_loop_at_corners(loop, pinned):
-                curve = _closest_curve(mesh, segment, curves)
+            for segment in split_loop_at_corners(loop, pinned):
+                curve = closest_curve(mesh, segment, curves)
                 for vertex in segment:
                     constraints[vertex] = curve
 
@@ -156,12 +133,7 @@ def automated_smoothing_constraints(mesh: Mesh, points: Sequence[list[float]] | 
 
 
 def surface_constrained_smoothing(mesh: Mesh, surface: Any, borders: Sequence[Any], kmax: int = 100, damping: float = 0.5, algorithm: str = 'centroid') -> dict[int, Any]:
-    """Smooth a mesh while it stays on a surface and its boundary on the surface's borders.
-
-    Unlike :func:`automated_smoothing_surface_constraints`, a boundary vertex is
-    not tied to one border: every iteration projects it onto the nearest one.
-    Boundary vertices with two neighbours -- the corners of a quad mesh -- are
-    fixed.
+    """Smooth a mesh on a surface, re-projecting boundary vertices onto the nearest border every iteration.
 
     Parameters
     ----------
@@ -182,7 +154,6 @@ def surface_constrained_smoothing(mesh: Mesh, surface: Any, borders: Sequence[An
     -------
     dict
         The constraints that were applied. The mesh itself is modified in place.
-
     """
     edge = _NearestOf(borders)
     constraints = {}

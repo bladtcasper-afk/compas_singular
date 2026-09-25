@@ -1,118 +1,8 @@
-"""**Hand-editing a coarse quad layout: the mesh, with no Rhino in it.**
+"""Hand-editing a coarse quad layout, with no Rhino in it.
 
-:class:`CoarseEditor` holds a coarse layout being edited and offers the things
-that can be done to one -- move a corner, move a pole to a corner its patches
-share, cut it with a drawn curve, delete the strip through an edge, and commit
-the result back into the layout it was given.
-Nothing here picks, prompts, draws or prints. A refusal is recorded in
-:attr:`~CoarseEditor.last_reason` and returned as ``(False, notes)``; whoever is
-driving decides how to say so.
-
-**It is built on the layout, not on a decomposition.** It takes a
-``CoarsePseudoQuadMesh`` and, optionally, a ``CrossField``. Everything a commit
-needs -- the domain walls, the poles, a length scale -- is either passed in or
-read off the layout, and the weld/snap/repair is
-:func:`~compas_singular.editing.rebuild.coarse_from_skeleton`, which never needed
-a field either. That is what lets the SKELETON route edit: it has no
-``FieldDecomposition`` and previously could not construct this class at all.
-
-The field is **stored and not used** here. It is carried so a caller can hand it
-straight to ``densification(field=...)`` afterwards; nothing in an edit consults
-it, and nothing in it depends on the layout.
-
-**What is shared with the dense editor lives in**
-:class:`~compas_singular.editing.editor.MeshEditor`: the working copy, the walls,
-moving a corner, undo, the strip-deletion walk and the transplant. This module is
-what only the COARSE stage needs -- the cut planner, the curve map, and the
-commit.
-
-**The layout is edited as a MESH, not as the polylines baked for it.** Both are
-legal inputs to ``coarse_from_skeleton``, but only one of them is safe to move a
-corner in:
-
-* **polylines duplicate every shared corner.** ``rebuild.face_polylines`` writes
-  one closed polyline per patch, so an interior corner where four patches meet
-  is four coincident points. Moving one of them and leaving the other three is
-  a tear, and the weld in ``rebuild.mesh_from_faces`` rounds at 3 decimals, so
-  the moved copy silently becomes a NEW vertex: the layout comes back with a
-  slit in it and nothing reports an error;
-* **the mesh shares them.** ``vertex_attributes(vkey, 'xyz', ...)`` moves the
-  one corner that all four patches reference, which is what the user meant.
-
-**The edit is not finished until** :meth:`~CoarseEditor.commit` **runs**, and
-what it does depends on what was edited -- see there.
-
-**A DRAWN CURVE IS A CUT, AND A CUT HAS TO LEAVE QUADS**
---------------------------------------------------------
-
-:meth:`~CoarseEditor.divide` takes a line, an arc or a polyline as a point list
-and makes it part of the layout: every coarse edge it crosses is split, and every
-patch it passes through is split in two. ``Mesh.split_edge`` puts the new corner
-into BOTH faces of the edge, so nothing is ever left hanging -- but that is also
-why the cut cannot stop wherever it likes. A curve that ends halfway along an
-interior edge leaves the patch on the FAR side of that edge with five corners,
-and ``solve_non_quad_faces`` then fans the pentagon into a quad plus a triangle
-and keeps the triangle as a pole. Measured on a two-quad test layout, one such
-line: ``{5: 2, 3: 1}`` in, three poles out -- singularities nobody drew.
-
-So the cut is planned first and checked before anything is mutated, and the rule
-it is checked against is simply **every patch of the result has four sides**
-(pseudo-quad poles that were already there excepted). Two things follow from that
-rule rather than being imposed on top of it, and
-:attr:`~CoarseEditor.last_reason` says which one was hit:
-
-* a patch must be entered and left through OPPOSITE sides -- through adjacent
-  ones, or through a corner, the split makes a triangle. Nothing can rescue this
-  one, and it is refused;
-* every edge on the way must be crossed THROUGH, which puts the two ends of the
-  curve on the layout's own boundary. A cut from one wall to another is therefore
-  what gets accepted, and it is the same condition
-  ``is_polyedge_valid_for_strip_addition`` puts on adding a strip.
-
-**The second one does not have to be drawn, only finished.** A curve stopping in
-the middle of the layout is not wrong, it is short: the patch behind that edge
-has to be split too, and the one behind that, until the run reaches a wall --
-which is to say the cut follows a STRIP, and the continuation is
-``face_opposite_edge`` at the same parameter. :meth:`~CoarseEditor._extend_plan`
-does exactly that, and ``divide``'s ``extend`` argument offers it whenever a cut
-comes up short. The part the user drew keeps its shape; the continuation is
-straight, because it should look like what it is.
-
-The mesh is only replaced once the whole cut is known to be legal: the plan is
-computed against the untouched layout, applied to a COPY, and the copy is adopted
-only if it passes. A refusal costs nothing and leaves the layout exactly as it
-was.
-
-**The drawn SHAPE lives in the curve map, not in the mesh.** A coarse edge is
-always a straight chord -- curvature reaches the mesh through
-``coarse_edges_to_curves``, which hands one polyline per coarse edge to the
-densifier. So an arc inserted here is stored in :attr:`CoarseEditor.curves` and
-published through :attr:`CoarseEditor.all_polylines`, where the exact-match
-branch finds it. The same map holds the two halves of any curved edge the cut
-crossed: without them the halves reach the warp branch, which would drag the
-WHOLE separatrix onto a half-length edge and fold it.
-
-**DELETING IS A STRIP, NOT AN EDGE**
-------------------------------------
-
-A quad layout cannot lose a single edge: removing one merges two patches into a
-hexagon. The only removal that keeps every patch four-sided runs the full width
-of the layout, which is what a strip is -- so :meth:`~CoarseEditor.remove_strip`
-takes an edge (or a strip key) and deletes the strip through it. It COLLAPSES a
-band of patches and welds the band's two sides together; it does not *dissolve*
-the picked line and merge the patches either side of it. Dissolving is the exact
-inverse of a cut, and no such operation exists in ``compas_singular``. Before a
-commit, :meth:`~CoarseEditor.reset` undoes a cut; after one, nothing does.
-
-**And some strips simply cannot go, which nothing about the strip predicts.**
-Welding a strip's two sides together can put three patches on one edge. Swept
-over every strip of four layouts: square+square-hole 8 of 8 fine, L-plate 4 of 4,
-square+two-circular-holes 23 of 24 (the 24th raised ``KeyError`` from inside the
-grammar) -- but **square+one-circular-hole, 10 of 20 non-manifold**. Poles are
-not the discriminator, which was the obvious guess and is wrong: in that layout
-all 7 strips running into a pole deleted cleanly, and every one of the 10
-failures had no pole edge at all. So there is no cheap test, and the gate simply
-performs the deletion on a copy and looks -- see :meth:`~CoarseEditor._gate`.
+:class:`CoarseEditor` moves corners and poles, divides strips (by a drawn curve or
+a picked strip), adds and removes strips, and commits back into the layout.
+Design notes: ``design_notes/editing.md``.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -225,6 +115,7 @@ class CoarseEditor(MeshEditor):
         self.polylines = [[list(point) for point in polyline]
                           for polyline in (polylines or [])]
         self.poles = None if poles is None else [list(p) for p in poles]
+        self._snapshot_poles = None if poles is None else [list(p) for p in poles]
         self.snap_tol = (self._default_snap_tol(field) if snap_tol is None
                          else snap_tol)
         #: The length the warp's two tolerances are expressed in -- the spacing
@@ -286,14 +177,9 @@ class CoarseEditor(MeshEditor):
 
 
     def corner_tol(self) -> float:
-        """How close to a corner a point is TAKEN AS that corner.
+        """How close to a corner a point is taken as that corner.
 
-        Not politeness: splitting an edge a hair from its end makes a coarse
-        edge a hundredth of its neighbour's length, and that strip densifies
-        into slivers however sensible the density is. It also stays clear of
-        the 3-decimal weld in ``edit.mesh_from_faces``, which would otherwise
-        merge the two corners at commit and silently drop the patch as
-        degenerate.
+        Keeps edge splits clear of slivers and of the 3-decimal weld at commit.
         """
         return 0.05 * self.mean_edge()
 
@@ -310,13 +196,9 @@ class CoarseEditor(MeshEditor):
     # ------------------------------------------------------------------
 
     def locate(self, point: list[float]) -> tuple[str, int] | tuple[str, tuple[int, int], list[float]] | None:
-        """Where a point sits on the layout: on a corner, on an edge, or not.
+        """Where a point sits on the layout: ``('vertex', vkey)``, ``('edge', (u, v), xyz)`` or ``None``.
 
-        Returns ``('vertex', vkey)``, ``('edge', (u, v), xyz)``, or ``None``.
-
-        Corners win over edges, and by a whole :meth:`corner_tol` -- see there.
-        ``None`` means the point is on the layout nowhere, which is a refusal
-        rather than something to guess at.
+        Corners win over edges within :meth:`corner_tol`.
         """
         mesh = self.mesh
         tol = self.corner_tol()
@@ -341,15 +223,9 @@ class CoarseEditor(MeshEditor):
         return None
 
     def project(self, xyz: list[float], boundary: bool) -> list[float]:
-        """A boundary corner goes onto the nearest wall; an interior one does not.
+        """Project a boundary corner onto the nearest wall; an interior one stays put.
 
-        Eligibility is TOPOLOGICAL, exactly as in ``rebuild.snap_to_loops``, and
-        for the same reason: projecting anything merely near a wall would drag an
-        interior corner that legitimately sits in a narrow slot onto it and
-        collapse a patch nobody touched.
-
-        Doing it here as well as at commit is not redundant -- it is what lets a
-        front end preview the position the commit will actually produce.
+        Eligibility is topological, as in ``rebuild.snap_to_loops``.
         """
         if not boundary:
             return list(xyz)
@@ -386,15 +262,7 @@ class CoarseEditor(MeshEditor):
         return None
 
     def _edge_curve(self, pa: list[float], pb: list[float]) -> list[list[float]] | None:
-        """The shape this coarse edge follows: drawn, or traced.
-
-        The traced half matters as much as the drawn one. Cutting across an
-        interior edge splits the separatrix it followed, and the two halves
-        have to be told what they are -- left to itself, ``edges_to_curves``
-        reaches its warp branch, finds the WHOLE separatrix still anchored at
-        the far corner, and warps all of it onto a half-length edge, which
-        folds.
-        """
+        """The shape this coarse edge follows: a drawn curve, or its traced separatrix."""
         curve = self._own_curve(pa, pb)
         if curve is not None:
             return curve
@@ -425,11 +293,8 @@ class CoarseEditor(MeshEditor):
     def _split_curve(
         self, curve: list[list[float]], point: list[float]
     ) -> tuple[list[float] | None, list[list[float]] | None, list[list[float]] | None]:
-        """``(point ON the curve, head, tail)`` for the curve cut at ``point``.
+        """``(point on the curve, head, tail)`` for the curve cut at ``point``.
 
-        The returned point is the one to put the new corner at, and it is not
-        the point handed in: a corner that a cut puts halfway along a curved
-        edge belongs ON that curve, not on the chord the layout draws for it.
         ``(None, None, None)`` when the split leaves a stub.
         """
         best = None
@@ -470,12 +335,9 @@ class CoarseEditor(MeshEditor):
         return None
 
     def _face_across(self, edge: tuple[int, int], direction: list[float]) -> int | None:
-        """The face on the side of ``edge`` the curve is heading into.
+        """The face on the side of ``edge`` the curve is heading into, decided by centroid side.
 
-        Decided by which side of the edge the candidate's own CENTROID is on,
-        rather than by the halfedge convention, so it does not depend on the
-        cycles having been unified one way round. ``None`` when the curve runs
-        along the edge instead of across it, or when that side is open.
+        ``None`` when the curve runs along the edge or that side is open.
         """
         mesh = self.mesh
         u, v = edge
@@ -512,11 +374,9 @@ class CoarseEditor(MeshEditor):
     def _exit_of(
         self, fkey: int, points: list[list[float]], index: int, start: list[float], end: Any
     ) -> tuple[Any, int, list[list[float]] | None, str]:
-        """Where the curve leaves patch ``fkey``, entering it at ``start``.
+        """Where the curve leaves patch ``fkey`` after entering at ``start``.
 
-        Returns ``(node, index, subcurve, reason)``. ``node`` is ``None`` on a
-        refusal and ``reason`` says why. ``subcurve`` is the piece of the drawn
-        curve inside this patch, which is what the new coarse edge will follow.
+        Returns ``(node, index, subcurve, reason)``; ``node`` is ``None`` on a refusal.
         """
         mesh = self.mesh
         tol = self.on_tol()
@@ -571,12 +431,9 @@ class CoarseEditor(MeshEditor):
         return ('edge', tuple(edge), point)
 
     def _plan_cut(self, points: list[list[float]]) -> tuple[dict[str, Any] | None, str]:
-        """**Walk the drawn curve across the layout, without touching it.**
+        """Walk the drawn curve across the layout without mutating it.
 
-        Produces ``{'nodes': [...], 'faces': [(fkey, i, j, subcurve), ...]}``:
-        every corner the cut needs and every patch it splits, entry node ``i``
-        to exit node ``j``. Nothing is mutated here, so every refusal below
-        costs the user nothing but the message.
+        Returns ``{'nodes': [...], 'faces': [(fkey, i, j, subcurve), ...]}``.
         """
         points = [[float(p[0]), float(p[1]), 0.0] for p in points]
         points = self._clean(points)
@@ -633,13 +490,7 @@ class CoarseEditor(MeshEditor):
         return {'nodes': nodes, 'faces': faces}, ''
 
     def _open_ends(self, plan: dict[str, Any]) -> list[tuple[int, int]]:
-        """The ends of a planned cut that stop on an INTERIOR edge.
-
-        Each one is a patch left with five sides, and they are the only reason
-        a cut that is otherwise perfectly good gets refused -- which is what
-        :meth:`_extend_plan` is for. Returned as ``(node index, the patch the
-        cut came from)`` so the extension knows which way to go.
-        """
+        """The ends of a planned cut that stop on an interior edge, as ``(node index, from patch)``."""
         out = []
         if not plan['faces']:
             return out
@@ -653,17 +504,9 @@ class CoarseEditor(MeshEditor):
         return out
 
     def _extend_plan(self, plan: dict[str, Any], index: int, fkey: int) -> tuple[bool, str]:
-        """**Carry a cut on to the boundary, patch by patch.**
+        """Carry a cut that stops on an interior edge on to the boundary, along its strip.
 
-        A cut that stops on an interior edge is not wrong, it is unfinished:
-        the patch behind that edge has to be split too, and then the one behind
-        that, until the run reaches a wall. Which is the same thing as saying a
-        cut follows a STRIP -- each patch is entered and left through opposite
-        sides, so the continuation is ``face_opposite_edge`` at the same
-        parameter, and the layout stays all-quad the whole way.
-
-        Straight lines, deliberately: this is the part the user did not draw,
-        so it should look like what it is. Their own curve keeps its shape.
+        The continuation is straight; the drawn part keeps its shape.
         """
         mesh = self.mesh
         while True:
@@ -743,18 +586,9 @@ class CoarseEditor(MeshEditor):
         point: list[float],
         pending: dict[tuple[float, float, float, float], list[list[float]]],
     ) -> int | None:
-        """Split one coarse edge, putting the new corner where it belongs.
+        """Split one coarse edge, placing the new corner on the edge's curve or wall.
 
-        Three things happen that a bare ``split_edge`` does not do:
-
-        * the corner is placed on the edge's own CURVE where it has one, and
-          projected onto the domain wall where the edge is a naked one, so the
-          layout does not lose the area between chord and arc and
-          ``edit_coarse``'s own snap has nothing left to do -- which is what
-          keeps the registered curve's endpoint an exact match at commit;
-        * both halves of a curved edge inherit their piece of it;
-        * an edge already split by an earlier crossing is resolved to the piece
-          the point is actually on.
+        Both halves of a curved edge inherit their piece of the curve.
         """
         found = self._current_edge(work, edge[0], edge[1], point)
         if found is None:
@@ -830,14 +664,7 @@ class CoarseEditor(MeshEditor):
         return True, '', pending
 
     def _check_quads(self, work: "CoarsePseudoQuadMesh") -> tuple[bool, str]:
-        """**The gate: the edit has to leave every patch four-sided.**
-
-        Run on the copy, before it is adopted. A pseudo-quad that was already
-        there stays legal -- it is a quad with one side collapsed and
-        ``densification`` handles it -- but one that the edit turned into
-        something else does not, because its ``face_pole`` entry now describes
-        a face that no longer exists.
-        """
+        """Check that the edit left every patch four-sided (existing pseudo-quads excepted)."""
         face_pole = work.attributes.get('face_pole') or {}
         for fkey in work.faces():
             n = len(work.face_vertices(fkey))
@@ -868,30 +695,9 @@ class CoarseEditor(MeshEditor):
         t: float | None = None,
         extend: bool | Any | None = None,
     ) -> tuple[bool, dict[str, Any]]:
-        """**Subdivide a strip of the layout.** ``(ok, notes)``.
+        """Subdivide a strip, by a drawn curve (``points``) or a picked strip (``skey``, ``t``). ``(ok, notes)``.
 
-        Two ways in, and they are the same operation:
-
-        * ``divide(points, extend=...)`` -- a drawn line, arc or polyline. Where
-          it crosses the layout is where the split goes;
-        * ``divide(skey=..., t=0.5)`` -- a strip picked directly, split at the
-          same parameter along every one of its rungs. This is the plain "divide
-          this band in two" and needs no drawing at all.
-
-        **A divide is a strip addition whose extra points the user supplied.**
-        Where :meth:`add_strip` turns one corner into two, a divide keeps the
-        corner and adds a second one on a crossed edge. The pairing that follows
-        -- which new corner joins which -- is not a geometric question: a cut must
-        enter and leave every patch through OPPOSITE sides, since through
-        adjacent ones the split makes a triangle, and entering and leaving
-        through opposite sides IS the strip relation. So the patches a legal
-        divide crosses are exactly the patches of one strip, and the partner of a
-        new corner is given by ``face_opposite_edge``.
-
-        Measured on a 3x3 layout: of five drawn cuts, the four that are ACCEPTED
-        cross exactly the faces of one strip, and the fifth -- a diagonal, whose
-        face run is not a strip -- is refused. That is the claim, and it is what
-        lets the refusal be structural rather than an after-the-fact side count.
+        A legal cut crosses exactly the patches of one strip; anything else is refused.
         """
         if points is None and skey is None:
             return self._refuse(
@@ -901,13 +707,7 @@ class CoarseEditor(MeshEditor):
         return self._divide_by_strip(skey, 0.5 if t is None else t)
 
     def _divide_by_strip(self, skey: int, t: float = 0.5) -> tuple[bool, dict[str, Any]]:
-        """**Split every rung of a strip at the same parameter.** ``(ok, notes)``.
-
-        The strip-traced case in its plainest form: no drawn geometry, so nothing
-        has to be intersected or sliced. The rungs come from the strip itself and
-        the patch between two consecutive rungs is the one that gets split, so the
-        pairing is structural and cannot be got wrong.
-        """
+        """Split every rung of a strip at the same parameter. ``(ok, notes)``."""
         if not 0.0 < t < 1.0:
             return self._refuse(
                 'the split parameter has to be strictly between 0 and 1 -- at 0 '
@@ -986,17 +786,9 @@ class CoarseEditor(MeshEditor):
         return self.strip_through(start[1])
 
     def _divide_by_curve(self, points: list[list[float]], extend: bool | Any | None = None) -> tuple[bool, dict[str, Any]]:
-        """**Cut the layout with a drawn curve.** ``(ok, notes)``.
+        """Cut the layout with a drawn curve, on a copy adopted only if all-quad. ``(ok, notes)``.
 
-        Plan against the untouched layout, apply to a copy, adopt the copy only
-        if it passes :meth:`_check_quads`. A refusal records why in
-        :attr:`last_reason` and leaves the mesh exactly as it was, which is the
-        whole reason for the copy.
-
-        Unlike the strip grammar, this inserts NEW corners at mid-edge points, so
-        the strip data no longer describes the layout afterwards. That is what
-        ``_topology_dirty`` records, and it is what makes :meth:`commit` take the
-        rebuilding path.
+        Inserts new corners, so it marks the topology dirty and :meth:`commit` rebuilds.
 
         Parameters
         ----------
@@ -1059,12 +851,7 @@ class CoarseEditor(MeshEditor):
         return self._accept(**self.last_cut)
 
     def _cut_strip(self, plan: dict[str, Any]) -> int | None:
-        """The strip a planned cut runs along, or ``None`` if it runs along none.
-
-        The plan's patches have to be exactly one strip's patches. Anything else
-        means the curve left a patch through a side adjacent to the one it came
-        in by, which is the cut that makes a triangle.
-        """
+        """The strip a planned cut runs along, or ``None`` if it runs along none."""
         entry = None
         for node in plan['nodes']:
             if node[0] == 'edge':
@@ -1086,14 +873,9 @@ class CoarseEditor(MeshEditor):
     # ------------------------------------------------------------------
 
     def _gate(self, work: "CoarsePseudoQuadMesh") -> tuple[bool, str]:
-        """All-quad, **and manifold**. The second half is the one that decides.
+        """Check the trial deletion is all-quad and manifold.
 
-        Welding a strip's two sides together can put three patches on one edge,
-        and nothing about a strip predicts when: measured over four layouts,
-        square+one-circular-hole came out non-manifold on 10 of its 20 strips
-        while every one of its 7 pole-bearing strips deleted cleanly. Since
-        ``coarse_from_skeleton`` refuses a non-manifold layout anyway, checking
-        here turns a failure at commit into a refusal that costs nothing.
+        Nothing about a strip predicts non-manifoldness, so the gate deletes on a copy and looks.
         """
         ok, reason = self._check_quads(work)
         if not ok:
@@ -1107,12 +889,7 @@ class CoarseEditor(MeshEditor):
 
     @staticmethod
     def _as_coarse_plan(info: dict[str, Any]) -> dict[str, Any]:
-        """The base's canonical info in this class's published shape.
-
-        The base returns the collateral strips and the collapsed boundaries
-        THEMSELVES; a coarse front end has only one line of command prompt and
-        wants the counts.
-        """
+        """The base's deletion plan with collateral strips and lost boundaries as counts."""
         plan = dict(info)
         plan['collateral'] = len(info['collateral'])
         plan['boundaries_lost'] = len(info['boundaries_lost'])
@@ -1124,12 +901,9 @@ class CoarseEditor(MeshEditor):
         preserve_boundaries: bool = False,
         skey: int | None = None,
     ) -> dict[str, Any]:
-        """**What deleting the strip would cost.** No mutation.
+        """What deleting the strip would cost, without mutating anything.
 
-        Returns ``skey``, ``faces``, ``collateral`` and ``boundaries_lost`` as
-        COUNTS, plus ``ok`` and ``reason``. ``ok`` False means
-        :meth:`remove_strip` will refuse, and ``reason`` says why -- the same
-        string, from the same trial.
+        Returns ``skey``, ``faces``, ``collateral``, ``boundaries_lost`` (counts), ``ok`` and ``reason``.
         """
         info = super(CoarseEditor, self).plan_strip_deletion(
             edge=edge, preserve_boundaries=preserve_boundaries, skey=skey)
@@ -1159,16 +933,9 @@ class CoarseEditor(MeshEditor):
     # ------------------------------------------------------------------
 
     def add_strip(self, polyedge: list[int]) -> tuple[bool, dict[str, Any]]:
-        """**Unzip a polyedge of existing corners into a strip.** ``(ok, notes)``.
+        """Unzip a polyedge of existing corners into a new strip (thesis 5.3.1). ``(ok, notes)``.
 
-        The grammar's own rule (thesis 5.3.1): each corner ``Vi`` of the polyedge
-        becomes two, ``Vi`` is substituted by the left copy in the faces on one
-        side and the right copy on the other, and the band between them is the
-        new strip. Unlike :meth:`divide` this adds no NEW corners at mid-edge
-        points -- it splits corners that were already there -- so
-        ``attributes['strips']`` stays valid and the strip LABELS are preserved
-        (thesis 5.3.3). That is why it does not set ``_topology_dirty``, and why
-        the densities set per strip survive it.
+        Strip labels and densities survive; the new strip is opened by the grammar's exact rule.
 
         Parameters
         ----------
@@ -1177,15 +944,6 @@ class CoarseEditor(MeshEditor):
             Either closed on itself, or with both ends on the layout boundary --
             a strip has to run the full width of the layout, for the same reason
             a cut has to reach a wall.
-
-        Notes
-        -----
-        The grammar creates both copies ON TOP of the corner they replace, so the
-        strip has zero width until it is opened. The grammar's ``open_strip``
-        does that with an exact rule rather than by smoothing -- see
-        :func:`~compas_singular.datastructures.mesh_quad.grammar.add_strip.open_added_strip`.
-        This editor passes :meth:`project_to_wall`, so a pair opened on the
-        layout boundary lands back on the wall.
         """
         polyedge = list(polyedge)
         if len(polyedge) < 3:
@@ -1249,18 +1007,9 @@ class CoarseEditor(MeshEditor):
         return self._accept(**self.last_cut)
 
     def _split_strips(self, work: "CoarsePseudoQuadMesh", to_split: dict[int, int]) -> dict[int, list[int]]:
-        """**Refine strips, opening each one by the exact rule.**
+        """Refine strips, opening each new one by the grammar's exact division.
 
-        The base's ``split_strips`` leaves the strips it adds with zero width,
-        and something has to give them one. On a coarse layout that must not be
-        smoothing: relaxation slides corners along the CHORDED boundary and
-        clusters them, measured as gaps of 0.096 / 0.071 / 0.130 ... 2.782 on a
-        4.389 loop and a minimum face angle of 0.28 degrees. That is what made
-        ``preserve_boundaries`` unusable here.
-
-        So each new strip is opened by the grammar's exact division, the same
-        way :meth:`add_strip` opens its own. Nothing here moves a corner that
-        was not just created.
+        Not by smoothing: relaxation clusters corners along a chorded boundary.
         """
         out = {}
         for skey, n in (to_split or {}).items():
@@ -1281,13 +1030,7 @@ class CoarseEditor(MeshEditor):
     # ------------------------------------------------------------------
 
     def pole_targets(self, pkey: int) -> list[int]:
-        """The corners the pole at ``pkey`` may move to. Empty if none.
-
-        A pseudo-quad is a triangle with one corner registered as collapsed, and
-        it can only collapse at one of its OWN corners. So a pole can move to a
-        corner that every one of its triangles shares -- in practice an edge
-        neighbour of a pole with one or two triangles.
-        """
+        """The corners the pole at ``pkey`` may move to: those shared by all its triangles."""
         face_pole = self.mesh.attributes.get('face_pole') or {}
         faces = [fkey for fkey, pole in face_pole.items() if pole == pkey]
         if not faces:
@@ -1299,17 +1042,9 @@ class CoarseEditor(MeshEditor):
         return sorted(shared)
 
     def move_pole(self, pkey: int, vkey: int) -> tuple[bool, dict[str, Any]]:
-        """**Move the pole at** ``pkey`` **to corner** ``vkey``. ``(ok, notes)``.
+        """Move the pole at ``pkey`` to corner ``vkey`` by relabelling its pseudo-quads. ``(ok, notes)``.
 
-        A RELABEL: every pseudo-quad collapsed at ``pkey`` is registered as
-        collapsed at ``vkey`` instead. No corner moves and no patch changes, so
-        the singularity index is conserved exactly. What does change is the
-        strips -- a strip crosses a pseudo-quad through ``face_opposite_edge``,
-        which depends on where the pole is -- so the strip data (and the
-        densities set on it) is not carried through a commit after this.
-
-        Refused unless ``vkey`` is a corner of every triangle of the pole; see
-        :meth:`pole_targets`.
+        Strip data is not carried through a commit afterwards; see :meth:`pole_targets`.
         """
         face_pole = self.mesh.attributes.get('face_pole')
         if not face_pole:
@@ -1365,10 +1100,18 @@ class CoarseEditor(MeshEditor):
     # undo
     # ------------------------------------------------------------------
 
+    def snapshot(self) -> None:
+        """Make the current layout, curves and poles the state :meth:`reset` returns to."""
+        super(CoarseEditor, self).snapshot()
+        self._snapshot_curves = dict(self.curves)
+        self._snapshot_poles = None if self.poles is None else [list(p) for p in self.poles]
+
     def reset(self) -> tuple[bool, dict[str, Any]]:
-        """Back to the layout this round of edits started from, curves included."""
+        """Back to the layout this round of edits started from, curves and poles included."""
         ok, notes = super(CoarseEditor, self).reset()
         self.curves = dict(self._snapshot_curves)
+        self.poles = (None if self._snapshot_poles is None
+                      else [list(p) for p in self._snapshot_poles])
         self._topology_dirty = False
         self._strips_stale = False
         self.last_cut = {}
@@ -1376,11 +1119,7 @@ class CoarseEditor(MeshEditor):
         return ok, notes
 
     def _state(self) -> dict[str, Any]:
-        """The base's mesh snapshot, plus the curve map and the dirty flag --
-        both change under :meth:`divide` as surely as the mesh does, and
-        restoring one without the other would leave an undone cut's curve
-        still registered, or a commit taking the rebuild path for an edit that
-        undo just removed."""
+        """The base's mesh snapshot plus the curve map and the topology-dirty flag."""
         state = super(CoarseEditor, self)._state()
         state['curves'] = dict(self.curves)
         state['topology_dirty'] = self._topology_dirty
@@ -1401,14 +1140,9 @@ class CoarseEditor(MeshEditor):
 
 
     def _rekey_curves(self, mesh: "CoarsePseudoQuadMesh") -> int:
-        """Re-key the curve map onto a layout whose vertex keys were renumbered.
+        """Re-key the curve map onto a renumbered layout by rounded coordinates.
 
-        ``edit_coarse`` welds and repairs, so it returns a mesh with different
-        keys for the same corners -- 2 of 8 unchanged, measured. The map was
-        keyed on rounded coordinates precisely so this is a re-match and not a
-        loss; a curve whose edge did not survive the repair is dropped and
-        counted, because the alternative is publishing a polyline that
-        ``edges_to_curves`` will hand to an edge it does not belong to.
+        Curves whose edge did not survive the repair are dropped and counted.
         """
         tol = 1e-3
         kept = {}
@@ -1441,38 +1175,16 @@ class CoarseEditor(MeshEditor):
 
     @property
     def all_polylines(self) -> list[list[list[float]]]:
-        """Traced separatrices plus the curves the user drew.
-
-        This is what a caller bakes as the layout's ribs and what
-        :meth:`edge_curves` matches coarse edges against. Publishing the drawn
-        curves HERE is the whole reason an inserted arc is an arc in the final
-        mesh rather than a chord.
-        """
+        """Traced separatrices plus the user's drawn curves, as published to densification."""
         return ([[list(p) for p in polyline] for polyline in self.polylines]
                 + [[list(p) for p in curve] for curve in self.curves.values()])
 
     def edge_curves(
         self, loops: list[list[list[float]]] | None = None, warp: bool | None = None
     ) -> tuple[dict[tuple[int, int], list[list[float]]], dict[str, Any]]:
-        """``(mapping, tally)`` -- one polyline per coarse edge, for densification.
+        """``(mapping, tally)``: one polyline per coarse edge, for densification.
 
-        A coarse edge is a straight chord and the layout has to keep it that way,
-        so the SHAPE of each edge is handed to ``densification`` separately. The
-        mapping is complete for every edge, which it must be: ``densification``
-        looks every edge up once it is given a mapping at all.
-
-        Three branches decide what an edge gets, best first: the arc of the
-        domain wall it runs along; the traced separatrix whose two ends match its
-        own exactly; and -- once something has been EDITED -- the separatrix it
-        came from, warped onto the corners as they are now
-        (:mod:`~compas_singular.editing.curves`). What is left is the straight
-        chord, and on a curved domain every chord costs the area between it and
-        the curve.
-
-        ``warp`` defaults to :attr:`edited`. On an untouched layout every edge
-        still matches exactly, so the branch has nothing to do and running it
-        could only risk a wrong match; pass ``True`` to force it, ``False`` to see
-        what the edit costs without it.
+        Wall arc, then exact separatrix match, then (if ``warp``) a warped separatrix, else the chord.
         """
         mapping, tally = coarse_edges_to_curves(
             self.mesh, loops=loops or self.loops, polylines=self.all_polylines)
@@ -1490,33 +1202,10 @@ class CoarseEditor(MeshEditor):
     # ------------------------------------------------------------------
 
     def commit(self) -> tuple["CoarsePseudoQuadMesh | None", dict[str, Any]]:
-        """**Write the edited layout back into the mesh this editor was given.**
+        """Write the edited layout back into the mesh this editor was given. ``(layout, notes)``.
 
-        Returns ``(layout, notes)`` -- and ``layout`` **is** the object passed to
-        the constructor, mutated in place, not a copy. On refusal it is ``None``
-        and ``notes['error']`` says why, so callers must test ``is None`` rather
-        than truthiness.
-
-        **Two paths, and which one runs is not cosmetic.**
-
-        *Moves only.* Nothing changed the connectivity, so there is nothing to
-        weld or repair. The boundary corners are still snapped onto the domain
-        walls -- that half is load-bearing rather than tidying -- the layout is
-        checked, and the result is transplanted with its strip data intact. Keys
-        survive, and so do the densities the user set per strip.
-
-        *A cut ran.* :meth:`divide` inserts new corners at mid-edge points, so
-        the strip table no longer describes the layout. The layout goes through
-        ``coarse_from_skeleton``, which welds the patches from their corner
-        coordinates, snaps the boundary and repairs the result to all-quad. That
-        RENUMBERS every key, so the curve map is re-matched geometrically and the
-        strip data is dropped rather than carried onto strips it no longer
-        describes.
-
-        Either way the layout is checked with ``densifiable`` and a failure
-        REFUSES rather than falling back -- returning a fallback here would
-        silently discard the user's work, and it is better to fail while they can
-        still fix it. ``notes['path']`` says which path ran.
+        Moves only keep keys and strip data; a cut rebuilds via ``coarse_from_skeleton``.
+        ``layout`` is ``None`` on refusal, with ``notes['error']``; ``notes['path']`` says which path ran.
         """
         poles = self.poles
         if poles is None:
@@ -1576,8 +1265,7 @@ class CoarseEditor(MeshEditor):
 
         self.target.attributes['user_curves'] = [
             [list(p) for p in curve] for curve in self.curves.values()]
-        self._snapshot = self.mesh.copy()
-        self._snapshot_curves = dict(self.curves)
+        self.snapshot()
         self._topology_dirty = False
         self._strips_stale = False
         self.committed = True

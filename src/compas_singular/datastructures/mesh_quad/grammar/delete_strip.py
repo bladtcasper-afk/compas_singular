@@ -1,32 +1,6 @@
-"""**Delete a strip, welding the two sides together. Plus the queries that price one.**
+"""Delete a strip, welding its two sides and placing merged vertices by a fixed rule; plus the queries that price one.
 
-Deleting a strip is not the mirror image of adding one. Adding can leave the
-geometry untouched because the new vertices start on top of the old; deleting
-MERGES vertices, and the survivor has to be placed somewhere. ``delete_strip``
-therefore does move vertices -- but by a fixed rule, not by relaxation:
-
-1. vertices the deletion disconnected, if any;
-2. otherwise vertices that were on a boundary before it;
-3. otherwise all of them.
-
-Preferring the old boundary is what keeps a welded outline where it was instead
-of pulling it inward.
-
-**Pre-splitting to save a boundary is NOT done here.** A boundary represented by
-fewer than three edges after a deletion collapses, and the remedy is to refine
-the strips that survive on it (thesis 5.3.2, Fig 5.18). That is a policy, and it
-belongs to whoever is driving:
-:func:`strips_to_split_to_prevent_boundary_collapse` works out what to split and
-:func:`~compas_singular.datastructures.mesh_quad.grammar.add_strip.split_strips`
-performs it, so a caller that wants it does the two steps itself. It used to be a
-``preserve_boundaries`` flag on this function, which meant the policy was decided
-in two places at once -- here and in
-:meth:`~compas_singular.editing.editor.MeshEditor._split_strips` -- and the
-splitting it did silently smoothed the whole mesh.
-
-Until 2026-09-18 a second, simpler implementation of this lived here while the
-one below lived in ``grammar_pattern.py``. The simpler one merged to a plain
-centroid and knew nothing about collateral deletions or poles.
+Pre-splitting to save a boundary is the caller's policy, not done here.
 """
 from __future__ import annotations
 
@@ -36,8 +10,6 @@ from compas.datastructures.mesh.operations.substitute import mesh_substitute_ver
 from compas.geometry import centroid_points
 from compas.itertools import pairwise
 from compas.topology import connected_components
-
-from compas_singular.datastructures.network import Network
 
 if TYPE_CHECKING:
     from compas_singular.datastructures import QuadMesh
@@ -64,7 +36,9 @@ def delete_strips(mesh: QuadMesh, skeys: list[int]) -> None:
 
 
 def delete_strip(mesh: QuadMesh, skey: int) -> dict[int, int]:
-    """**Delete the strip** ``skey``, welding the faces either side together.
+    """Delete the strip ``skey``, welding the faces either side together.
+
+    Consumed strips go with it and ``face_pole`` is repointed; vertices move.
 
     Parameters
     ----------
@@ -78,12 +52,6 @@ def delete_strip(mesh: QuadMesh, skey: int) -> dict[int, int]:
     dict
         ``{old vertex: the vertex it was merged into}``. Empty if there was no
         such strip.
-
-    Notes
-    -----
-    Strips entirely consumed by this one go with it, and ``attributes['face_pole']``
-    is repointed at the surviving vertices. Vertices MOVE -- see the module note
-    for the rule.
     """
     if skey not in list(mesh.strips()):
         return {}
@@ -105,18 +73,19 @@ def delete_strip(mesh: QuadMesh, skey: int) -> dict[int, int]:
         if faces_2 and all([fkey in strip_faces for fkey in faces_2]):
             collateral_deleted_strips.append(skey_2)
 
-    # build network between vertices of the edges of the strip to delete to
+    # connect the vertices of the edges of the strip to delete to
     # get the disconnect parts of vertices to merge
     vertices = set([i for edge in strip_edges for i in edge])
     # maps between old and new indices
     old_to_new = {vkey: i for i, vkey in enumerate(vertices)}
     new_to_old = {i: vkey for i, vkey in enumerate(vertices)}
-    # network
-    vertex_coordinates = {i: mesh.vertex_coordinates(vkey) for i, vkey in enumerate(vertices)}
-    edges = [(old_to_new[u], old_to_new[v]) for u, v in strip_edges]
-    network = Network.from_nodes_and_edges(vertex_coordinates, edges)
+    # adjacency
+    adjacency = {i: [] for i in new_to_old}
+    for u, v in strip_edges:
+        adjacency[old_to_new[u]].append(old_to_new[v])
+        adjacency[old_to_new[v]].append(old_to_new[u])
     # disconnected parts
-    parts = connected_components(network.adjacency)
+    parts = connected_components(adjacency)
 
     # delete strip faces
     for fkey in strip_faces:
@@ -129,7 +98,7 @@ def delete_strip(mesh: QuadMesh, skey: int) -> dict[int, int]:
     # merge strip edge vertices that are connected
     for part in parts:
 
-        # move back from network vertices to mesh vertices
+        # move back from part vertices to mesh vertices
         vertices = [new_to_old[vkey] for vkey in part]
 
         # skip adding a vertex if all vertices of the part are disconnected
@@ -198,30 +167,13 @@ def total_boundary_deletions(mesh: QuadMesh, skeys: list[int]) -> list[list[int]
 
 
 def strips_to_split_to_prevent_boundary_collapse(mesh: QuadMesh, skeys: list[int]) -> dict[int, int] | None:
-    """**What to split before deleting** ``skeys``, to keep every boundary alive.
-
-    Thesis 5.3.2, Fig 5.18: a boundary collapses when fewer than three edges
-    represent it after a deletion. One surviving strip on it, split it in three;
-    two, split each in two, "to avoid any bias".
-
-    Feed the result to
-    :func:`~compas_singular.datastructures.mesh_quad.grammar.add_strip.split_strips`
-    BEFORE calling :func:`delete_strip`. Mutates nothing.
+    """What to split before deleting ``skeys`` so every boundary keeps three edges (thesis 5.3.2). Mutates nothing.
 
     Returns
     -------
     dict or None
-        **Tri-state, and all three states matter:**
-
-        * ``None`` -- the collapse cannot be prevented: no strip survives on that
-          boundary to refine;
-        * ``{}`` -- nothing is at risk, so there is nothing to do;
-        * ``{skey: n}`` -- refine these first.
-
-        ``None`` and ``{}`` are NOT interchangeable. Flattening them together is
-        what made asking to preserve boundaries refuse a deletion that risked
-        none; :meth:`~compas_singular.editing.editor.MeshEditor._trial_delete`
-        reads the difference as its ``can_preserve``.
+        ``None`` if the collapse cannot be prevented, ``{}`` if nothing is at
+        risk, else ``{skey: n}`` to refine first. Do not conflate ``None`` and ``{}``.
     """
     to_split = {}
     for boundary in mesh.boundaries():

@@ -1,19 +1,6 @@
-"""**Binding the tools, the session and the library to the protocol's methods.**
+"""Bind the tools, the one session and the library to the protocol's methods.
 
-:mod:`~compas_singular.mcp.protocol` knows JSON-RPC and nothing about meshes.
-This module is the handler it asks: it holds the one session the process is
-working on, answers ``tools/*`` from the registry, and answers ``resources/*``
-and ``prompts/*`` from the library.
-
-**Importing this module is what registers the tools.** Each ``tools_*`` module
-registers into :data:`~compas_singular.mcp.registry.TOOLS` at import time, so the
-imports below are load-bearing rather than tidy -- dropping one silently removes
-its tools from ``tools/list``. :func:`build` refuses to start on an empty
-registry rather than letting that happen quietly.
-
-**One session per process.** An MCP server over stdio serves exactly one client,
-so there is nothing to key a session registry by and nothing to isolate. If this
-ever grows a socket transport, that assumption is the thing to revisit.
+Importing it registers the tools; :func:`build` refuses to start on an empty registry.
 """
 from __future__ import absolute_import
 from __future__ import division

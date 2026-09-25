@@ -51,17 +51,7 @@ def clear_layer(layer: str, clean_sublayers: bool = False) -> int:
 
 
 def clean_polyline_points(points: Sequence[Sequence[float]], tol: float | None = None) -> list[list[float]]:
-	"""``points`` with consecutive duplicates dropped, at RHINO's tolerance.
-
-	Rhino rejects a polyline whose consecutive points coincide, and it judges
-	that at the document's absolute tolerance -- not at 1e-9. A separatrix that
-	doubles back on itself by half a document tolerance is geometrically fine
-	and still unbakeable, so the cleaning has to use the same yardstick Rhino
-	will.
-
-	Returns ``[]`` when nothing bakeable is left, which the caller must treat as
-	"skip this one" rather than as an error.
-	"""
+	"""``points`` with consecutive duplicates dropped at Rhino's document tolerance. ``[]`` if nothing is left."""
 	if tol is None:
 		try:
 			tol = sc.doc.ModelAbsoluteTolerance
@@ -84,16 +74,7 @@ def bake_polylines(
 ) -> tuple[list[Any], int]:
 	"""Bake polylines, skipping any Rhino will not take. ``(guids, skipped)``.
 
-	**``rs.AddPolyline`` RAISES** -- ``Unable to add polyline to document`` --
-	when Rhino refuses the geometry; it does not return ``None``. That matters
-	more than it sounds: these bakes run AFTER the mesh has been written, so an
-	exception here leaves the document half updated, with this layer cleared and
-	not repopulated, and the next command then silently finds no polylines and
-	densifies every edge as a chord.
-
-	So each one is cleaned first and the add is guarded anyway, and the number
-	skipped is RETURNED rather than swallowed -- a caller that bakes fewer
-	curves than it was given should say so.
+	``rs.AddPolyline`` raises rather than returning ``None``, so each add is guarded.
 	"""
 	if not rs.IsLayer(layer):
 		rs.AddLayer(layer, color)
@@ -120,23 +101,9 @@ def bake_polylines(
 
 
 def bake_mesh(mesh: Mesh, layer: str, color: Any = None, clear_existing: bool = True) -> Any:
-	"""Bake a compas mesh, n-gons included. Returns the guid.
+	"""Bake a compas mesh with n-gons kept and vertices welded. Returns the guid.
 
-	**Not ``rs.AddMesh``.** That function takes a face of any length and does
-	``AddFace(face[0], face[1], face[2], face[3])`` -- so a pentagon is baked as
-	the QUAD of its first four corners and the remaining triangle is a hole in
-	the middle of the mesh. Nothing reports it: the result is a valid Rhino mesh,
-	just not the one that was handed in. The dual of any quad mesh with a
-	singularity has such faces (a valence-5 joint dualises to a pentagon, a
-	boundary singularity likewise), which is where it shows.
-
-	``vertices_and_faces_to_rhino`` is what ``scene.draw`` already uses, and it
-	fans a face of more than four corners into triangles around its centroid and
-	then groups them as a ``MeshNgon``, so Rhino displays and snaps to the
-	polygon while the geometry underneath is complete. ``disjoint=False`` keeps
-	the vertices WELDED -- the default ``True`` gives every face its own copy of
-	its corners, and this workflow reads its meshes back out of the document,
-	where an unwelded mesh has a boundary around every face.
+	Not ``rs.AddMesh``, which bakes an n-gon as the quad of its first four corners.
 	"""
 	if not rs.IsLayer(layer):
 		rs.AddLayer(layer, color, parent=ROOT)
@@ -200,31 +167,9 @@ SYMMETRY_SAMPLE_MULTIPLE = 4
 
 
 def curve_points(guid: Any, max_edge: float) -> list[list[float]]:
-	"""A Rhino curve as a list of points: corners kept, curvature sampled.
+	"""A Rhino curve as points: a polyline at its own vertices, any other curve divided by length.
 
-	A polyline is taken at its OWN vertices, because sampling it would round the
-	corners and a corner is exactly what the decomposition has to see as a
-	corner. Anything else -- an arc, a circle, a NURBS curve -- is divided by
-	length, because every consumer downstream treats a loop as straight segments
-	between the points given, so an arc handed over as two points IS a chord.
-
-	This is what ``curve_to_compas_polyline`` cannot do: it calls
-	``TryGetPolyline`` and RAISES ``ConversionError`` when the curve is not one,
-	which is why a genuinely curved outer boundary could not be used at all.
-
-	A CLOSED curve is never divided into fewer than
-	:data:`MIN_CLOSED_CURVE_POINTS` points, however coarse ``max_edge`` is --
-	see that constant for the measurement. Division by chord length ties a
-	loop's point count to its own LENGTH, so a small hole came out with eight
-	points no matter what, and the field front end cannot read a shape that
-	coarse as curved.
-
-	A closed loop's count is then rounded up to a multiple of
-	:data:`SYMMETRY_SAMPLE_MULTIPLE` so that symmetry detection can see the
-	symmetry the user drew -- see that constant.
-
-	The closing point is dropped -- the loop is closed by convention, and a
-	repeated point puts a zero-length segment in every arc that crosses it.
+	Closed loops get at least :data:`MIN_CLOSED_CURVE_POINTS`, rounded to :data:`SYMMETRY_SAMPLE_MULTIPLE`.
 	"""
 	curve = rs.coercecurve(guid)
 	ok, polyline = curve.TryGetPolyline()
@@ -251,29 +196,15 @@ def _distance(a: Sequence[float], b: Sequence[float]) -> float:
 
 
 def curve_to_polyline(guid: Any, max_edge: float) -> Polyline:
-	""":func:`curve_points` as a CLOSED compas :class:`Polyline`.
-
-	Closed in the ``first point repeated at the end`` sense, which is what
-	``curve_to_compas_polyline`` returns for a closed Rhino polyline and what
-	``Polyline.is_closed`` and the existing callers expect. For an input that
-	really is a polyline this returns exactly what ``curve_to_compas_polyline``
-	did, point for point -- the only thing that changes is that a curved input
-	now works instead of raising.
-	"""
+	""":func:`curve_points` as a closed compas :class:`Polyline` (first point repeated)."""
 	points = curve_points(guid, max_edge)
 	return Polyline(points + points[:1])
 
 
 def read_boundary_loops(max_edge: float) -> tuple[list[list[float]], list[list[list[float]]]]:
-	"""``(outer, inners)`` as point lists, sampled from the Rhino curves.
+	"""``(outer, inners)`` as point lists sampled from the Rhino curves, for ``coarse_edges_to_curves``.
 
-	The loops for :func:`compas_singular.rhino.coarse_curves.coarse_edges_to_curves`.
-	Sample FINER than the background triangulation: these points are the wall
-	from here on, and ``densification`` walks them with ``Polyline.point_at``,
-	so the final mesh's boundary is only as smooth as what is handed in. The
-	bound is one segment's sagitta -- measured 1.5e-4 on a radius-5 disc sampled
-	at 400 points, against 1.46 units for the straight-chord densification it
-	replaces.
+	Sample finer than the background: these points are the wall from here on.
 	"""
 	outer_ids = rs.ObjectsByLayer("Outer")
 	if not outer_ids:
@@ -304,13 +235,7 @@ def read_polylines(layer: str) -> list[list[list[float]]]:
 
 
 def read_boundaries(spacing: float | None = None) -> tuple[Polyline, list[Polyline], list[Polyline], list[Any]]:
-	"""``(outer, inners, guides, poles)``: polylines closed except the guides.
-
-	``spacing`` is the length a CURVED input is divided by. A polyline input is
-	still taken at its own vertices, so for the polyline boundaries this
-	workflow has always used, the result is what
-	``curve_to_compas_polyline`` gave, point for point.
-	"""
+	"""``(outer, inners, guides, poles)``: polylines closed except the guides."""
 	max_edge = 0.125 if spacing is None else spacing
 	outer_ids = rs.ObjectsByLayer("Outer")
 	inner_ids = rs.ObjectsByLayer("Inner") or []
@@ -392,27 +317,9 @@ def read_mesh(layer: str) -> Mesh:
 
 
 def mesh_from_rhino(rhinomesh: Any, cls: type | None = None) -> Any:
-	"""A Rhino mesh as a compas mesh, with its N-GONS kept as n-gons.
+	"""A Rhino mesh as a compas mesh, with its n-gons read back as single faces.
 
-	**Why ``mesh_to_compas`` is not enough.** A Rhino mesh face has four slots,
-	so the face table only holds triangles and quads. A polygon exists on top of
-	that, in ``Mesh.Ngons``: an outline plus the faces that fill it.
-	``bake_mesh`` (through ``vertices_and_faces_to_rhino``) fills a pentagon
-	with five triangles around an ADDED centroid vertex and records the group;
-	``mesh_to_compas`` reads the face table only and hands back the five
-	triangles and the centroid as a real vertex. Measured in Rhino 8 on a quad,
-	a pentagon, a triangle and a quad: 11 vertices and 6 triangles came back.
-	A mesh saved once with a polygon and read back that way has lost it for good.
-
-	So each n-gon's outline becomes one face and the faces it groups are
-	skipped, then the remaining faces are read as they are, and any vertex no
-	face uses -- the centroids -- is left out. ``GetNgonAndFacesEnumerable`` is
-	NOT a shortcut for this: measured on the same mesh it returned the pentagon
-	AND its five triangles.
-
-	A triangle stored as a quad with a repeated corner loses the repeat, as the
-	old loaders did by hand. Vertex keys are 0..n-1 in the order Rhino holds the
-	used vertices; no key survives the round trip, so hold nothing across it.
+	Vertex keys are renumbered 0..n-1; hold nothing across the round trip.
 	"""
 	if cls is None:
 		from compas.datastructures import Mesh as cls

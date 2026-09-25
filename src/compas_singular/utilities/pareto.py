@@ -38,10 +38,9 @@ def extract_pareto_indices(data: list[Iterable[float]], k: float = 1.0) -> list[
 
 
 def is_dominating(X1: Iterable[float], X2: Iterable[float], k: float = 1.0) -> bool:
-    """Check if a design (X1) is dominating another one (X2).
-    To dominate another design, a design must have all its metrics below or equal and one strictly below the metrics of the other design.
-    A weak domination is allowed for values of k below 1.0.
-    If the metrics must be maximised, take the opposite X <- -X and the inverse k <- 1/k.
+    """Check if design X1 dominates X2: all metrics below or equal and one strictly below.
+
+    ``k`` below 1.0 allows weak domination.
 
     Parameters
     ----------

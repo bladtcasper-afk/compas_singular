@@ -1,46 +1,30 @@
-"""Step 1 -- a triangulation a field can actually live on.
-
-``compas_singular``'s own ``boundary_triangulation`` puts vertices ONLY on the
-boundaries (see ``algorithms/triangulation.py``); the interior is spanned by a
-few large, often sliver Delaunay triangles whose circumcentres approximate the
-medial axis. That is exactly right for the skeleton front end and useless for a
-field: there is no interior resolution to carry one, and slivers wreck the
-Laplacian.
-
-So the two front ends want opposite triangulations from the same boundary, and
-this module builds the other one: boundary densified to ``target_length``, plus
-an interior grid at the same spacing.
-
-Planar domain, so every tangent space is world XY -- no parallel transport, no
-per-edge connection. ``face_basis`` returns the identity and exists only so the
-surface case does not need an API change.
-"""
+"""The background triangulation the field lives on: walls discretised at ``target_length`` plus an interior grid."""
 from __future__ import annotations
 
 from math import ceil
 from typing import Any
 from typing import TYPE_CHECKING
 
+from compas.geometry import cross_vectors
+from compas.geometry import delaunay_triangulation
+from compas.geometry import distance_point_point
+from compas.geometry import length_vector
+from compas.geometry import normalize_vector
+from compas.geometry import subtract_vectors
+
 from compas_singular.datastructures import Mesh   # has .boundaries(); compas core does not
 from compas_singular.geometry.polyline import bounding_box_diagonal
 from compas_singular.geometry.polyline import discretise_boundary
-from compas_singular.geometry.polyline import distance_to_loop
-from compas.geometry import delaunay_triangulation
-from compas.geometry import is_point_in_polygon_xy
-from compas.geometry import distance_point_point
-from compas.geometry import normalize_vector
-from compas.geometry import subtract_vectors
-from compas.geometry import cross_vectors
-from compas.geometry import length_vector
+from compas_singular.geometry.polyline import near_loop
+from compas_singular.geometry.polyline import points_in_polygon_xy
 
 if TYPE_CHECKING:
     from compas_singular.framefield.symmetry import Symmetry
 
 
-# ``discretise_boundary`` is re-exported, not reimplemented: the skeleton front
-# end discretises its walls with the SAME function, so the two routes cannot
-# drift apart. See ``geometry/polyline.py``.
-__all__ = ['BackgroundMesh', 'discretise_boundary', 'interior_grid']
+# ``discretise_boundary`` is shared with the skeleton route, so the two routes
+# discretise their walls identically.
+__all__ = ['BackgroundMesh', 'discretise_boundary', 'interior_grid', 'inside_domain']
 
 
 def _as_open_loop(points: Any) -> list[list[float]]:
@@ -55,6 +39,26 @@ def _as_open_loop(points: Any) -> list[list[float]]:
     return out
 
 
+def inside_domain(
+    points: list[list[float]],
+    outer: list[list[float]],
+    inners: Any = (),
+    clearance: float = 0.0,
+) -> list[bool]:
+    """Per point: inside ``outer``, outside every hole, and -- when
+    ``clearance`` is positive -- at least that far from every wall."""
+    inners = list(inners or [])
+    keep = points_in_polygon_xy(points, outer)
+    for loop in inners:
+        keep = [k and not h for k, h in zip(keep, points_in_polygon_xy(points, loop))]
+    if clearance > 0.0:
+        for loop in [outer] + inners:
+            candidates = [p for p, k in zip(points, keep) if k]
+            close = iter(near_loop(candidates, loop, clearance))
+            keep = [k and not next(close) if k else False for k in keep]
+    return keep
+
+
 def interior_grid(
     outer: list[list[float]],
     inners: Any = (),
@@ -64,36 +68,24 @@ def interior_grid(
 ) -> list[list[float]]:
     """The INTERIOR points of the background mesh, at ``target_length`` spacing.
 
-    The half of this module the skeleton front end has no use for. Its
-    triangulation puts vertices only on the boundaries, which is right for
-    reading a medial axis off the circumcentres and useless for a field: there
-    is no interior resolution to carry one. These are the points that give it
-    one. The boundary half comes from :func:`discretise_boundary`, shared with
-    the skeleton route.
+    A jittered grid over the outline's bounding box, less every point outside
+    the domain or within ``margin * target_length`` of a wall.
 
     Parameters
     ----------
     outer : list[[x, y, z]]
-        The domain outline, open and already discretised. Its bounding box is
-        the extent the grid is laid over.
+        The domain outline, open and already discretised.
     inners : list[list[[x, y, z]]], optional
         The holes, same convention.
     target_length : float
-        Grid spacing. The same number the boundary was discretised with, so the
-        interior and the wall meet at one element size.
+        Grid spacing -- the spacing the walls were discretised at.
     margin : float, optional
-        Points closer to a boundary than ``margin * target_length`` are dropped,
-        so the grid does not crowd the wall and produce slivers.
+        Clearance from the walls, as a fraction of ``target_length``, so the
+        grid does not crowd the wall into slivers.
     symmetry : :class:`framefield.symmetry.Symmetry`, optional
-        When given and non-trivial, the grid below is replaced by one that is
-        EXACTLY invariant under the group. **This is where a symmetric domain's
-        symmetry is won or lost.** The grid below is asymmetric in two
-        independent ways -- ``_jitter`` hashes the grid indices, and the grid is
-        anchored at ``min(xs)`` rather than centred -- and neither is
-        recoverable downstream: measured on a symmetric square, the interior
-        vertices are 0% invariant under a quarter turn with a worst deviation of
-        0.65 at a 0.5 spacing, which is more than a whole triangle. See
-        ``symmetry.py``.
+        When given and non-trivial, a grid exactly invariant under the group
+        replaces this one -- see :func:`symmetry.interior_points`. The plain
+        grid is not: its jitter and its anchoring both ignore the symmetry.
 
     Returns
     -------
@@ -103,44 +95,24 @@ def interior_grid(
     limit = margin * target_length
 
     if symmetry is not None and symmetry.enabled('background'):
-        # Imported here rather than at module scope: symmetry.py imports
-        # _jitter from this module, so a top-level import either way round is
-        # a cycle.
+        # imported here: symmetry.py imports _jitter from this module
         from compas_singular.framefield.symmetry import interior_points
 
-        return list(interior_points(symmetry, target_length, outer, inners,
-                                    margin=margin))
+        return list(interior_points(symmetry, target_length, outer, inners, margin=margin))
 
     xs = [p[0] for p in outer]
     ys = [p[1] for p in outer]
-    points = []
     nx = int(ceil((max(xs) - min(xs)) / target_length))
     ny = int(ceil((max(ys) - min(ys)) / target_length))
-    for i in range(nx + 1):
-        for j in range(ny + 1):
-            p = [min(xs) + (i + 0.5) * target_length + _jitter(i, j, 0.2 * target_length),
-                 min(ys) + (j + 0.5) * target_length + _jitter(j, i, 0.2 * target_length),
-                 0.0]
-            if not is_point_in_polygon_xy(p, outer):
-                continue
-            if distance_to_loop(p, outer) < limit:
-                continue
-            if any(is_point_in_polygon_xy(p, loop) for loop in inners):
-                continue
-            if any(distance_to_loop(p, loop) < limit for loop in inners):
-                continue
-            points.append(p)
-    return points
+    grid = [[min(xs) + (i + 0.5) * target_length + _jitter(i, j, 0.2 * target_length),
+             min(ys) + (j + 0.5) * target_length + _jitter(j, i, 0.2 * target_length),
+             0.0]
+            for i in range(nx + 1) for j in range(ny + 1)]
+    return [p for p, keep in zip(grid, inside_domain(grid, outer, inners, limit)) if keep]
 
 
 def _jitter(i: int, j: int, amount: float) -> float:
-    """Deterministic sub-cell offset.
-
-    A perfectly regular grid makes every square's four corners cocircular, so
-    Qhull picks a diagonal arbitrarily and the triangulation is not reproducible
-    across runs or platforms. A fixed pseudo-random nudge removes the degeneracy
-    without introducing randomness.
-    """
+    """Deterministic sub-cell offset, so Qhull's diagonal choice on a regular grid is reproducible."""
     h = (i * 73856093) ^ (j * 19349663)
     return (((h >> 8) & 0xFFFF) / 65535.0 - 0.5) * amount
 
@@ -150,12 +122,12 @@ class BackgroundMesh(object):
 
     Attributes
     ----------
-    mesh : :class:`compas.datastructures.Mesh`
+    mesh : :class:`compas_singular.datastructures.Mesh`
         The triangulation. All faces have positive area in XY.
     outer : list[[x, y, z]]
-        The densified outer boundary, as an open loop (no repeated last point).
+        The discretised outer boundary, open (no repeated last point).
     inners : list[list[[x, y, z]]]
-        The densified inner boundaries (holes), same convention.
+        The discretised holes, same convention.
     target_length : float
         The spacing the triangulation was built at.
     """
@@ -173,6 +145,16 @@ class BackgroundMesh(object):
         self.target_length = target_length
         self._boundary_tangents = None
 
+    @property
+    def loops(self) -> list[list[list[float]]]:
+        """Every boundary loop, outer first."""
+        return [self.outer] + list(self.inners)
+
+    @property
+    def diagonal(self) -> float:
+        """Bounding-box diagonal of the outer boundary."""
+        return bounding_box_diagonal(self.outer)
+
     # ------------------------------------------------------------------
     # construction
     # ------------------------------------------------------------------
@@ -188,72 +170,63 @@ class BackgroundMesh(object):
         alpha: float = 0.04,
         d_min: int = 5,
     ) -> BackgroundMesh:
-        """Triangulate the region inside ``outer_boundary`` and outside the inners.
+        """Triangulate the region inside ``outer_boundary`` and outside the holes.
 
         Parameters
         ----------
         outer_boundary : list[[x, y, z]]
-            The domain outline, closed or open (a repeated last point is dropped).
+            The domain outline, closed or open.
         inner_boundaries : list[list[[x, y, z]]], optional
             Holes.
         target_length : float, optional
-            Edge-length target, for the boundary and the interior grid alike.
-            Defaults to ``alpha`` times the bounding-box diagonal -- thesis
-            eq. 4.1, see :func:`discretise_boundary` -- which at the default
-            alpha gives a few thousand triangles, enough for a smooth field
-            without making the solve slow.
+            Edge length, for the walls and the interior grid alike. Defaults to
+            ``alpha`` times the bounding-box diagonal (thesis eq. 4.1, see
+            :func:`discretise_boundary`).
         margin : float, optional
-            Interior grid points closer to a boundary than ``margin *
-            target_length`` are dropped, so the grid does not crowd the wall and
-            produce slivers.
+            Interior points' clearance from the walls, as a fraction of
+            ``target_length``.
         symmetry : :class:`framefield.symmetry.Symmetry`, optional
-            Passed to :func:`interior_grid`, which is where a symmetric domain's
-            symmetry is won or lost -- see there.
+            Passed to :func:`interior_grid`.
         alpha : float, optional
-            Fraction of the bounding-box diagonal to use as ``target_length``
-            when none is given.
+            ``target_length`` as a fraction of the diagonal, when not given.
         d_min : int, optional
-            Fewest points per boundary loop, whatever the target length says.
+            Fewest points per boundary loop.
 
         Returns
         -------
         BackgroundMesh
         """
-        # The target length is resolved HERE rather than left to
-        # ``discretise_boundary``, because the interior grid has to be laid out
-        # at the same spacing as the wall and the number is stored on the
-        # instance. ``_as_open_loop`` first so the scale is read off the real
-        # points; ``discretise_boundary`` cleans the loops again, idempotently.
+        # Resolved here rather than inside ``discretise_boundary``: the interior
+        # grid needs the same spacing, and the instance stores it.
         if target_length is None:
             loops = [_as_open_loop(outer_boundary)]
             loops += [_as_open_loop(loop) for loop in (inner_boundaries or [])]
             target_length = alpha * bounding_box_diagonal(*loops)
 
         outer, inners = discretise_boundary(outer_boundary, inner_boundaries,
-                                            spacing=target_length,
-                                            d_min=d_min)
+                                            spacing=target_length, d_min=d_min)
 
         points = list(outer)
         for loop in inners:
             points.extend(loop)
-        points.extend(interior_grid(outer, inners, target_length,
-                                    margin=margin, symmetry=symmetry))
+        points.extend(interior_grid(outer, inners, target_length, margin=margin, symmetry=symmetry))
 
         faces = delaunay_triangulation(points)
         mesh = Mesh.from_vertices_and_faces(points, faces)
 
-        # drop zero-area faces, then faces whose centroid is outside the domain.
-        # centroid rather than circumcentre: a sliver's circumcentre can land far
-        # outside a face that is perfectly inside the domain.
+        # Drop zero-area faces, then faces whose centroid is outside the domain
+        # -- the centroid, because a sliver's circumcentre can land far outside
+        # a face that is inside.
+        kept = []
         for fkey in list(mesh.faces()):
             a, b, c = [mesh.vertex_coordinates(v) for v in mesh.face_vertices(fkey)]
             if length_vector(cross_vectors(subtract_vectors(b, a), subtract_vectors(c, a))) < 1e-12:
                 mesh.delete_face(fkey)
-                continue
-            centre = mesh.face_centroid(fkey)
-            if not is_point_in_polygon_xy(centre, outer):
-                mesh.delete_face(fkey)
-            elif any(is_point_in_polygon_xy(centre, loop) for loop in inners):
+            else:
+                kept.append(fkey)
+        centres = [mesh.face_centroid(fkey) for fkey in kept]
+        for fkey, inside in zip(kept, inside_domain(centres, outer, inners)):
+            if not inside:
                 mesh.delete_face(fkey)
 
         for vkey in list(mesh.vertices()):
@@ -267,30 +240,11 @@ class BackgroundMesh(object):
     # ------------------------------------------------------------------
 
     def face_basis(self, fkey: int) -> tuple[list[float], list[float]]:
-        """Orthonormal tangent basis of a face.
-
-        Planar domain, so this is the world XY basis for every face. Kept in the
-        API because the surface case needs it to be per-face, and a caller
-        written against it now will not have to change.
-        """
+        """Orthonormal tangent basis of a face: world XY, on a planar domain."""
         return ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 
     def boundary_tangents(self) -> dict[int, list[list[float]]]:
-        """The adjacent boundary EDGE directions at every boundary vertex.
-
-        Two per vertex (one each side), not one averaged tangent.
-
-        Taking the chord between the two neighbours instead -- the obvious
-        implementation -- is wrong at a corner, and wrong in the worst possible
-        way. At a square's 90-degree corner the chord bisects, giving 45 degrees:
-        exactly halfway between the two arms of the cross, the one direction
-        equally far from both. The field then has to unwind that spurious 45
-        degrees somewhere, and a square comes out with two interior
-        singularities instead of the none it should have.
-
-        The two edge directions are the honest input; ``constraints.from_boundary``
-        combines them in the 4th-power representation, where a right-angle corner's
-        two edges are the SAME cross and cancel no information at all.
+        """The two adjacent boundary edge directions at every boundary vertex (not their average).
 
         Returns
         -------
@@ -320,18 +274,14 @@ class BackgroundMesh(object):
     # ------------------------------------------------------------------
 
     def validate(self) -> dict[str, Any]:
-        """Check the invariants Step 2 relies on.
+        """Check the invariants the field solve relies on.
 
         Returns
         -------
         dict
-            ``ok`` plus the individual counts, so a caller can print them.
-
-        Notes
-        -----
-        Euler characteristic is checked against ``1 - len(holes)`` for a planar
-        domain, which catches a triangulation that has silently torn or kept a
-        face bridging a hole.
+            ``ok`` plus the counts behind it: no negative-area face, triangles
+            only, one boundary loop per wall, and Euler characteristic
+            ``1 - holes`` (which catches a face bridging a hole).
         """
         mesh = self.mesh
         report = {

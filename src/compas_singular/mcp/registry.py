@@ -1,23 +1,6 @@
-"""**The tool table: one decorator, one dispatch point, one place schemas live.**
+"""The MCP tool table: one decorator carrying each tool's schema and annotations, one dispatch point.
 
-A tool is a plain function taking a
-:class:`~compas_singular.mcp.session.MeshSession` first and keyword arguments
-after, returning ``{'ok': bool, ...}``. The JSON schema for its arguments sits on
-the decorator, immediately above the function it describes, because a schema
-kept anywhere else drifts from the code within a release or two.
-
-**Every tool carries annotations, and they are not decoration.** MCP lets a
-server declare whether a tool only reads, whether it destroys something, and
-whether it reaches outside the process. A client uses those to decide what to
-show a person before running it. Three of the tools here touch things the
-session does not own -- ``rhino_push`` writes into a live CAD document,
-``save_example`` writes into the library on disk -- and a client that cannot tell
-those apart from ``inspect`` will either confirm everything or confirm nothing.
-
-**A refusal is a return value, never an exception.** A tool that will not do
-something answers ``{'ok': False, 'reason': ...}`` and the reason travels to the
-model, which is the only way it can correct itself. Exceptions are reserved for
-this server being broken.
+A refusal is a ``{'ok': False, 'reason': ...}`` return value, never an exception.
 """
 from __future__ import absolute_import
 from __future__ import division

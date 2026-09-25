@@ -1,27 +1,6 @@
-"""**Drawing the mesh, so the model can look at it instead of only measuring it.**
+"""Render the mesh and its inputs to PNG with the standard library only, so the model can look at it.
 
-``inspect`` without a picture reports what somebody thought to measure. Min
-angle, aspect and ``share_below`` are good numbers, and they are blind to
-everything nobody wrote a metric for: a strip that wanders, a boundary the mesh
-has quietly left, a guide it ignored, a point feature that never became a pole.
-Those are visible in a second and invisible in a table.
-
-**Standard library only** -- ``zlib`` and ``struct``. No matplotlib, no viewer,
-nothing that has to be installed into Rhino's interpreter. A PNG is a few chunks
-around a zlib stream, and a line drawing of a quad mesh compresses to almost
-nothing because most of it is white.
-
-**Supersampled rather than anti-aliased analytically.** Everything is drawn at
-:data:`SCALE` times the requested size and box-filtered down. That is a few
-lines instead of a coverage rasteriser, and on line art it is the difference
-between a picture a model can read a kink from and one it cannot.
-
-**What is drawn, and why each of it is there:** the input walls and the guides
-UNDER the mesh in saturated colour, so anywhere the mesh has left its input
-shows as colour escaping from beneath the black. Point features as rings and the
-mesh's own poles as filled discs, so a respected point feature reads as a disc
-inside a ring and an ignored one as an empty ring. Singularities as discs,
-because where they sit is the thing smoothing cannot change.
+Walls and guides are drawn under the mesh, so where the mesh left its input the colour shows.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -201,12 +180,7 @@ class Raster(object):
                                   color)
 
     def line(self, a: Sequence[float], b: Sequence[float], color: tuple[int, int, int], width: int = 1) -> None:
-        """A thick segment, stamped along a DDA walk.
-
-        Stamping a disc per step rather than computing coverage: at SCALE times
-        the output size the difference is gone after the downsample, and this
-        stays fast on a mesh with a few thousand edges.
-        """
+        """A thick segment, stamped as discs along a DDA walk."""
         x0, y0 = a[0], a[1]
         x1, y1 = b[0], b[1]
         dx, dy = x1 - x0, y1 - y0
@@ -318,12 +292,7 @@ def _points_of(curve: Polyline | Sequence[Any]) -> list[list[float]]:
 
 
 def scene(session: MeshSession) -> list[dict[str, Any]]:
-    """The drawable layers, back to front.
-
-    Walls and guides go UNDERNEATH the mesh deliberately: where the mesh sits on
-    its input the colour is hidden, and where it has drifted the colour shows.
-    That makes "is the input respected" a thing you see rather than measure.
-    """
+    """The drawable layers, back to front, with walls and guides under the mesh."""
     mesh = session.mesh
     layers = []
 
@@ -366,12 +335,7 @@ def _rounded(point: Sequence[float]) -> tuple[float, float]:
 
 
 def strip_representative_edge(coarse: CoarsePseudoQuadMesh, skey: Any) -> tuple[Any, Any]:
-    """The one edge a strip is named by: its first that is not collapsed.
-
-    A strip that starts or ends at a pole carries a ``(u, u)`` edge there, and
-    two identical handles name no edge. Shared with ``coarse_inspect`` so the
-    number in the picture sits on exactly the edge the report lists.
-    """
+    """The edge a strip is named by: its first non-collapsed edge."""
     edges = coarse.strip_edges(skey)
     for u, v in edges:
         if u != v:
@@ -380,13 +344,7 @@ def strip_representative_edge(coarse: CoarsePseudoQuadMesh, skey: Any) -> tuple[
 
 
 def coarse_scene(session: MeshSession) -> tuple[list[dict[str, Any]], dict[Any, str]]:
-    """The coarse layout's drawable layers, and which colour each strip got.
-
-    A coarse layout is addressed by strip, and a strip is the one thing a plain
-    line drawing cannot show -- it is a band of edges running the width of the
-    layout, and which edges belong together is exactly what a model picking an
-    edge to remove needs to see. So every strip gets its own colour, and its key
-    is written on the edge ``coarse_inspect`` names for it.
+    """The coarse layout's drawable layers, one colour per strip. ``(layers, strip_colors)``.
 
     Returns
     -------
@@ -482,15 +440,7 @@ def _bounds(layers: list[dict[str, Any]]) -> tuple[float, float, float, float] |
 
 def render_png(session: MeshSession, width: int = DEFAULT_SIZE, height: int = DEFAULT_SIZE, margin: float = 0.06,
                layers: list[dict[str, Any]] | None = None) -> bytes | None:
-    """The session's mesh and its inputs, as PNG bytes.
-
-    Returns ``None`` when there is nothing to draw at all -- no mesh, no walls,
-    no points -- rather than an empty white square, so a caller can say so
-    instead of showing one.
-
-    ``layers`` draws those instead of :func:`scene` -- :func:`coarse_scene`'s,
-    say. The framing, projection and rasterising are the same either way.
-    """
+    """The session's mesh and its inputs as PNG bytes, or ``None`` when there is nothing to draw."""
     width = max(160, min(int(width), MAX_SIZE))
     height = max(160, min(int(height), MAX_SIZE))
     if layers is None:

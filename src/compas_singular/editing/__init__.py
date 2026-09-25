@@ -1,27 +1,12 @@
-"""
-********************************************************************************
+"""********************************************************************************
 editing
 ********************************************************************************
 
 .. currentmodule:: compas_singular.editing
 
-**Hand-editing a layout, with no CAD in it.**
+Hand-editing a coarse layout or dense mesh, with no CAD in it; Rhino supplies only picks and prompts.
 
-Every operation a user performs on a coarse layout in Rhino -- dragging a
-corner, cutting patches with a drawn line, deleting a strip, committing the
-result back -- is defined here, on the mesh, and can be run from a plain script
-with no Rhino open. ``compas_singular.rhino`` and the ``CMD_`` commands supply
-the picks, the previews and the prompts; they supply nothing else.
-
-The split is not tidiness. This is the half that can be wrong in ways a user
-cannot see -- a cut that leaves a five-sided patch, a curve map that no longer
-matches its edges -- so it has to be testable without a CAD session.
-
-**This package imports nothing from** ``framefield``, and that is enforced by
-where things live rather than by convention: :mod:`~compas_singular.editing.rebuild`
-(the weld/snap/repair a commit performs) and :mod:`~compas_singular.editing.repair`
-(making a mesh all-quad again) moved here out of ``framefield`` precisely because
-neither ever needed a field. ``framefield`` re-exports both for existing callers.
+Imports nothing from ``framefield``. Design notes: ``design_notes/editing.md``.
 
 Classes
 =======
@@ -52,7 +37,6 @@ Functions
     warp_polyline
     densifiable
     solve_non_quad_faces
-
 """
 from __future__ import absolute_import
 from __future__ import division

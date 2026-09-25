@@ -1,95 +1,7 @@
-"""**Hand-editing the FINAL dense mesh: the mesh, with no Rhino in it.**
+"""Hand-editing the final dense mesh, with no Rhino in it.
 
-:class:`DenseMeshEditor` is the counterpart of ``CoarseEditor`` one stage
-further down the pipeline. Nothing here picks, prompts, draws or prints. Every
-operation returns ``(ok, notes)`` like the base class and the coarse editor; a
-refusal is ``(False, {'error': reason})`` and the same reason is kept in
-:attr:`~DenseMeshEditor.last_reason`.
-
-**THE DENSE MESH NEED NOT BE ALL QUADS**
----------------------------------------
-
-This is the end of the workflow, and the user's own judgement is the check. So
-unlike the coarse layout -- which must stay a quad layout to be densified at all
--- the dense mesh may carry triangles, pentagons and any other polygon, and most
-operations here refuse only what would break the MESH rather than what would
-break a quad mesh:
-
-* :meth:`~DenseMeshEditor.move_vertex` -- move one vertex; a boundary vertex is
-  held on the domain wall;
-* :meth:`~DenseMeshEditor.remove_vertex` -- compas ``Mesh.delete_vertex``: the
-  vertex goes WITH every face around it, leaving a hole;
-* :meth:`~DenseMeshEditor.remove_face` -- compas ``Mesh.delete_face``;
-* :meth:`~DenseMeshEditor.remove_edge` -- the two faces either side merge into
-  one polygon (compas ``Mesh.merge_faces``). A boundary edge has no second face,
-  so its one face goes;
-* :meth:`~DenseMeshEditor.draw_edges` -- cut a drawn polyline into the mesh:
-  every edge it crosses is split and every face it passes through is split in
-  two. See there for what a drawn line cannot do.
-
-The two deletions leave behind any vertex no face uses any more, and those are
-culled (``Mesh.remove_unused_vertices``) -- a loose vertex would otherwise be
-drawn, picked and baked as if it were part of the mesh.
-
-**STRIPS STILL WORK, WHERE THE MESH IS STILL QUADS**
-----------------------------------------------------
-
-:meth:`~DenseMeshEditor.add_line` grows a strip beside the polyedge through an
-edge, :meth:`~DenseMeshEditor.remove_line` deletes the strip through it. Both
-are the strip grammar, and a strip only exists through quads: a face of any
-other degree has no opposite edge, so ``QuadMesh.collect_strip`` stops at it
-exactly as it stops at the boundary. The gate is therefore PER STRIP rather than
-per mesh -- a strip that crosses or ends at a face that is not a quad is refused,
-any other strip is not. That includes a pole's triangles: the strip grammar on a
-dense mesh is not trusted through a fan.
-
-Measured before this gate existed, when one non-quad face disabled every strip:
-on a densified square with one pole, 14 of 27 strips never touch the fan and
-delete cleanly, and 13 of 13 wall-to-wall lines clear of it add cleanly.
-
-A line is still never one edge for these two: removing one edge from the middle
-of a strip merges two quads into a hexagon, and the strip operations are the
-ones that keep the quads quads. :meth:`~DenseMeshEditor.remove_edge` is the one
-that does not try.
-
-**NOTHING IS KEYED BY INDEX ACROSS A STRIP EDIT**
--------------------------------------------------
-
-Strip and polyedge keys follow vertex insertion order, and the strip operations
-renumber. So they are re-collected immediately before each use, never stored
-between operations, and every operation starts from an EDGE. The removals and
-:meth:`~DenseMeshEditor.draw_edges` keep every surviving vertex key; merged and
-split faces get new face keys.
-
-**A NEW STRIP IS OPENED BY A RULE, AND NOTHING ELSE MOVES**
------------------------------------------------------------
-
-``add_strip`` creates its two vertices ON TOP of the vertex they replace, so a
-strip is invisible until something separates them.
-:meth:`~DenseMeshEditor.add_line` and :meth:`~DenseMeshEditor._split_strips` let
-the grammar do that with its exact rule
-(:func:`~compas_singular.datastructures.mesh_quad.grammar.add_strip.open_added_strip`,
-the same one :class:`~compas_singular.editing.CoarseEditor` uses): each pair
-moves a third of the way towards its neighbours, and a pair on the boundary is
-projected back onto its wall. Only the new pairs move.
-
-This used to be done by smoothing: the new vertices were released and the whole
-mesh was relaxed. That also released the new pair's copies on the WALL, and
-nothing put them back, so a strip running wall to wall left a notch ~0.3 deep in
-both walls. Moving the rest of the mesh is a separate decision: call
-:meth:`~DenseMeshEditor.relax` for it.
-
-**THIS IS THE END OF THE PIPELINE, AND THAT IS DELIBERATE**
------------------------------------------------------------
-
-A hand-edited dense mesh has no coarse layout that produces it, so re-densifying
-regenerates from the layout and throws the edit away. Nothing here writes back
-to a layout. If an edit can be expressed on the COARSE layout instead, do it
-there.
-
-The editor works **in place** on the mesh it was given -- this stage has no
-``commit`` -- but the topological operations REPLACE :attr:`mesh` with an edited
-copy, so hold the editor, not the mesh.
+:class:`DenseMeshEditor` moves and removes vertices, faces and edges, draws edges in,
+and adds or removes strips where the mesh is quads. Design notes: ``design_notes/editing.md``.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -204,14 +116,7 @@ class DenseMeshEditor(MeshEditor):
         return None, None
 
     def non_manifold_vertices(self, mesh: "QuadMesh | None" = None) -> list[int]:
-        """Vertices where two separate fans of faces meet at a single point.
-
-        What deleting faces can leave behind: two faces that only touch at a
-        corner. The mesh is still a valid mesh and bakes fine, but the strip
-        grammar walks each boundary as one loop and cannot pass one -- see
-        :meth:`_manifold_refusal`. Found as a vertex with more than one outgoing
-        boundary halfedge.
-        """
+        """Vertices where two separate fans of faces meet at a single point."""
         mesh = self.mesh if mesh is None else mesh
         return [vkey for vkey in mesh.vertices()
                 if sum(1 for fkey in mesh.halfedge[vkey].values() if fkey is None) > 1]
@@ -230,12 +135,7 @@ class DenseMeshEditor(MeshEditor):
         return None
 
     def _non_quad_on_strip(self, edge: tuple[int, int], mesh: "QuadMesh | None" = None) -> int | None:
-        """A face that is not a quad which the strip through ``edge`` crosses or
-        ends at, or ``None`` if the strip is all quads.
-
-        The walk stops AT such a face, so looking at both faces of every strip
-        edge finds it whichever end it is on.
-        """
+        """A non-quad face the strip through ``edge`` crosses or ends at, or ``None`` if it is all quads."""
         mesh = self.mesh if mesh is None else mesh
         for a, b in mesh.collect_strip(*edge):
             for fkey in (mesh.halfedge[a].get(b), mesh.halfedge[b].get(a)):
@@ -254,16 +154,9 @@ class DenseMeshEditor(MeshEditor):
 
     @staticmethod
     def _cull(mesh: "QuadMesh") -> list[int]:
-        """Remove edges and vertices no face uses any more. Returns the vertex keys.
+        """Remove edges and vertices no face uses any more. Returns the removed vertex keys.
 
-        The EDGES first, and that is the part that matters. ``Mesh.delete_vertex``
-        only clears edges that touch the deleted vertex's neighbours, so when one
-        of the faces it deletes is a hexagon, the far side of that hexagon stays
-        behind as edges with no face on either side. On an all-quad mesh every
-        edge of a deleted face touches a neighbour, which is why it never showed.
-        Measured on dense meshes after random edits: 46 of 80 runs left such an
-        edge, and ``vertices_on_boundaries`` then walked it back and forth
-        forever. A vertex held only by such edges is unused too.
+        Edges first: ``Mesh.delete_vertex`` can leave faceless edges behind a deleted n-gon.
         """
         for u in list(mesh.halfedge):
             for v in list(mesh.halfedge[u]):
@@ -276,13 +169,7 @@ class DenseMeshEditor(MeshEditor):
 
     @staticmethod
     def _forget_stale_poles(mesh: "QuadMesh") -> int:
-        """Drop ``face_pole`` entries whose face no longer is that pole's triangle.
-
-        ``PseudoQuadMesh`` walks a triangle as a quad only if it has an entry, so
-        an entry left behind for a face that was deleted, merged or split -- the
-        new faces get new keys -- would point the strip walk at a face that is
-        not there.
-        """
+        """Drop ``face_pole`` entries whose face no longer is that pole's triangle."""
         face_pole = mesh.attributes.get('face_pole')
         if not face_pole:
             return 0
@@ -304,17 +191,9 @@ class DenseMeshEditor(MeshEditor):
     # ------------------------------------------------------------------
 
     def remove_vertex(self, vkey: int) -> tuple[bool, dict[str, Any]]:
-        """**Delete a vertex and every face around it.** ``(ok, notes)``.
+        """Delete a vertex and every face around it. ``(ok, notes)``.
 
-        ``Mesh.delete_vertex``: the faces go with it, so an interior vertex leaves
-        a hole. Refused only for a vertex that is not there, and for one whose
-        faces are every face of the mesh.
-
-        NOT refused when it leaves two faces touching at a single corner:
-        ``notes['non_manifold']`` lists every such vertex in the mesh, so a front
-        end can point at them, and the strip operations refuse until they are
-        gone. Measured in a random run of 60 edits on a dense mesh: two of twelve
-        vertex removals left one.
+        Not refused when it leaves a non-manifold vertex; ``notes['non_manifold']`` lists them.
         """
         mesh = self.mesh
         if vkey not in mesh.vertex:
@@ -357,16 +236,9 @@ class DenseMeshEditor(MeshEditor):
     # ------------------------------------------------------------------
 
     def remove_edge(self, edge: tuple[int, int]) -> tuple[bool, dict[str, Any]]:
-        """**Remove one edge by merging the two faces either side of it.** ``(ok, notes)``.
+        """Remove one edge by merging the two faces either side of it. ``(ok, notes)``.
 
-        ``Mesh.merge_faces``, performed on a copy and adopted only if the merged
-        face is a simple polygon. Removing every edge around a vertex removes
-        the vertex too: once it is left with fewer than two neighbours the merge
-        drops it from the face.
-
-        A BOUNDARY edge has a face on one side only, so there is nothing to merge
-        with: that one face is deleted instead, and ``notes['merged']`` is
-        ``None`` to say so.
+        A boundary edge deletes its one face instead, with ``notes['merged']`` set to ``None``.
         """
         if not self._is_edge(edge):
             return self._refuse('{} is not an edge of the mesh'.format(tuple(edge)))
@@ -409,16 +281,9 @@ class DenseMeshEditor(MeshEditor):
     # ------------------------------------------------------------------
 
     def draw_edges(self, points: list[list[float]], snap: float | None = None) -> tuple[bool, dict[str, Any]]:
-        """**Cut a drawn polyline into the mesh.** ``(ok, notes)``.
+        """Cut a drawn polyline into the mesh, splitting every edge and face it crosses (in XY). ``(ok, notes)``.
 
-        Every edge the line crosses is split where it crosses, and every face it
-        passes through is split in two along it. A bend of the line inside a
-        face becomes a new vertex of both halves, so the drawn shape is kept.
-        Whether a split quad comes out as two quads or as a triangle and a
-        pentagon is decided by where the line crosses, not by this method.
-
-        Worked out in plan (XY). A new vertex on an edge takes its height from
-        the edge; a bend inside a face takes it from the face.
+        An edge cannot end inside a face, so dangling or outside parts are left out and counted in ``notes``.
 
         Parameters
         ----------
@@ -428,19 +293,6 @@ class DenseMeshEditor(MeshEditor):
             Distance within which the line goes through an existing vertex or
             lies on an existing edge. Defaults to :data:`DRAW_SNAP` times the
             mean edge length.
-
-        Notes
-        -----
-        **An edge cannot end inside a face.** A face is a closed loop of vertices,
-        so there is no mesh in which a line stops halfway across one. A part of
-        the drawing that starts or ends inside a face, or that runs outside the
-        mesh -- beyond its boundary or across a hole -- is therefore left out,
-        and ``notes`` counts it (``trimmed``, ``outside``). Where the line runs
-        along an existing edge nothing is added (``along_existing``).
-
-        Returns ``notes`` with ``split_edges``, ``split_faces``,
-        ``new_vertices``, ``along_existing``, ``trimmed``, ``outside`` and
-        ``faces``. Refused if the line cuts nothing.
         """
         points = [list(p) + [0.0] * (3 - len(p)) for p in points]
         if len(points) < 2:
@@ -476,13 +328,7 @@ class DenseMeshEditor(MeshEditor):
 
     @staticmethod
     def _stations(mesh: "QuadMesh", points: list[list[float]], snap: float) -> list[dict[str, Any]]:
-        """Where the line meets the mesh, in order along it.
-
-        One station per crossing with an edge and one per point of the line
-        itself. Each is ``{'s', 'kind', 'point', ...}`` with ``kind`` one of
-        ``'vertex'`` (``vkey``), ``'edge'`` (``edge``, ``t``) or ``'free'`` --
-        inside a face or outside the mesh.
-        """
+        """Where the line meets the mesh, in order: one station per edge crossing and per line point."""
         xyz = dict((v, mesh.vertex_coordinates(v)) for v in mesh.vertices())
         edges = list(mesh.edges())
         snap2 = snap * snap
@@ -565,12 +411,7 @@ class DenseMeshEditor(MeshEditor):
         return cleaned
 
     def _runs(self, mesh: "QuadMesh", stations: list[dict[str, Any]]) -> tuple[list[tuple[int, int, int]], dict[str, Any]]:
-        """Which stretches of the line split a face. Decided before anything changes.
-
-        A run goes from one vertex-or-edge station to the next, through any free
-        bends between them, and splits the face that both ends lie on and the
-        stretch passes through. Returns ``([(i, j, fkey)], notes)``.
-        """
+        """Which stretches of the line split which face, decided before anything changes. ``([(i, j, fkey)], notes)``."""
         notes = {'split_edges': 0, 'split_faces': 0, 'new_vertices': 0,
                  'along_existing': 0, 'trimmed': 0, 'outside': 0}
         anchors = [k for k, station in enumerate(stations) if station['kind'] != 'free']
@@ -621,12 +462,7 @@ class DenseMeshEditor(MeshEditor):
         runs: list[tuple[int, int, int]],
         notes: dict[str, Any],
     ) -> dict[int, int]:
-        """A vertex key for every station a run uses; edges are split on ``work``.
-
-        A line can cross the same edge more than once, and after the first split
-        that edge is a chain. Each split is recorded against the ORIGINAL edge
-        with its parameter, so a later one is placed on the right piece exactly.
-        """
+        """A vertex key for every station a run uses, splitting edges on ``work``."""
         keys = {}
         splits = {}
         used = sorted(set(k for i, j, _f in runs for k in (i, j)))
@@ -702,14 +538,7 @@ class DenseMeshEditor(MeshEditor):
     # ------------------------------------------------------------------
 
     def _split_strips(self, work: "QuadMesh", to_split: dict[int, int]) -> dict[int, list[int]]:
-        """**Refine strips, opened by the grammar's exact rule.**
-
-        The strips added here are not asked for by the user -- they exist to
-        stop a boundary collapsing -- so they are opened as part of the same
-        operation, exactly like :meth:`add_line` opens its strip: only the new
-        pairs move, and a pair on the boundary is projected back onto its wall,
-        so refining to save a boundary cannot move the boundary it is saving.
-        """
+        """Refine strips to save a boundary, opening each by the grammar's exact rule."""
         return split_strips(work, to_split, open_strip=True, project=self.project_to_wall)
 
     def _gate(self, work: "QuadMesh") -> tuple[bool, str]:
@@ -724,13 +553,9 @@ class DenseMeshEditor(MeshEditor):
         return True, ''
 
     def add_line(self, edge: tuple[int, int]) -> tuple[bool, dict[str, Any]]:
-        """**Grow a strip along the polyedge through** ``edge``. ``(ok, notes)``.
+        """Grow a strip along the polyedge through ``edge``, on a copy adopted only if it passes :meth:`_gate`. ``(ok, notes)``.
 
-        Planned on a copy and adopted only if it passes :meth:`_gate`, so a
-        refusal costs nothing. The new strip is opened by the grammar's exact
-        rule, with its pairs on the boundary projected back onto their walls;
-        no other vertex moves. Smoothing the result is a separate step
-        (:meth:`relax`).
+        Only the new vertex pairs move; smoothing is a separate step (:meth:`relax`).
 
         Parameters
         ----------
@@ -808,12 +633,7 @@ class DenseMeshEditor(MeshEditor):
 
     @staticmethod
     def _as_dense_plan(info: dict[str, Any]) -> dict[str, Any]:
-        """The base's info dict in this class's published shape.
-
-        The base calls the key ``skey`` where this class publishes ``strip``, and
-        returns the collapsed boundaries themselves where this class publishes a
-        COUNT plus the rings under a separate name.
-        """
+        """The base's deletion plan in this class's published shape (``strip``, counts)."""
         plan = dict(info)
         plan['strip'] = info['skey']
         plan['boundaries_lost'] = len(info['boundaries_lost'])
@@ -821,13 +641,7 @@ class DenseMeshEditor(MeshEditor):
         return plan
 
     def _manifold_refusal(self) -> str:
-        """``''``, or why no strip operation can run on this mesh at all.
-
-        ``Mesh.boundaries`` -- which the strip deletion reads -- follows each
-        boundary as ONE loop and raises ``KeyError`` at a vertex where two loops
-        touch. Measured: a random run of edits left such a vertex, and the next
-        strip deletion raised.
-        """
+        """``''``, or why no strip operation can run on this mesh (a non-manifold vertex)."""
         bowties = self.non_manifold_vertices()
         if not bowties:
             return ''
@@ -835,10 +649,29 @@ class DenseMeshEditor(MeshEditor):
                 'the strip grammar cannot walk a boundary through one. Remove '
                 'or merge a face there first.'.format(len(bowties)))
 
+    def _edge_of_strip(self, skey: int) -> tuple[int, int] | None:
+        """One edge of strip ``skey``, resolved on a copy, or ``None`` if there is no such strip."""
+        work = self.mesh.copy()
+        work.collect_strips()
+        if skey not in work.attributes['strips']:
+            return None
+        return tuple(work.strip_edges(skey)[0])
+
+    def _resolve_edge(self, edge: tuple[int, int] | None, skey: int | None) -> tuple[tuple[int, int] | None, str]:
+        """``(edge, '')`` for a strip given by ``edge`` or ``skey``, or ``(None, reason)``."""
+        if edge is not None:
+            return tuple(edge), ''
+        if skey is None:
+            return None, 'no edge or strip given'
+        edge = self._edge_of_strip(skey)
+        if edge is None:
+            return None, 'there is no strip {!r} on this mesh'.format(skey)
+        return edge, ''
+
     def _strip_refusal(self, edge: tuple[int, int]) -> str:
         """Why the strip through ``edge`` cannot be touched, or ``''``."""
         if not self._is_edge(edge):
-            return 'that edge belongs to no strip -- nothing to remove'
+            return '{} is not an edge of the mesh'.format(tuple(edge))
         manifold = self._manifold_refusal()
         if manifold:
             return manifold
@@ -850,8 +683,13 @@ class DenseMeshEditor(MeshEditor):
                 'reaches a pole or a polygon cannot be removed as one.'.format(
                     tuple(edge), len(self.mesh.face_vertices(fkey))))
 
-    def plan_strip_deletion(self, edge: tuple[int, int], preserve_boundaries: bool = False) -> dict[str, Any]:
-        """**What deleting the strip through** ``edge`` **would cost.** Mutates nothing.
+    def plan_strip_deletion(
+        self,
+        edge: tuple[int, int] | None = None,
+        preserve_boundaries: bool = False,
+        skey: int | None = None,
+    ) -> dict[str, Any]:
+        """**What deleting the strip through** ``edge`` (or ``skey``) **would cost.** Mutates nothing.
 
         The deletion is PERFORMED on a copy and what came out is reported,
         because no cheap test predicts every failure.
@@ -867,21 +705,28 @@ class DenseMeshEditor(MeshEditor):
             ``vertices_before`` / ``vertices_after``. The counts after are
             ``None`` when the deletion would not go through.
         """
-        reason = self._strip_refusal(edge)
+        edge, reason = self._resolve_edge(edge, skey)
+        if not reason:
+            reason = self._strip_refusal(edge)
         if reason:
             self.last_reason = reason
-            info = {'ok': False, 'skey': None, 'faces': 0, 'collateral': [],
-                    'boundaries_lost': [], 'to_split': {},
-                    'faces_before': self.mesh.number_of_faces(),
-                    'faces_after': None,
-                    'vertices_before': self.mesh.number_of_vertices(),
-                    'vertices_after': None,
-                    'reason': reason}
-            return self._as_dense_plan(info)
+            return self._as_dense_plan(self._empty_plan(reason))
 
         info = super(DenseMeshEditor, self).plan_strip_deletion(
             edge=edge, preserve_boundaries=preserve_boundaries)
         return self._as_dense_plan(info)
+
+    def remove_strip(
+        self,
+        edge: tuple[int, int] | None = None,
+        preserve_boundaries: bool = False,
+        skey: int | None = None,
+    ) -> tuple[bool, dict[str, Any]]:
+        """Same as :meth:`remove_line`, with the strip given by ``edge`` or ``skey``. ``(ok, notes)``."""
+        edge, reason = self._resolve_edge(edge, skey)
+        if reason:
+            return self._refuse(reason)
+        return self.remove_line(edge, preserve_boundaries=preserve_boundaries)
 
     def remove_line(self, edge: tuple[int, int], preserve_boundaries: bool = False) -> tuple[bool, dict[str, Any]]:
         """**Delete the strip through** ``edge``. ``(ok, notes)``.
@@ -914,7 +759,7 @@ class DenseMeshEditor(MeshEditor):
             'faces': plan['faces'],
             'collateral': plan['collateral'],
             'boundaries_lost': plan['boundaries_lost'],
-            'pre_split': plan['to_split'] if preserve_boundaries else [],
+            'pre_split': plan['to_split'] if preserve_boundaries else {},
             'faces_before': faces_before,
             'faces_after': self.mesh.number_of_faces(),
             'vertices_before': vertices_before,
@@ -928,12 +773,7 @@ class DenseMeshEditor(MeshEditor):
     # ------------------------------------------------------------------
 
     def relax(self, iterations: int | None = None, mesh: "QuadMesh | None" = None) -> "QuadMesh":
-        """Smooth the interior, holding the boundary.
-
-        Every boundary ring is held -- holes included, see
-        :meth:`~compas_singular.editing.editor.MeshEditor.boundary_vertices`.
-        Returns the mesh, not ``(ok, notes)``: it cannot be refused.
-        """
+        """Smooth the interior, holding every boundary ring. Returns the mesh."""
         mesh = self.mesh if mesh is None else mesh
         iterations = self.relax_iterations if iterations is None else iterations
         fixed = list(self.boundary_vertices(mesh))

@@ -1,40 +1,6 @@
-"""**Meshes and curves as plain, index-based JSON.**
+"""Meshes and curves as plain index-based JSON for the spool, with poles as points, never keys.
 
-The encoding on the spool::
-
-    {"vertices": [[x, y, z], ...],
-     "faces":    [[i, j, k, l], ...],     indices into vertices
-     "poles":    [[x, y, z], ...]}        POINTS, never keys
-
-**Poles travel as points because keys renumber.** Every topological edit
-renumbers vertices, and a pole recorded as key 37 is a pole somewhere else after
-the next weld. This is the same decision ``helpers.read_coarse`` already made
-when it rebuilds a layout with
-``CoarsePseudoQuadMesh.from_vertices_and_faces_with_poles(vertices, faces,
-poles)`` -- the points survive the trip, the keys do not.
-
-**Nothing compas-typed crosses the wire, and that is load-bearing.**
-``CMD_start.import_compas_singular`` purges every ``compas_singular*`` module
-from ``sys.modules``, so running any other command in the family while the link
-is attached leaves two copies of the package alive at once. Anything that
-pickled, or that checked ``isinstance`` across the boundary, would fail with the
-``not the same object as compas_singular.datastructures.mesh.mesh.Mesh`` error
-recorded in ``RHINO_PLUGIN.md``. Plain lists of floats have no identity to get
-wrong, so the link survives a purge it never notices.
-
-**Do not reach for** ``mesh.to_vertices_and_faces()`` **here.** This library
-overrides it with ``keep_keys=True`` as the DEFAULT, which returns dicts keyed by
-vertex and face key -- while upstream compas returns lists. A mesh pulled out of
-Rhino is a plain compas ``Mesh`` and a mesh built here is this library's, so the
-same call means two different things depending on which side made the object.
-Both are JSON-serialisable, so the mistake would not raise; it would just put
-face-key-indexed nonsense on the wire. The index map below is built explicitly
-for that reason.
-
-**Coordinates are not rounded.** The server holds the authoritative mesh in
-double precision; Rhino's copy is already single precision by the time it is a
-``Point3f`` inside ``bake_mesh``. Rounding here would lose precision a second
-time, for nothing.
+Nothing compas-typed crosses the wire, and coordinates are not rounded.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -95,12 +61,7 @@ def curves_to_wire(curves: Iterable[Polyline | Sequence[Any]] | None) -> list[li
 
 
 def _pole_points(mesh: Mesh) -> list[list[float]]:
-    """The mesh's poles as points, or ``[]`` if it has no notion of one.
-
-    A plain compas ``Mesh`` -- what comes back out of Rhino -- has no ``poles``,
-    and that is not an error: it means the mesh carries no pole data, so there is
-    nothing to preserve.
-    """
+    """The mesh's poles as points, or ``[]`` if it has no notion of one."""
     poles = getattr(mesh, 'poles', None)
     if poles is None:
         return []

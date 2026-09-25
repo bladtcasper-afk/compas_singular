@@ -1,48 +1,7 @@
-"""**Read a coarse quad layout back out of a drawn network of edge-curves.**
+"""Read a coarse quad layout from a drawn network with one polyline per coarse edge.
 
-One polyline is one coarse EDGE: its two ENDS are coarse vertices, and the points
-between them are that edge's shape. That is the whole input contract, and it is the
-thing ``Mesh.from_polylines`` cannot express -- there, a polyline is a chain of
-segments handed to ``from_lines``, every point is a candidate vertex, and the shape of
-an edge is lost the moment the mesh is built.
-
-WHY NOT ``from_polylines``
---------------------------
-
-``Mesh.from_polylines(boundary_polylines, other_polylines)`` keeps a recovered face
-only when at least one of its corners is NOT on a boundary polyline::
-
-    if len(notonboundary):
-        faces.append(indices)
-
-That is a proxy for "this face is not the outside", and it is wrong for any layout
-whose cuts run wall to wall. Measured on the raw constructor: a square with one cut
-across it, a square with a hand-drawn ``#`` (the obvious 3x3 layout) and a plate with a
-hole and four radial cuts all come back with **zero faces**. Walking the planar
-embedding instead needs no such proxy -- the unbounded face is the one whose signed
-area is negative, and that is a fact rather than a guess.
-
-VALIDATE, DO NOT REPAIR
------------------------
-
-A drawn network that crosses itself, or whose curve ends land in the middle of another
-curve, is a DRAWING ERROR with a one-second fix in the CAD session. Splitting it here
-would silently produce a layout the user did not draw, so every such case raises with
-the offending curve named. Nothing in this module repairs anything: no arrangement
-pass, no n-gon fan, no fallback patch.
-
-WINDING COMES FROM THE ARCS, NOT THE CORNERS
---------------------------------------------
-
-:func:`faces_from_network` decides which cycle is the unbounded face from the signed
-area of the FULL point ring, not of the corner polygon. The two disagree on a curved
-patch: the four corners of a half-annulus wind clockwise while the patch itself winds
-counter-clockwise, so orienting on corners hands the mesh an inverted face -- measured
-on an annulus at cut angles of 180, 170 and 120 degrees, all three. Both rings are in
-hand at the same moment here, so taking the right one costs nothing.
-
-Nothing in this module touches a mesh, a CAD package or any other part of
-``compas_singular``. It is point lists in, index lists out.
+Validates rather than repairs: a crossing, T-junction, dangling or loose curve raises, naming the curve.
+Design notes: ``design_notes/datastructures.md``.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -204,25 +163,9 @@ def _turn(a: list[float], b: list[float], c: list[float]) -> float:
 
 
 def split_at_corners(points: list[list[float]], angle: float = CORNER_ANGLE) -> list[list[list[float]]]:
-    """Cut a POLYLINE into one piece per straight run -- at every vertex that turns.
+    """Cut a clicked polyline into one piece per straight run, at every vertex turning more than ``angle``.
 
-    **Not part of** :func:`weld_network`'s **contract, and not called by it.** The
-    constructor takes one polyline per coarse edge and cannot tell a corner from
-    a sample of a curve, so it never splits anything. A CAD reader can: a
-    polyline's vertices are points the user CLICKED, so a vertex where the
-    direction changes is a corner of the layout, and a rectangle drawn as one
-    closed polyline is four coarse edges -- exactly what ``_Explode`` gives. This
-    is that step, for a caller that knows its input is a polyline.
-
-    **Never hand it a sampled curve.** Every vertex of a sampled arc turns, so an
-    arc would be cut into as many edges as it has samples. Read a smooth curve as
-    one edge instead.
-
-    A vertex that turns by less than ``angle`` is collinear and does not split,
-    so a wall drawn with a redundant midpoint stays one edge. A CLOSED polyline
-    (first point repeated at the end) is also cut at its seam if the seam turns;
-    if it does not -- the loop was started halfway along a side -- the two pieces
-    either side of the seam are joined back into one.
+    Never hand it a sampled curve; not called by :func:`weld_network`.
 
     Parameters
     ----------
@@ -262,19 +205,7 @@ def split_at_corners(points: list[list[float]], angle: float = CORNER_ANGLE) -> 
 
 
 def _cut(points: list[list[float]], cuts: list[tuple[int, float, list[float]]], closed: bool, tol: float) -> list[list[list[float]]]:
-    """Cut one polyline at ``(segment, t, point)`` marks. Returns its pieces.
-
-    Positions are compared by ARC LENGTH, so two marks at one place -- a crossing
-    reported at the end of one segment and the start of the next -- collapse to
-    one cut rather than leaving a sliver between them. Each cut takes the mark's
-    own ``point`` rather than the projection onto this curve, so the two curves
-    meeting there end on byte-identical coordinates and weld.
-
-    A CLOSED polyline has no ends to protect and is walked as a ring: a cut at
-    its seam is an ordinary cut, and with ``k`` cuts it comes back as ``k``
-    pieces running cut to cut. With none it comes back whole -- still closed, for
-    the constructor to refuse.
-    """
+    """Cut one polyline at ``(segment, t, point)`` marks, merged by arc length. Returns its pieces."""
     cum = [0.0]
     for a, b in pairwise(points):
         cum.append(cum[-1] + distance_point_point(a, b))
@@ -324,29 +255,9 @@ def _cut(points: list[list[float]], cuts: list[tuple[int, float, list[float]]], 
 
 
 def split_at_junctions(polylines: list[list[list[float]]], tol: float | None = None, precision: int | None = None, points: "list[list[float]] | tuple[list[float], ...]" = ()) -> tuple[list[list[list[float]]], list[int]]:
-    """Split every polyline wherever another one MEETS it. ``(pieces, origin)``.
+    """Split every polyline wherever another ends on it or crosses it. ``(pieces, origin)``.
 
-    **Not part of** :func:`weld_network`'s **contract, and not called by it** --
-    the constructor still refuses a network that is not already split. This is
-    the step a caller takes to turn a DRAWING into such a network, and it is
-    safe because every point it splits at is a point the drawing contains:
-
-    * a **landing** -- one curve's END on another curve's interior. A cut drawn
-      across a rectangle ends on its sides, and those sides are then two coarse
-      edges each. This is the most common way a layout is drawn, and refusing it
-      made the simplest layout of all -- a rectangle cut in half -- undrawable
-      without ``_Split``;
-    * a **crossing** -- two interiors meeting, as in a hash sign drawn as four
-      strokes. Both curves are cut at the one computed point.
-
-    What it cannot do, and leaves for the constructor to refuse: an end that
-    stops SHORT of the curve it was meant to reach is a dangling end, not a
-    landing -- it is further than ``tol`` from anything, and has no unique fix.
-
-    A closed curve -- a full circle -- is cut at every landing and crossing on
-    it, seam included, so an annulus drawn as two circles and three cuts comes
-    back as six arcs and three cuts. A closed curve with nothing landing on it
-    stays whole, and the constructor refuses it.
+    Turns a drawing into a network :func:`weld_network` accepts; dangling ends are left for it to refuse.
 
     Parameters
     ----------
@@ -509,30 +420,9 @@ def weld_network(polylines: list[list[list[float]]], precision: int | None = Non
 # ----------------------------------------------------------------------------
 
 def check_network(vertices: list[list[float]], edges: list[tuple[int, int, list[list[float]]]], tol: float) -> None:
-    """Raise unless the drawn network is already a clean planar arrangement.
+    """Raise unless the drawn network is a clean planar arrangement.
 
-    Three ways a drawing is not one, each with a fix the user can make in seconds,
-    checked most specific first:
-
-    * a **T-junction** -- a corner sitting on the interior of another curve. That
-      curve is then two coarse edges drawn as one, and the patch on the far side of
-      it comes back with the wrong number of sides. This is the common mistake: a
-      wall drawn as one long curve with a cut landing halfway along it;
-    * a **crossing** -- two curves meeting anywhere other than at a shared end. There
-      is no corner there, so the walk goes in one side and out of a branch it was
-      never meant to reach;
-    * a **dangling** curve -- a corner that is the end of one curve only. It bounds
-      nothing, and a face walk that reaches it goes up the arm and back down, which
-      is one of the two ways a recovered face visits a vertex twice. Checked after
-      the two above: a corner landing on a wall is dangling AND a T-junction, and
-      the T-junction message is the one that names the fix;
-    * a **loose piece** -- part of the drawing touching nothing else, typically a
-      hole that no division line reaches. Every face the walk recovers is then
-      simply connected in the walk but NOT in the plane: the region around the
-      loose piece comes back as an ordinary cycle, is kept as a patch, and
-      overlaps whatever is inside it. Measured on a square with a free square
-      loop inside: two faces, one covering the other, and ``densifiable`` said
-      yes. So it is refused, naming one curve of the smallest piece.
+    Checks T-junctions, crossings, dangling curves and loose pieces, most specific first.
 
     Parameters
     ----------
@@ -625,26 +515,9 @@ def check_network(vertices: list[list[float]], edges: list[tuple[int, int, list[
 # ----------------------------------------------------------------------------
 
 def faces_from_network(vertices: list[list[float]], edges: list[tuple[int, int, list[list[float]]]], holes: list[list[float]] | None = None) -> list[list[int]]:
-    """The domain's patches, as rings of corner indices wound counter-clockwise.
+    """The domain's patches as counter-clockwise rings of corner indices, by planar face walk.
 
-    The standard planar-subdivision walk: sort the half-edges leaving each corner by
-    angle, and from an arriving half-edge take the next one clockwise from its
-    reverse. Every face of the embedding comes out exactly once.
-
-    The angle is taken from the FIRST SEGMENT leaving the corner, not from the chord
-    to the far end, so a curved edge sorts by the direction it actually departs in --
-    the only ordering that matches how the patches meet there.
-
-    Half-edges are keyed by polyline INDEX rather than by corner pair, so the walk
-    does not depend on that pair being unique.
-
-    Two kinds of cycle are not patches and are dropped:
-
-    * the **unbounded face**, whose signed area is negative. Measured on the full
-      point ring rather than the corner polygon: a half-annulus's corners wind the
-      opposite way to the patch itself, so the corner polygon is not evidence;
-    * a **hole**, which is a bounded cycle like any other and is told apart only by
-      being given a point inside it.
+    The unbounded face (by the full point ring's signed area) and holes are dropped.
 
     Parameters
     ----------
@@ -714,13 +587,7 @@ def faces_from_network(vertices: list[list[float]], edges: list[tuple[int, int, 
 # ----------------------------------------------------------------------------
 
 def check_faces(faces: list[list[int]], vertices: list[list[float]], sides: tuple[int, ...] = (3, 4)) -> None:
-    """Raise unless every recovered patch has an allowed number of sides.
-
-    A triangle is not a defect -- it becomes a pseudo-quad with a collapsed corner --
-    but a five-sided patch has no densification, and repairing it here would produce
-    a layout the user did not draw. So it is reported with its corners, and the fix
-    is a line in the drawing.
-    """
+    """Raise unless every recovered patch has an allowed number of sides (triangles become poles)."""
     for corners in faces:
         if len(corners) not in sides:
             raise ValueError(

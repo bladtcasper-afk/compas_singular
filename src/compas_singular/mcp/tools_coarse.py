@@ -1,44 +1,6 @@
-"""**The coarse layout: built from a domain, densified into a mesh, and edited.**
+"""MCP tools for the coarse layout: create, set densities and patterns, densify, edit, save and load.
 
-Three things a coarse layout needs, and this module is exactly those three, in
-order:
-
-1. **``create_coarse_mesh``** turns the boundary, line and point features
-   already on the session (pulled by ``rhino_pull``, or handed to
-   ``load_mesh``) into a ``CoarsePseudoQuadMesh``, via
-   ``SkeletonDecomposition`` -- a topological-skeleton decomposition of the
-   domain, not a read of hand-drawn patch curves. Reading a hand-drawn skeleton
-   back in is future work and not built here.
-2. **``coarse_set_density``** and **``coarse_densify``** are the other two
-   steps of the sequence ``CoarseQuadMesh.densification`` documents at its own
-   call site (``algorithms/decomposition.py``, ``coarse_mesh``'s docstring).
-3. **``coarse_add_strip``**, **``coarse_remove_strip``** and
-   **``coarse_move_corner``** set no ``_topology_dirty``, so
-   ``CoarseEditor.commit`` takes its cheap "moves only" path (snap the boundary,
-   keep every strip label and density, transplant in place) and never the
-   rebuild/renumber path. **``coarse_divide``** does not: it takes the rebuild path,
-   so it carries densities (by geometric overlap), patterns (by containment)
-   and edge shapes (``attributes['user_curves']``, keyed by geometry) across
-   the renumbering itself. ``_editor`` seeds every editor with those shapes,
-   or the next strip edit's commit would write back an empty curve map.
-
-4. **``coarse_set_pattern``** picks a dense pattern per patch, and
-   **``coarse_save``**/**``coarse_load``** keep a layout with its domain.
-   ``coarse_densify`` goes through ``quad_mesh`` -- the only densifier that
-   reads patterns, and bit-identical to ``densification`` on all-ortho.
-
-**The coarse layout has its own undo, on its own stack.** A strip edit changes
-topology, which the dense mesh's position-map undo cannot restore (see
-``session.py``). A coarse layout is small enough that copying the whole mesh is
-still cheap, so ``coarse_add_strip``/``coarse_remove_strip``/
-``coarse_set_density`` snapshot the mesh itself first, and ``coarse_undo``
-restores it. This is independent of ``undo``, which only ever touches the dense
-mesh.
-
-**Coarse vertices are addressed the same way dense ones are.** ``mcp.handle``'s
-``vertex_handle``/``resolve`` take any mesh with ``vertices()`` and
-``vertex_coordinates()``, which a coarse layout is, so no separate addressing
-scheme was needed for it.
+The coarse layout has its own undo stack, independent of the dense mesh's.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -105,17 +67,7 @@ def _open_loop(points: list[list[float]]) -> list[list[float]]:
 
 
 def _editor(session: MeshSession, shapes: Sequence[Sequence[Any]] | None = None) -> CoarseEditor:
-    """A fresh ``CoarseEditor`` on the session's coarse layout and domain.
-
-    Seeded with the shapes a previous cut registered: the editor writes its
-    curve map back into ``attributes['user_curves']`` on every commit, so a
-    fresh one that started empty would erase them at the next strip edit.
-
-    ``shapes`` -- the current edge shapes -- is what a CUT needs, to split a
-    curved edge into two curved halves. Only ``coarse_divide`` passes it:
-    computing it snaps boundary corners, and the read-only planning tool must
-    not move anything.
-    """
+    """A fresh ``CoarseEditor`` on the session's layout, seeded with the shapes earlier cuts registered."""
     loops = [_open_loop([list(p) for p in _polyline_points(wall)])
              for wall in session.walls] or None
     polylines = [[list(p) for p in curve] for curve in (shapes or [])
@@ -175,12 +127,7 @@ def _corners(coarse: CoarsePseudoQuadMesh, fkey: Any) -> list[list[float]]:
 
 
 def _face_point(coarse: CoarsePseudoQuadMesh, fkey: Any) -> str:
-    """A point INSIDE a face, as a handle: the name a face is addressed by.
-
-    The centroid, unless the patch is shaped so the centroid falls outside it;
-    then the first diagonal midpoint that is inside. Checked, so a handle
-    ``coarse_inspect`` reports always resolves back to its own face.
-    """
+    """A point inside a face, used as its handle: the centroid, or a diagonal midpoint if that falls outside."""
     corners = _corners(coarse, fkey)
     centre = [sum(c[i] for c in corners) / len(corners) for i in range(3)]
     candidates = [centre] + [
@@ -209,13 +156,7 @@ def _face_at(coarse: CoarsePseudoQuadMesh, handle: str) -> tuple[Any, str | None
 
 
 def _patterns(coarse: CoarsePseudoQuadMesh) -> dict[Any, str]:
-    """The face->pattern map, completed and pruned, IN PLACE.
-
-    Completed, because a face a strip edit created has none, and
-    ``get_face_pattern`` then prints a notice for every such face on every
-    densification. Pruned, because a face a strip edit removed keeps its entry,
-    which a saved layout would carry forever.
-    """
+    """Complete and prune the face-to-pattern map in place."""
     patterns = coarse.attributes.setdefault('dense_pattern', {})
     faces = set(coarse.faces())
     for fkey in list(patterns):
@@ -239,13 +180,7 @@ def _raised(changes: dict[Any, tuple[Any, Any]]) -> dict[str, list[Any]]:
 
 
 def _user_curves(coarse: CoarsePseudoQuadMesh) -> list[list[list[float]]]:
-    """The edge shapes a cut left behind, as plain point lists.
-
-    ``CoarseEditor.commit`` stores them in ``attributes['user_curves']``: the
-    drawn curve inside each patch it crossed, and the two halves of every curved
-    edge it split. They are keyed by geometry, not by vertex, which is what lets
-    them survive the renumbering commit that a cut triggers.
-    """
+    """The edge shapes a cut left in ``attributes['user_curves']``, as plain point lists."""
     return [[list(p) for p in curve]
             for curve in (coarse.attributes.get('user_curves') or [])
             if len(curve) >= 2]
@@ -259,15 +194,7 @@ def _closed(loop: Any) -> list[list[float]]:
 
 
 def _edges_to_curves(session: MeshSession) -> dict[tuple[Any, Any], list[list[float]]] | None:
-    """The shape of each coarse edge, for densification.
-
-    Best source first: the decomposition that built the layout; else the curves
-    the layout was saved with; else the session's walls. Then every shape a cut
-    registered is laid over the top, matched by its end points -- the
-    decomposition has never heard of a drawn arc, and would otherwise hand the
-    two halves of an edge a cut split either a chord or, worse, the whole
-    unsplit branch.
-    """
+    """The shape of each coarse edge: from the decomposition, the saved curves or the walls, then cut shapes on top."""
     coarse = session.coarse
     mapping = None
     if session.decomposition is not None:
@@ -321,18 +248,7 @@ def _length(a: Sequence[float], b: Sequence[float]) -> float:
 
 
 def _carry_densities(before: CoarsePseudoQuadMesh, after: CoarsePseudoQuadMesh) -> dict[Any, tuple[Any, int]]:
-    """Give every strip of ``after`` a density from the strip of ``before`` it came from.
-
-    A cut's commit welds and renumbers, so the strip table is rebuilt from
-    scratch and every density set on it is gone. Matched by geometry instead:
-    a new strip edge lying along an old one inherits that old strip, weighted by
-    the fraction of it the new edge covers. So an untouched strip keeps its
-    density exactly, and the two strips a divided one became share it in
-    proportion -- 4 split at the middle is 2 and 2, which keeps the element size.
-    The cut's own new edges lie along no old edge and cast no vote.
-
-    Returns ``{new skey: (old skey or None, density)}``.
-    """
+    """Give every strip of ``after`` a density from the strips of ``before`` it overlaps. ``{new skey: (old skey, density)}``."""
     old_edges = []
     for skey in before.strips():
         d = before.get_strip_density(skey)
@@ -387,15 +303,7 @@ def _carry_patterns(before: CoarsePseudoQuadMesh, after: CoarsePseudoQuadMesh) -
 
 
 def _pinches(layout: CoarsePseudoQuadMesh, curves: Sequence[Sequence[Sequence[float]]], limit: float) -> list[tuple[str, float]]:
-    """Where a new cut runs closer than ``limit`` to an edge it does not touch.
-
-    A cut is refused only when it breaks the all-quad rule, so one drawn a hair
-    beside an existing line is accepted -- and makes a strip that thin, which
-    densifies into slivers at any density. Measured on the test L (mean coarse
-    edge 2.5): an arc bulging 0.8 passed 0.18 from the neighbouring coarse edge,
-    and the dense mesh put two vertices 0.05 apart there; bulging 0.5 it passed
-    nowhere near. Returns ``[(handle, distance)]``, closest first.
-    """
+    """Where a new cut runs closer than ``limit`` to an edge it does not touch. ``[(handle, distance)]``, closest first."""
     found = []
     edges = [(layout.vertex_coordinates(u), layout.vertex_coordinates(v))
              for u, v in layout.edges()]
@@ -422,14 +330,7 @@ def _crosses(a: Sequence[float], b: Sequence[float], c: Sequence[float], d: Sequ
 
 
 def _fold(mesh: CoarsePseudoQuadMesh, vkey: Any) -> str | None:
-    """Why moving ``vkey`` to where it now is broke the layout, or ``None``.
-
-    ``densifiable`` catches an inverted patch, but not a corner dragged across a
-    NEIGHBOUR's edge -- each patch can stay counter-clockwise while two of them
-    overlap -- and when it does catch one it can only name a face key. So: every
-    edge at the corner against every edge not sharing an end with it, then the
-    orientation of the corner's own patches.
-    """
+    """Why moving ``vkey`` broke the layout (crossed edges or an inverted patch), or ``None``."""
     here = mesh.vertex_coordinates(vkey)
     for n in mesh.vertex_neighbors(vkey):
         pn = mesh.vertex_coordinates(n)
@@ -488,13 +389,7 @@ def _wall_kink(walls: Sequence[Any], point: Sequence[float], degrees: float = 30
 
 
 def _snap_end(editor: CoarseEditor, point: Sequence[float], tol: float) -> tuple[list[float] | None, float | None]:
-    """Put one end of a drawn cut ON the layout, as a Rhino pick would.
-
-    ``CoarseEditor`` insists an end lies on a coarse edge to within a thousandth
-    of an edge, because its front end constrains the cursor there. A caller
-    typing coordinates cannot, so the nearest corner or edge point within
-    ``tol`` stands in. Returns ``(point, distance)`` or ``(None, distance)``.
-    """
+    """Snap one end of a drawn cut onto the nearest corner or edge within ``tol``. ``(point, distance)``."""
     mesh = editor.mesh
     best = None
     for vkey in mesh.vertices():

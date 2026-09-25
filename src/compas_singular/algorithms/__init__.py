@@ -6,18 +6,6 @@ compas_singular.algorithms
 .. currentmodule:: compas_singular.algorithms
 
 
-Coloring
-========
-
-Algorithm for two-colouring of quad meshes.
-
-.. autosummary::
-    :toctree: generated/
-    :nosignatures:
-
-    TwoColourableProjection
-
-
 Decomposition
 =============
 
@@ -34,15 +22,12 @@ Algorithm for decomposition of surfaces into coarse quad meshes. Optional point 
     DecompositionRemap
 
 
-Interpolation
-=============
+Unused
+======
 
-Algorithm for combination and interpolation of quad meshes.
-
-.. autosummary::
-    :toctree: generated/
-    :nosignatures:
-
+``compas_singular.algorithms.unused`` holds thesis features no current workflow
+uses (interpolation layout, isomorphism, mapping, two-colouring). They are not
+imported here; import them from that subpackage explicitly.
 
 """
 from __future__ import absolute_import
@@ -50,15 +35,8 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import annotations
 
-import compas
-
-if not compas.IPY:
-    from compas_singular.algorithms.isomorphism import *  # noqa: F401 F403
-
-from compas_singular.algorithms.layout import *  # noqa: F401 F403
 from compas_singular.algorithms.propagation import *  # noqa: F401 F403
 from compas_singular.algorithms.triangulation import *  # noqa: F401 F403
-from compas_singular.algorithms.twocoloring import *  # noqa: F401 F403
 
 from compas_singular.algorithms.skeleton_decomposition import *  # noqa: F401 F403
 

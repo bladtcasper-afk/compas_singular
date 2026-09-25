@@ -21,7 +21,7 @@ __all__ = [
 
 
 def circle_evaluate(t: float, r: float, z: float = 0) -> list[float]:
-    """Evaluate a circle of radius ``r`` centred on the origin at parameter ``t``.
+    """Evaluate a circle of radius ``r`` centred on the origin at angle ``t`` in radians.
 
     Parameters
     ----------
@@ -36,18 +36,12 @@ def circle_evaluate(t: float, r: float, z: float = 0) -> list[float]:
     -------
     list
         The XYZ coordinates of the point.
-
-    Notes
-    -----
-    Kept rather than routed through :meth:`compas.geometry.Circle.point_at`,
-    which takes a *normalised* parameter in [0, 1] while every caller here works
-    in radians, and which needs a ``Circle`` instance to evaluate at all.
     """
     return [r * cos(t), r * sin(t), z]
 
 
 def archimedean_spiral_evaluate(t: float, a: float, b: float, z: float = 0) -> list[float]:
-    """Evaluate an archimedean spiral ``r = a + b * theta`` at parameter ``t``.
+    """Evaluate an archimedean spiral ``r = a + b * theta`` at angle ``t`` in radians.
 
     Parameters
     ----------
@@ -64,11 +58,6 @@ def archimedean_spiral_evaluate(t: float, a: float, b: float, z: float = 0) -> l
     -------
     list
         The XYZ coordinates of the point.
-
-    Notes
-    -----
-    COMPAS 2.x has no spiral primitive of any kind, so this has no upstream
-    equivalent to defer to.
     """
     return [b * t * cos(t + a), b * t * sin(t + a), z]
 

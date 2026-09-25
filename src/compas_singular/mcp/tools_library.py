@@ -1,18 +1,6 @@
-"""**Saving a finished session, and recalling one that resembles the job in hand.**
+"""MCP tools that save a finished session and recall ones with a similar problem shape.
 
-``agent`` writes a ``transcript.json`` at the end of every run and never opens
-one again. That is the gap these two tools close, and it is the clearest
-difference between the two approaches: a session here can start by asking what
-was done last time on a mesh shaped like this one.
-
-**Matching is on the shape of the PROBLEM, not on words.** The corpus will be
-small and what repeats in it is geometry -- how many boundary loops, roughly how
-big, which measure was worst. Ranking by similarity of an instruction's wording
-would put a differently-shaped mesh above an identically-shaped one, which is
-exactly backwards.
-
-**Bad examples are kept and returned.** A run that went wrong is evidence about
-what not to repeat, and it is only useful if it is still there.
+Bad examples are kept and returned too.
 """
 from __future__ import absolute_import
 from __future__ import division

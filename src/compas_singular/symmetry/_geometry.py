@@ -92,13 +92,7 @@ CORNER_TURN = pi / 8.0
 
 
 def chord_sags(points: Sequence[Sequence[float]], closed: bool) -> list[float]:
-    """Per segment: how far the segment may lie from the smooth curve it samples.
-
-    A segment of length ``L`` sampling an arc that turns by ``phi`` per vertex
-    deviates from it by the sagitta ``L * phi / 8``. Where either end of a segment
-    turns by :data:`CORNER_TURN` or more it is a corner and the slack is zero,
-    so a polygon is matched exactly and only curves get the benefit.
-    """
+    """Per segment, how far it may lie from the smooth curve it samples (zero at corners)."""
     n = len(points)
     last = n if closed else n - 1
     turns = [0.0] * n
@@ -154,12 +148,7 @@ def distance_to_loop(x: float, y: float, loop: Sequence[Sequence[float]], closed
 
 
 class SegmentHash(object):
-    """Segments and points in a uniform grid, for BOUNDED nearest-distance queries.
-
-    Not a point-set bucket: :meth:`nearest` returns a true Euclidean distance to
-    the nearest segment, searching every cell the ``limit`` can reach, so two
-    points a hair apart never fall on either side of a cell edge and disagree.
-    """
+    """Segments and points in a uniform grid, for bounded exact nearest-distance queries."""
 
     def __init__(self, cell: float) -> None:
         self.cell = float(cell)
@@ -207,12 +196,7 @@ class SegmentHash(object):
         self._insert(index, point[0], point[1], point[0], point[1])
 
     def nearest(self, x: float, y: float, limit: float) -> tuple[float, Any]:
-        """``(excess, tag)`` of the best item within ``limit``, else ``(inf, None)``.
-
-        ``excess`` is the distance MINUS the segment's slack, floored at 0: a
-        point that lands inside the chord sag of a sampled arc is on the curve as
-        far as the samples can tell.
-        """
+        """``(excess, tag)`` of the best item within ``limit``, else ``(inf, None)``; excess is distance minus slack."""
         if not self.items:
             return float('inf'), None
         cx, cy = self._key(x, y)

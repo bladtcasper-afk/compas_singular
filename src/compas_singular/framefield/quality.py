@@ -1,46 +1,6 @@
-"""Element quality, in two tiers -- a hard floor and a regression baseline.
+"""Element quality: an absolute hard floor here, the per-domain regression check in ``15_baseline.py``.
 
-Until this module existed there was no automated quality gate at all.
-``FieldDecomposition._acceptable`` checked all-quad, manifold, and 97-103% area
-coverage, and ``route()`` was the de-facto gate on top of that. Both stopped
-discriminating: every test domain now reaches route ``'field'``, and those three
-structural properties certified a mesh carrying a literal **180 degree angle**
-as fine. That mesh is live in the suite -- ``12_cables``' ring cable, face 128,
-a four-sided non-pole quad whose corners are
-``(7.2455, 3.0752) (7.5500, 3.2143) (7.5341, 2.8200) (7.4960, 2.8537)``: three
-of them collinear. Nothing structural is wrong with it. It is not a usable
-element.
-
-TWO TIERS, and one threshold cannot do both jobs
-------------------------------------------------
-
-* The **hard floor** (:func:`hard_floor`) is absolute and permanent: an angle at
-  or near 0 or 180 degrees, or a non-finite aspect ratio, is a degeneracy rather
-  than a taste, and no baseline may bless one.
-* The **regression check** lives in ``15_baseline.py``, against committed
-  numbers. It is what catches "the change made the ellipse worse", which no
-  absolute threshold can.
-
-The reason for the split is measured, not stylistic. Minimum angle across the
-field route legitimately spans 24 to 90 degrees over the domain suite, so any
-absolute threshold loose enough to pass the ellipse is far too loose to notice
-the square dropping off 90.
-
-PSEUDO-QUADS
-------------
-
-A pole is the quad ``(p, a, b, p)`` with one side collapsed, stored as the
-three-vertex face ``(p, a, b)`` plus an entry in ``mesh.attributes['face_pole']``.
-Every metric here measures the corners a face ACTUALLY has and never
-reconstitutes the phantom fourth one -- reconstituting it yields a zero-length
-edge, hence a 0 degree angle and a division by zero, and would fail every domain
-carrying a pole the moment it saw one. Measured on the ring cable's 14 dense
-pole faces: read as triangles their angles run 7.4 to 117.5 degrees and their
-shortest edge is 0.051, all finite; read as collapsed quads every one of them
-reports 0 degrees and an infinite aspect ratio.
-
-A 7.4 degree pole is bad, and it is the regression check's business, not the
-floor's.
+Pseudo-quads are measured on the three corners they actually have.
 """
 from __future__ import annotations
 
@@ -60,14 +20,11 @@ __all__ = ['mesh_quality', 'hard_floor', 'face_angles', 'curve_alignment',
            'HARD_MIN_ANGLE', 'HARD_MAX_ANGLE', 'LOW_ANGLE']
 
 
-#: Below this, an angle is a degeneracy rather than a poor element. The worst
-#: legitimate value in the suite is the ring cable's 7.4 degree pole, so this
-#: sits an order of magnitude clear of anything real.
+#: Below this, an angle is a degeneracy rather than a poor element -- an order
+#: of magnitude under the worst legitimate angle in the suite.
 HARD_MIN_ANGLE = 0.5
 
-#: Likewise at the top. The worst legitimate value is the triangulation
-#: backstop's 160.2 degrees on the round-holed disc; the ring cable's 180.000
-#: is the case this catches.
+#: Likewise at the top.
 HARD_MAX_ANGLE = 179.5
 
 #: Default "low angle" for the share-of-angles metric. Reported, never gated on.
@@ -75,13 +32,7 @@ LOW_ANGLE = 20.0
 
 
 def face_angles(points: list[list[float]]) -> list[float]:
-    """Interior angles of a polygon, in degrees, one per corner given.
-
-    ``points`` are the corners the face ACTUALLY has -- for a pseudo-quad that
-    is three, not four. A repeated or coincident corner yields 0.0 rather than
-    raising, so a degenerate face is reported by :func:`hard_floor` instead of
-    crashing the harness.
-    """
+    """Interior angles of a polygon in degrees; a coincident corner gives 0.0 rather than raising."""
     n = len(points)
     out = []
     for i in range(n):
@@ -201,23 +152,7 @@ def curve_alignment_profile(
     radius: float = ALIGNMENT_RADIUS,
     spacing: float = 0.5,
 ) -> list[tuple[tuple[float, float], float]]:
-    """**How far a MESH is from a curve it was supposed to follow.**
-
-    Per sample along the curve, the mean angle between the curve and every mesh
-    edge whose midpoint is within ``radius``, folded into the cross's period.
-    An edge crossing the curve at 90 degrees counts as aligned as one running
-    along it, because a quad mesh has two families and a cable may be either.
-    0 means the mesh runs on the curve; 45 is the worst a quad mesh can do.
-
-    This is the same convention ``12_cables`` part 1 measures the FIELD with, so
-    the mesh number and the field number are directly comparable -- which is the
-    entire point. The field reaching 0.0 degrees off a hard-constrained cable
-    while the mesh sat at 36.9 was how the gap between the two halves of the
-    objective was stated; closing it has to be measured on the same scale.
-
-    A plain MEAN over the contributing edges, deliberately. Taking the closest
-    few would flatter any mesh dense enough to have one edge pointing the right
-    way somewhere.
+    """Per sample along a curve, the mean angle to nearby mesh edges folded into the cross period (0 to 45).
 
     Returns
     -------
@@ -252,13 +187,7 @@ def curve_alignment(
     radius: float = ALIGNMENT_RADIUS,
     spacing: float = 0.5,
 ) -> float:
-    """Mean of :func:`curve_alignment_profile`, in degrees.
-
-    The mean over the whole curve understates what a guided mesh achieves,
-    because a patch boundary is fixed and the mesh cannot turn where the curve
-    runs up against one. Look at the profile too before concluding a cable only
-    half arrived.
-    """
+    """Mean of :func:`curve_alignment_profile`, in degrees; check the profile too."""
     profile = curve_alignment_profile(mesh, curve, radius, spacing)
     if not profile:
         return float('nan')
@@ -268,15 +197,13 @@ def curve_alignment(
 def hard_floor(metrics: dict[str, Any]) -> tuple[bool, str]:
     """TIER 1. Is anything in this mesh degenerate rather than merely poor?
 
-    Absolute and permanent: no baseline, and no future retuning, may bless an
-    angle at or near 0 or 180 degrees or a non-finite aspect ratio. Everything
-    softer than that is the regression check's business.
+    Absolute: an angle at or near 0 or 180 degrees, or a non-finite aspect
+    ratio. Everything softer is the regression check's business.
 
     Returns
     -------
     (bool, str)
-        Verdict, and when false the offending metric NAMED with its value --
-        the harness's whole job is to stop a number being described by hand.
+        Verdict, and when false the offending metric named with its value.
     """
     if not metrics.get('faces'):
         return False, 'no faces'

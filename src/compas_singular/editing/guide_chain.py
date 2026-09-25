@@ -1,47 +1,7 @@
-"""**Choosing the dense-mesh vertices that follow a guide curve, with no Rhino in it.**
+"""Choose the dense-mesh vertices that follow a guide curve, with no Rhino in it.
 
-A guide curve -- a cable, a force line, a beam drawn on the plan -- is attached to a quad
-mesh by picking a chain of vertices along it, projecting them onto it, and smoothing with
-them constrained. This module picks the chain. It draws nothing, prompts for nothing and
-prints nothing: :func:`guide_chain` returns the chain and a dictionary saying how it went,
-and whoever is driving decides how to say so.
-
-**The chain is a piece of a POLYEDGE, and nothing else.** Three ways of building it up
-vertex by vertex were tried and all three failed, each in a way that only shows when you
-draw it:
-
-* a *radius* around the curve collects a ragged band from BOTH sides of it, and projecting
-  that band onto the curve folds faces -- max face angle 180.00 on ``square+ring cable``;
-* the *nearest vertex at each station* along the guide picks each one independently, so it
-  hops between adjacent columns and comes out a zigzag;
-* a *walk* that prefers the straight continuation and turns where it cannot still turns,
-  and a turn is how it ends up on a different polyedge from the one it started on.
-
-:meth:`QuadMesh.collect_polyedges` already has the answer: the polyedges ARE the long
-lines of the mesh, each running from boundary to boundary or from singularity to
-singularity across four-valent vertices. So the chain is not constructed -- it is
-*chosen*, as the longest run of one polyedge that still follows the guide. Purity is then
-true by construction rather than by good behaviour, and the failure mode of the walk
-cannot happen: nothing here can leave the polyedge it picked.
-
-**Two gates decide the run, and they catch different things.** ``tolerance`` asks whether
-a vertex is NEAR the guide; ``max_angle`` asks whether its polyedge is still going the
-guide's WAY. A line that runs beside a guide and then veers off keeps passing the distance
-test for a vertex or two after it has stopped following, and those are the vertices whose
-projection bends the mesh -- so the angle gate cuts the chain where the polyedge stops
-being parallel, which is nearly always at the ends. Measured: at tolerance 0.8 the angle
-gate takes the worst face angle from 15.9 to 31.6 degrees AND covers more of the guide,
-because what it drops was never following it. That is what lets the distance default be as
-wide as it is.
-
-**The boundary is not a course, and a boundary vertex is never moved.** A polyedge whose
-vertices are all on the boundary is the outline itself -- :meth:`QuadMesh.vertex_opposite_vertex`
-continues along the wall when both of its arguments are boundary vertices -- so such
-polyedges are refused. An interior polyedge can only touch the boundary at its two ENDS,
-and those are kept by default (``boundary='anchor'``) so a cable drawn wall to wall
-reaches the wall. But :func:`attach_chain` will not project them onto the guide: at most
-they SLIDE along the outline. Moving them takes the outline of the building with them,
-since an attachment overrides the boundary constraint the vertex would otherwise have had.
+The chain is the longest run of one polyedge that stays near and parallel to the guide.
+Design notes: ``design_notes/editing.md``.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -140,17 +100,9 @@ _TOL = 1e-9
 # ==============================================================================
 
 class GuideCurve(object):
-    """A guide curve as a polyline with an arc-length table -- and, optionally, the curve.
+    """A guide curve as a polyline with an arc-length table and, optionally, the curve itself.
 
-    Built once per guide: choosing a chain projects a good part of the mesh onto it, and
-    rebuilding the table inside the projection would rebuild it a few thousand times.
-
-    **The chain is chosen on the samples; a vertex lands on the curve.** :meth:`project`
-    needs the arc length and the tangent at the closest point, and the compas ``Curve``
-    interface does not offer the arc length on every backend, so choosing a chain always
-    reads ``points``. :meth:`closest_point` -- where an attached vertex is moved to, and what
-    a sliding hold re-projects onto -- uses ``curve`` when there is one, so the vertex lands
-    ON the curve that was drawn instead of on a chord of its samples, up to a sagitta off it.
+    Chains are chosen on the samples; :meth:`closest_point` lands on ``curve`` when given.
 
     Parameters
     ----------
@@ -176,7 +128,6 @@ class GuideCurve(object):
     ------
     ValueError
         If fewer than two distinct points are given.
-
     """
 
     def __init__(self, points: "Iterable[Sequence[float]]", curve: Any = None) -> None:
@@ -237,27 +188,13 @@ class GuideCurve(object):
         return distance, t, tangent
 
     def closest_point(self, point: list[float]) -> list[float] | None:
-        """The closest point on the guide, as a plain ``[x, y, z]``.
-
-        Present so that a :class:`GuideCurve` can be handed straight to
-        :func:`~compas_singular.datastructures.closest_point_on_constraint` -- and
-        therefore used as a sliding constraint in
-        :func:`~compas_singular.datastructures.constrained_smoothing` -- without the
-        caller having to keep the original curve alongside it.
-
-        On :attr:`curve` when there is one, on the samples otherwise.
-        """
+        """The closest point on the guide (on :attr:`curve` if set), usable as a smoothing constraint."""
         if self.curve is not None:
             return closest_point_on_constraint(self.curve, point)
         return self._closest(point)[0]
 
     def delta(self, t: float, t0: float) -> float:
-        """Signed progress from arc length ``t0`` to ``t``.
-
-        On a CLOSED guide the arc length wraps, so a step across the seam reads as a jump
-        the whole way back round unless it is wrapped into the shorter way about. That is
-        the difference between a ring cable being measured and being cut at the seam.
-        """
+        """Signed progress from arc length ``t0`` to ``t``, wrapped the short way on a closed guide."""
         difference = t - t0
         if self.closed and self.length > 0.0:
             half = 0.5 * self.length
@@ -310,14 +247,9 @@ def _boundary_vertices(mesh: "QuadMesh") -> set[int]:
 # ==============================================================================
 
 def collect_polyedges(mesh: "QuadMesh") -> list[tuple[list[int], bool]]:
-    """The polyedges of a quad mesh as a list of vertex lists.
+    """The polyedges of a quad mesh as vertex lists, closed ones without the repeated end.
 
-    A thin wrapper on :meth:`QuadMesh.collect_polyedges`, which returns a generator over
-    the mesh's ``polyedges`` attribute and leaves whatever was collected before in place.
-    Collecting is O(edges squared) and does not depend on the guide, so collect once and
-    pass the result to :func:`guide_chain` when several guides are attached to one mesh.
-
-    A closed polyedge repeats its first vertex at the end; that repeat is dropped here.
+    Collect once and reuse across guides; it is O(edges squared).
     """
     mesh.attributes['polyedges'] = {}
     polyedges = []
@@ -363,17 +295,7 @@ def _oriented(mesh: "QuadMesh", guide: GuideCurve, run: list[int]) -> list[int]:
 
 
 def _trimmed(mesh: "QuadMesh", guide: GuideCurve, run: list[int]) -> list[int]:
-    """Drop vertices that project PAST the end of the guide, past the first one that does.
-
-    A guide is shorter than the polyedge it follows more often than not -- it is drawn
-    between two walls, the polyedge runs the width of the plate. Everything beyond the end
-    of the guide projects onto the same endpoint, so two such vertices land on the SAME
-    POINT and the edge between them collapses: measured as a 0.00 degree face on the
-    L-plate, and it is not the sort of thing the smoothing afterwards can undo.
-
-    The innermost of them is kept. That one is a real move onto the end of the guide; the
-    rest are not on the guide at all.
-    """
+    """Drop vertices that project past the end of the guide, keeping the innermost one."""
     if guide.closed or len(run) < 3:
         return run
     parameters = [guide.project(mesh.vertex_coordinates(vertex))[1] for vertex in run]
@@ -386,12 +308,7 @@ def _trimmed(mesh: "QuadMesh", guide: GuideCurve, run: list[int]) -> list[int]:
 
 
 def _directions(mesh: "QuadMesh", polyedge: list[int], closed: bool) -> list[list[float] | None]:
-    """The polyedge's own direction AT each of its vertices.
-
-    Taken across the vertex -- from the one before to the one after -- rather than along
-    one incident edge, so a single kinked edge does not decide it. At an open end there is
-    only one edge to go on.
-    """
+    """The polyedge's own direction at each vertex, taken across the vertex."""
     points = [mesh.vertex_coordinates(vertex) for vertex in polyedge]
     count = len(points)
     if count < 2:
@@ -475,14 +392,8 @@ def guide_chain(
         ``DEFAULT_TOLERANCE_FACTOR`` times the mean edge length -- the target quad edge
         length the mesh was densified with.
     max_angle : float, optional
-        How far the polyedge may run off the guide's tangent AT a vertex, in degrees, and
-        still have that vertex selected. Default is ``DEFAULT_MAX_ANGLE``; pass ``90`` to
-        turn the gate off and select on distance alone. This is the second of the two
-        gates and it does a different job from the first: distance asks whether the vertex
-        is near the guide, angle asks whether its line is still going the same way. A
-        polyedge that runs beside the guide and then veers off keeps passing the distance
-        test for a vertex or two after it has stopped following, and those are the
-        vertices whose projection bends the mesh.
+        How far the polyedge may run off the guide's tangent at a vertex, in degrees, and
+        still have that vertex selected. Default is ``DEFAULT_MAX_ANGLE``; ``90`` turns it off.
     boundary : {'anchor', 'exclude', 'free'}, optional
         What the chain may do with boundary vertices.
 
@@ -619,15 +530,9 @@ def attach_chain(
     hold: str = 'fixed',
     boundary_curves: dict[int, Polyline] | None = None,
 ) -> tuple[dict[int, list[float]], dict[int, Any]]:
-    """Work out where each vertex of a chain goes and what holds it there.
+    """Where each chain vertex goes and what holds it there. The mesh is not modified.
 
-    **A boundary vertex is never moved onto the guide.** At most it SLIDES: it keeps its
-    place on the outline and is constrained to that outline, so the smoothing may run it
-    along the wall towards wherever the chain pulls, but it cannot leave the wall. Moving
-    it would take the outline of the building with it -- an attachment overrides the
-    boundary constraint the vertex would otherwise have had, so nothing else would stop
-    it. Measured before this rule: an anchored end sat up to 0.72 edge lengths off its
-    own wall.
+    A boundary vertex is never moved onto the guide; at most it slides along its outline.
 
     Parameters
     ----------
@@ -652,7 +557,6 @@ def attach_chain(
         ``{vertex: constraint}`` -- what holds each vertex of the chain, ready to be
         merged into the constraints of
         :func:`~compas_singular.datastructures.constrained_smoothing`.
-
     """
     guide = _as_guide(guide)
     if boundary_curves is None:
@@ -676,11 +580,7 @@ def attach_chain(
 # ==============================================================================
 
 def chain_quality(mesh: "QuadMesh", chain: list[int], guide: "GuideCurve | Iterable[Sequence[float]]") -> dict[str, Any]:
-    """Measure a chain against what it is supposed to be: a clean, long polyedge line.
-
-    ``purity``, ``runs`` and ``valid_path`` are true by construction for a chain that came
-    from :func:`guide_chain` -- they are measured anyway, because that is the claim being
-    made, and because a hand-edited chain has no such guarantee.
+    """Measure a chain against a clean, long polyedge line that follows the guide.
 
     Parameters
     ----------
@@ -725,7 +625,6 @@ def chain_quality(mesh: "QuadMesh", chain: list[int], guide: "GuideCurve | Itera
         ``end_drift``
             How far an anchored boundary end moves off the outline when it is projected,
             in mean edge lengths. This is the price of allowing anchors.
-
     """
     guide = _as_guide(guide)
     average = mean_edge_length(mesh)
@@ -802,12 +701,7 @@ def _projection_damage(
     ends: set[int],
     average: float,
 ) -> dict[str, Any]:
-    """What attaching the chain does to the faces around it.
-
-    Through :func:`attach_chain`, so this measures what the command actually does --
-    including that a boundary vertex is NOT moved. On a COPY: this is a measurement, and
-    the caller's mesh is not it.
-    """
+    """What attaching the chain does to the faces around it, measured on a copy."""
     copy = mesh.copy()
     outlines = mesh_boundary_polylines(mesh)
 

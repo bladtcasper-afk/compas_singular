@@ -46,33 +46,9 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
     @classmethod
     def from_coarse_polylines(cls, polylines: list[list[list[float]]], poles: list[list[float]] | None = None, holes: list[list[float]] | None = None,
                               precision: int | None = None, tol: float | None = None, collect_strips: bool = True) -> "CoarsePseudoQuadMesh":
-        """**A coarse quad layout from a drawn network of edge-curves.**
+        """A coarse quad layout from a drawn network with one polyline per coarse edge.
 
-        One polyline is one coarse EDGE: its two ENDS are corners of the layout, and
-        the points between them are that edge's shape. Nothing else is needed -- no
-        domain boundary, no separate face list, no field. The layout's own boundary
-        is whatever ends up with one adjacent patch.
-
-        This is the inverse of ``coarse_edges_to_curves``, so a layout baked out one
-        curve per edge comes back in through here, curvature included::
-
-            coarse = CoarsePseudoQuadMesh.from_coarse_polylines(curves)
-            coarse.set_strips_density_target(t=0.5)
-            dense = coarse.densification()
-
-        **It validates rather than repairs.** A dangling curve, a corner sitting on
-        another curve's interior, two curves crossing with no corner between them,
-        or a patch that is not a triangle or a quadrilateral all raise, naming the
-        curve or the corner. Each is a drawing error with a one-second fix in the
-        CAD session, and repairing it here would silently hand back a layout nobody
-        drew. That is the whole difference from ``Mesh.from_polylines``, which
-        additionally discards any patch with every corner on a boundary polyline and
-        so returns NOTHING for a square with one cut across it.
-
-        **A triangular patch is a pseudo-quad, not a defect.** It is registered in
-        ``attributes['face_pole']`` with a collapsed corner, which is what makes it
-        densifiable and what ``collect_strips`` needs; ``poles`` only chooses WHICH
-        of its corners collapses.
+        Validates rather than repairs; triangular patches become pseudo-quads.
 
         Parameters
         ----------
@@ -152,7 +128,9 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
 
     def quad_mesh(self, boundary_curvature: bool = True, skeleton_curvature: bool = True,
                  overwrite_edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None, field: Any = None, pattern_overwrite: "str | dict[int, str] | None" = None) -> "QuadMesh":
-        """Generate a dense quad mesh from this layout, in a chosen pattern.
+        """Generate a dense quad mesh from this layout in a chosen pattern.
+
+        ``'diagonal'`` and ``'fan'`` first raise densities to equal and even values per patch.
 
         Parameters
         ----------
@@ -183,18 +161,6 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
         -------
         QuadMesh
             The dense mesh, also stored on this one -- ``get_quad_mesh()``.
-
-        Notes
-        -----
-        ``'diagonal'`` and ``'fan'`` constrain the layout: a patch using either
-        needs the same even density on both strips crossing it -- for the
-        diagonal, that is what keeps it one unbroken line. Densities are
-        raised to that in place before any patch is built (see
-        ``reconcile_strip_densities``). On a pseudo-quad face ``'fan'`` is
-        three polar fans instead of four, one per corner of the triangle -- the
-        pole included -- meeting at its centre (see ``_pattern_fan_triangle``).
-        It divides its sides like every other pattern, so it welds against any
-        neighbour.
         """
         return self.densify(pattern_overwrite=pattern_overwrite,
                             boundary_curvature=boundary_curvature,
@@ -203,13 +169,7 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
 
     def densify(self, pattern_overwrite: "str | dict[int, str] | None" = None, boundary_curvature: bool = True, skeleton_curvature: bool = True,
                overwrite_edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None, field: Any = None) -> "QuadMesh":
-        """Build one dense patch per coarse face and weld them together.
-
-        The loop is the whole of it: take a face's four sides, ask the pattern
-        for a template at the divisions those sides imply, morph the template
-        onto them. Everything a pattern differs in lives in the template;
-        everything the patterns share -- curves, poles, welding, pole
-        bookkeeping -- lives here and is written once.
+        """Build one dense patch per coarse face from the pattern's template and weld them together.
 
         Parameters
         ----------
@@ -330,17 +290,7 @@ class CoarsePseudoQuadMesh(PseudoQuadMesh, CoarseQuadMesh):
         return dense
 
     def _patch_sides(self, fkey: int, edge_strip: dict[tuple[int, int], int], edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None) -> list[list[list[float]] | None]:
-        """The four side polylines of one coarse face.
-
-        Each side is densified to its own strip's density, along the curve
-        ``edges_to_curves`` gave it or along the straight chord otherwise. The
-        four come back in the order ``discrete_coons_patch`` documents --
-        ``[ab, bc, dc, ad]``, with the last two reversed -- so that ``u`` runs
-        a->b and ``w`` runs a->d.
-
-        A pseudo-quad has only three sides; the missing one is put back as
-        ``None`` at the pole's position, which is how the morph learns which
-        corner collapsed.
+        """The four side polylines ``[ab, bc, dc, ad]`` of one coarse face; a pole's missing side is ``None``.
 
         Parameters
         ----------

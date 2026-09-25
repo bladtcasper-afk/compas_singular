@@ -1,21 +1,4 @@
-"""compas_viewer scenes for the frame-field front end.
-
-Follows the convention the rest of ``compas_singular/examples`` already uses:
-one ``scene.add_group`` per stage, panels laid out on a grid in XY, the camera
-pulled back to frame the whole grid, and ``--no-view`` to skip.
-
-    viewer = Viewer()
-    grid = Grid(pitch=16.0, cols=3)
-    dx, dy = grid.cell(0)
-    g = viewer.scene.add_group(name='pentagon')
-    add_dense(g, dense, dx, dy)
-    add_layout(g, decomposition, dx, dy)
-    grid.frame(viewer)
-    viewer.show()
-
-Every ``add_*`` takes the group and an offset, so a caller can place several
-domains, or several stages of one domain, side by side.
-"""
+"""compas_viewer scenes for the frame-field front end, one group per stage on an XY grid."""
 from __future__ import annotations
 
 from typing import Any
@@ -52,12 +35,7 @@ PATCH_EDGE = Color.from_rgb255(70, 110, 170)
 
 
 def translated(mesh: Mesh, dx: float, dy: float, cls: type | None = None) -> Mesh:
-    """A copy of ``mesh`` moved in XY.
-
-    Rebuilt from vertices and faces rather than transformed in place, so a
-    ``CoarsePseudoQuadMesh``'s strip and pole attributes are not carried onto a
-    display-only copy where they would be stale.
-    """
+    """A display-only copy of ``mesh`` moved in XY, without strip or pole attributes."""
     index = {vkey: i for i, vkey in enumerate(mesh.vertices())}
     vertices = []
     for vkey in mesh.vertices():
@@ -127,20 +105,7 @@ def add_field(
     dy: float = 0.0,
     budget: int = 300,
 ) -> int:
-    """Cross ticks, two arms per sample.
-
-    Only two of the four arms are drawn -- the other two are their negatives and
-    add nothing but clutter. ``budget`` caps the number of samples, and the tick
-    LENGTH grows with the thinning: drawing every vertex of a 460-vertex
-    background at short length gives a grey haze that reads as noise, not as a
-    direction field. Fewer, longer ticks read as a field.
-
-    All the ticks go into ONE ``Graph``. A list of ``Line`` is not a registered
-    scene type ("No scene object is registered for this data type: <class
-    'list'>"), and adding them one by one puts a thousand entries in the scene
-    tree and is slow to draw. A graph of disconnected two-node edges is one
-    object that toggles as a unit.
-    """
+    """Cross ticks, two arms per sample, capped at ``budget`` samples, as one ``Graph``."""
     mesh = decomposition.background.mesh
     step = max(1, mesh.number_of_vertices() // budget)
     # keeping every step-th vertex thins the sample spacing by ~sqrt(step)
@@ -189,9 +154,10 @@ def add_singularities(
     dy: float = 0.0,
     size: int = 20,
 ) -> None:
-    """Field singularities, coloured by index sign."""
+    """Field singularities, coloured by index sign, where the traces start."""
+    positions = decomposition.tracer.singularity_positions()
     for fkey, k in decomposition.field.singularities():
-        x, y, _ = decomposition.background.mesh.face_centroid(fkey)
+        x, y, _ = positions[fkey]
         group.add(Point(x + dx, y + dy, 0.06),
                   pointcolor=POSITIVE if k > 0 else NEGATIVE, pointsize=size,
                   name='singularity {:+d} (wants valence {})'.format(k, 4 - k))

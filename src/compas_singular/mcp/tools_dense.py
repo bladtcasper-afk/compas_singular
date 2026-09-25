@@ -1,26 +1,6 @@
-"""**Changing the DENSE mesh's topology: adding and removing a line.**
+"""MCP tools that change the dense mesh's topology by adding and removing a line (a strip).
 
-The coarse layout could always be edited; the dense mesh could only be moved.
-These three tools close that gap with
-:class:`~compas_singular.editing.denseeditor.DenseMeshEditor`, whose module
-docstring carries the rules. The ones that shape the tools:
-
-* **A line is never one edge.** A quad mesh cannot gain or lose an edge on its
-  own, so the pick is an EDGE and the change runs the full width of the mesh:
-  ``dense_add_line`` grows a strip beside the whole polyedge through the edge,
-  ``dense_remove_line`` deletes the whole strip through it.
-* **A strip only runs through quads.** A face that is not a quad -- a pole's
-  triangles, or a polygon left by an edit -- has no opposite edge, so a strip
-  stops at it. Both line tools refuse a line whose strip crosses or reaches
-  one, and allow every other line on the same mesh.
-* **Nothing flows back to the layout.** A hand-edited dense mesh has no layout
-  that produces it; ``coarse_densify`` regenerates from the layout and discards
-  the edit. If the change can be made on the coarse layout, make it there.
-
-**Undo keeps the whole mesh.** A position map cannot restore faces that are
-gone, so these tools snapshot with ``whole=True`` and ``undo`` puts the copy
-back -- on the same stack as the smoothers' position snapshots, so ``undo``
-always takes back the latest step whichever kind it was.
+A line whose strip reaches a non-quad face is refused; undo keeps a whole-mesh copy.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -60,14 +40,7 @@ def _refuse(reason: str, **extra: Any) -> dict[str, Any]:
 
 
 def _editor(session: MeshSession) -> tuple[DenseMeshEditor | None, dict[str, Any] | None]:
-    """``(editor, None)`` on the dense mesh in hand, or ``(None, refusal)``.
-
-    A mesh that is not a ``QuadMesh`` -- a plain compas ``Mesh`` read from a
-    file -- is rebuilt as one through the wire encoding, which is the one
-    conversion in this package that maps keys explicitly. The rebuilt mesh
-    REPLACES the session's, since the edit has to land on the object the other
-    tools read.
-    """
+    """``(editor, None)`` on the dense mesh in hand, or ``(None, refusal)``; a plain Mesh is rebuilt as a QuadMesh."""
     if not session.loaded:
         return None, _refuse('no dense mesh is loaded -- coarse_densify, '
                              'rhino_pull or load_mesh first')

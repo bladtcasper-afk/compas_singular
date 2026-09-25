@@ -1,34 +1,6 @@
-"""**One mesh being improved, and the record of how it got that way.**
+"""One mesh being improved, with a position-map undo stack and a history of every step.
 
-Deliberately small. A session that can generate a layout from a field and a dense
-mesh from a layout needs a state machine, because every backward move destroys
-work. This one improves a mesh that already exists. There is no stage to be in, so
-there is no stage to gate and no transition that costs anything.
-
-**Undo is a map of positions, not a pickle of the world.** Smoothing moves
-vertices and changes nothing else, so a snapshot is ``{vertex: [x, y, z]}`` --
-kilobytes, instant, and no dependence on pickle being able to reach the object
-graph. ``agent``'s session pickles the decomposition and both editors together
-because it has to; this one does not have to, and the difference is one of the
-things the two approaches are meant to be compared on.
-
-**That cheapness is bought with an assumption, so it is checked.** A position map
-only restores a mesh whose topology has not changed underneath it, so
-:meth:`undo` verifies the vertex and face counts and refuses rather than
-silently writing coordinates into the wrong mesh. The dense line tools DO change
-topology, and snapshot with ``whole=True`` -- a copy of the mesh, on the same
-stack -- so ``undo`` still takes back the latest step whichever kind it was.
-
-The coarse layout has its own stack. It is small enough that a whole-mesh copy
-is always cheap, so :meth:`snapshot_coarse` and :meth:`undo_coarse` keep copies
-rather than positions.
-
-**The history is the deliverable, not a side effect.** Every step records what
-was asked, what changed, and the quality before and after. The model reads it
-back through ``inspect`` and ``history``, a person reads it in the transcript,
-and ``save_example`` turns it into a worked example other sessions can learn
-from. Remarks -- prose the model or a person attaches -- ride along on it,
-because a number without the reason it was accepted is not much of a record.
+Topology edits snapshot the whole mesh; the coarse layout has its own undo stack.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -97,7 +69,7 @@ class MeshSession(object):
         self.started = time.time()
         self._undo: list[dict[str, Any]] = []
         #: The coarse layout's own undo stack -- whole-mesh copies, not
-        #: positions. See the module docstring for why the two are different.
+        #: positions. See design_notes/mcp.md (session.py) for why.
         self._coarse_undo: list[dict[str, Any]] = []
         #: Monotonic counters behind :attr:`visually_current`. Numbers rather
         #: than a bool because "seen since the last change" is the question, and
@@ -115,18 +87,7 @@ class MeshSession(object):
 
     def adopt(self, mesh: Mesh, walls: Iterable[Any] | None = None, guides: Iterable[Any] | None = None,
               points: Iterable[Any] | None = None, source: dict[str, Any] | None = None) -> MeshSession:
-        """Take a new mesh, discarding whatever was held before.
-
-        Clears the undo stack: a snapshot of the previous mesh's positions
-        cannot be applied to this one, and keeping it would only offer an undo
-        that must refuse.
-
-        **Drops the coarse layout if the domain changed.** A layout was
-        decomposed from particular walls, guides and points, and its editor
-        reads them back from here -- densifying or editing it against a
-        different domain mixes two problems silently. The same domain pulled
-        again keeps it, so pulling a mesh to go with a layout costs nothing.
-        """
+        """Take a new mesh, clearing the undo stack, and drop the coarse layout if the domain changed."""
         old_domain = self._domain()
         self.mesh = mesh
         if walls is not None:
@@ -195,14 +156,7 @@ class MeshSession(object):
 
     @property
     def visually_current(self) -> bool:
-        """Whether the mesh has been LOOKED at since it last changed.
-
-        The numbers can say a mesh improved while it is visibly wrong -- off its
-        boundary, ignoring a guide, a point feature that never became a pole.
-        None of that is in ``mesh_quality``, and all of it is obvious in a
-        picture. So delivering a result is gated on somebody having seen one:
-        :func:`rhino_push` and :func:`save_mesh` refuse until this is true.
-        """
+        """Whether the mesh has been looked at since it last changed; delivery tools refuse until it has."""
         return self._seen_at >= self._changed_at
 
     def mark_coarse_seen(self) -> None:
@@ -227,14 +181,7 @@ class MeshSession(object):
                     for key in self.mesh.vertices())
 
     def snapshot(self, label: str = '', whole: bool = False) -> str | None:
-        """Remember where every vertex is, so a step can be taken back.
-
-        ``whole=True`` keeps a COPY of the mesh instead of its positions -- what
-        a dense topology edit (``dense_add_line`` / ``dense_remove_line``) needs,
-        since a position map cannot put back faces that are gone. Both kinds
-        share one stack, so ``undo`` always takes back the latest step, whichever
-        kind it was.
-        """
+        """Remember every vertex position, or with ``whole=True`` a copy of the mesh, on the undo stack."""
         if self.mesh is None:
             return None
         entry = {
@@ -327,14 +274,7 @@ class MeshSession(object):
         return True, entry['label'] or 'the last coarse snapshot'
 
     def _mark_undone(self, step: int, layer: str) -> None:
-        """Flag the steps an undo took back -- of ITS layer only.
-
-        Flagged, not deleted. The two undo stacks interleave in one history, so
-        deleting from a position would take the other layer's steps with it;
-        and a step's index is what its remarks hang on, so deleting would hand
-        those remarks to whatever step reuses the index. A taken-back step is
-        also what "already tried" means, which is worth keeping.
-        """
+        """Flag, not delete, the history steps an undo took back, for its own layer only."""
         for entry in self.history[step:]:
             if entry.get('layer') == layer:
                 entry['undone'] = True
@@ -398,12 +338,7 @@ class MeshSession(object):
 
 
 def _as_polylines(curves: Iterable[Any] | None) -> list[Polyline]:
-    """Point lists as compas polylines, which is what the smoothers want.
-
-    ``automated_boundary_constraints`` accepts either, but a ``Polyline`` gives
-    ``closest_point_on_constraint`` a fast path and makes the type obvious at
-    every later use.
-    """
+    """Point lists as compas polylines, which the smoothers want."""
     from compas.geometry import Polyline
     out = []
     for curve in curves or []:

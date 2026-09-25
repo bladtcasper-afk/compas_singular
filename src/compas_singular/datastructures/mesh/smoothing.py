@@ -1,8 +1,11 @@
-from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
+"""Smoothing and relaxation of a mesh, in place, with vertices held on points, curves or surfaces.
+
+Default is :func:`boundary_constrained_smoothing`; prefer ``'area'`` on a graded mesh.
+"""
 from __future__ import annotations
 
+import warnings
+from functools import lru_cache
 from math import pi
 from typing import TYPE_CHECKING
 from typing import Any
@@ -23,7 +26,7 @@ from compas.itertools import flatten
 from compas.itertools import pairwise
 
 if TYPE_CHECKING:
-    from compas_singular.datastructures.mesh import Mesh
+    from compas.datastructures import Mesh
 
 
 __all__ = [
@@ -34,8 +37,18 @@ __all__ = [
     'constrained_smoothing',
     'automated_boundary_constraints',
     'boundary_constrained_smoothing',
-    'smoothing_region',
+    'boundary_smoothing',
+    'region_smoothing',
+    'relaxation',
 ]
+
+
+#: What a vertex can be constrained to: a point, a polyline, a sequence of points, a curve
+#: or a surface. See :func:`closest_point_on_constraint`.
+Constraint = Any
+
+#: The smoothing algorithms accepted by the ``algorithm`` parameters.
+ALGORITHMS = ('area', 'centroid', 'centerofmass')
 
 
 # ==============================================================================
@@ -51,7 +64,7 @@ def _is_xyz(item: Any) -> bool:
     )
 
 
-def closest_point_on_constraint(constraint: Any, xyz: list[float], discretisation: int = 128) -> list[float] | None:
+def closest_point_on_constraint(constraint: Constraint, xyz: list[float], discretisation: int = 128) -> list[float] | None:
     """Project a point onto a constraint object, using COMPAS geometry only.
 
     Parameters
@@ -65,7 +78,7 @@ def closest_point_on_constraint(constraint: Any, xyz: list[float], discretisatio
           on that polyline, via :func:`compas.geometry.closest_point_on_polyline`;
         * any other :class:`compas.geometry.Curve` -- a :class:`~compas.geometry.Line`, a
           :class:`~compas.geometry.Circle`, a curve from ``compas_rhino``'s
-          ``curve_to_compas`` or from ``compas_occ`` -- the closest point ON THE CURVE, from
+          ``curve_to_compas`` or from ``compas_occ`` -- the closest point *on the curve*, from
           its own ``closest_point``. See :func:`_closest_point_on_curve` for the curves that
           have none and fall back on their ``to_polyline`` discretisation;
         * any other object with a working ``closest_point`` method (a
@@ -121,59 +134,42 @@ def closest_point_on_constraint(constraint: Any, xyz: list[float], discretisatio
     if callable(method):
         return closest_point_on_polyline(xyz, method(n=discretisation))
 
-    raise TypeError('Cannot compute the closest point on a constraint of type {}.'.format(type(constraint)))
+    raise TypeError(f'Cannot compute the closest point on a constraint of type {type(constraint)}.')
 
 
-#: Curve types whose missing ``closest_point`` has already been explained by
-#: :func:`_closest_point_on_curve`. Once per TYPE, not per call: smoothing projects every
-#: constrained vertex at every iteration, and a print per call would put thousands of
+#: Curve types whose missing ``closest_point`` has already been warned about by
+#: :func:`_closest_point_on_curve`. Once per type, not per call: smoothing projects every
+#: constrained vertex at every iteration, and a warning per call would put thousands of
 #: identical lines on Rhino's command line.
 _EXPLAINED_FALLBACKS = set()
 
 
 def _closest_point_on_curve(curve: Curve, xyz: list[float], discretisation: int) -> list[float]:
-    """The closest point on a compas curve, from the curve itself wherever it can say.
-
-    ``closest_point(point=...)`` is exact on a ``Line``, a ``Circle``, a ``compas_rhino``
-    curve (Rhino's ``ClosestPoint``) and a ``compas_occ`` curve
-    (``GeomAPI_ProjectPointOnCurve``). Two ways it gives no answer, and both fall back on
-    the curve's ``to_polyline`` -- a sagitta off the curve rather than no point at all:
-
-    * ``Arc``, ``Ellipse`` and ``Bezier`` raise ``NotImplementedError`` (compas 2.15). The
-      fallback is printed, once per curve type;
-    * a Rhino curve returns ``None`` when ``ClosestPoint`` fails.
-    """
+    """The closest point on a compas curve, falling back on its ``to_polyline`` where the curve cannot say."""
     try:
         closest = curve.closest_point(point=Point(*xyz))
     except NotImplementedError:
         if type(curve) not in _EXPLAINED_FALLBACKS:
             _EXPLAINED_FALLBACKS.add(type(curve))
-            print('note: {} does not implement closest_point, so points are projected onto a '
-                  '{}-segment polyline of it instead -- up to a sagitta off the curve itself. '
-                  'Shown once per curve type.'.format(type(curve).__name__, discretisation))
+            warnings.warn(
+                f'{type(curve).__name__} does not implement closest_point, so points are projected '
+                f'onto a {discretisation}-segment polyline of it instead -- up to a sagitta off the '
+                'curve itself. Shown once per curve type.', stacklevel=2)
         closest = None
     if closest is None:
         return closest_point_on_polyline(xyz, curve.to_polyline(n=discretisation))
     return [float(closest[0]), float(closest[1]), float(closest[2])]
 
 
-def _is_polyline_like(constraint: Any) -> bool:
+def _is_polyline_like(constraint: Constraint) -> bool:
     """Return whether a constraint is a polyline, or a sequence of points read as one."""
     if isinstance(constraint, Polyline):
         return True
     return isinstance(constraint, (list, tuple)) and not _is_xyz(constraint)
 
 
-class _PolylineProjector(object):
-    """Project points onto a polyline, searching around the previous result.
-
-    Projecting on a polyline costs one segment projection per segment, which the
-    smoothing loop would pay again for every vertex at every iteration. A vertex barely
-    moves between two iterations, so the search is limited to a window of segments
-    around the one it was projected on last time. The window is only a shortcut: the
-    first projection, and any projection that lands on the edge of the window, searches
-    the whole polyline.
-    """
+class _PolylineProjector:
+    """Project points onto a polyline, searching a window of segments around the previous result first."""
 
     def __init__(self, polyline: Polyline | Sequence[Sequence[float]], window: int = 10) -> None:
         points = [list(point) for point in polyline]
@@ -243,6 +239,12 @@ def mesh_boundary_loops(mesh: Mesh) -> list[list[int]]:
     return loops
 
 
+def _loop_polyline(mesh: Mesh, loop: list[int]) -> Polyline:
+    """The closed polyline through a loop of vertices."""
+    points = [mesh.vertex_coordinates(vertex) for vertex in loop]
+    return Polyline(points + points[:1])
+
+
 def mesh_boundary_polylines(mesh: Mesh) -> list[Polyline]:
     """Collect the boundaries of a mesh as closed polylines.
 
@@ -257,11 +259,7 @@ def mesh_boundary_polylines(mesh: Mesh) -> list[Polyline]:
         A closed polyline per mesh boundary.
 
     """
-    polylines = []
-    for loop in mesh_boundary_loops(mesh):
-        points = [mesh.vertex_coordinates(vertex) for vertex in loop]
-        polylines.append(Polyline(points + points[:1]))
-    return polylines
+    return [_loop_polyline(mesh, loop) for loop in mesh_boundary_loops(mesh)]
 
 
 def mesh_boundary_corners(mesh: Mesh, corner_angle: float = pi / 6) -> list[int]:
@@ -299,11 +297,13 @@ def mesh_boundary_corners(mesh: Mesh, corner_angle: float = pi / 6) -> list[int]
     return corners
 
 
-def _split_loop_at_corners(loop: list[int], corners: Sequence[int]) -> list[list[int]]:
+def split_loop_at_corners(loop: list[int], corners: Sequence[int]) -> list[list[int]]:
     """Split a closed loop of vertices into the segments delimited by its corner vertices.
 
-    The corner vertices are shared by the two segments they delimit.
+    The corner vertices are shared by the two segments they delimit. A loop with fewer
+    than two corners is returned whole, as a single segment.
     """
+    corners = set(corners)
     indices = [index for index, vertex in enumerate(loop) if vertex in corners]
     if len(indices) < 2:
         return [loop]
@@ -321,8 +321,12 @@ def _split_loop_at_corners(loop: list[int], corners: Sequence[int]) -> list[list
     return segments
 
 
-def _closest_curve(mesh: Mesh, vertices: list[int], curves: Sequence[Any]) -> Any:
-    """Return the curve that is closest, on average, to a run of mesh vertices."""
+def closest_curve(mesh: Mesh, vertices: list[int], curves: Sequence[Constraint]) -> Constraint:
+    """Return the curve that is closest, on average, to a run of mesh vertices.
+
+    The end vertices of the run are left out of the average when there are others, since
+    they are corners shared with the neighbouring runs.
+    """
     sample = vertices[1:-1] or vertices
     points = [mesh.vertex_coordinates(vertex) for vertex in sample]
 
@@ -336,103 +340,9 @@ def _closest_curve(mesh: Mesh, vertices: list[int], curves: Sequence[Any]) -> An
     return closest
 
 
-# ==============================================================================
-# Smoothing
-# ==============================================================================
-
-def constrained_smoothing(mesh: Mesh, kmax: int = 100, damping: float = 0.5, constraints: dict[int, Any] | None = None,
-                          algorithm: str = 'centroid', fixed: Sequence[int] | None = None,
-                          symmetric: bool | None = None) -> None:
-    """Constrained smoothing of a mesh. Constraints can be points, curves or surfaces.
-
-    The projections go through :func:`closest_point_on_constraint`, which builds on
-    :mod:`compas.geometry`, so this runs headless, without Rhino. For a mesh on a
-    surface, :mod:`.projection` builds the constraints.
-
-    Parameters
-    ----------
-    mesh : :class:`compas.datastructures.Mesh`
-        A mesh to smooth, modified in place.
-    kmax : int, optional
-        Number of iterations for smoothing. Default is ``100``.
-    damping : float, optional
-        Damping value for smoothing between 0 and 1. Default is ``0.5``.
-    constraints : dict, optional
-        Dictionary of constraints as vertex keys pointing to COMPAS geometry
-        (points, polylines, curves or surfaces). Empty by default.
-        See :func:`closest_point_on_constraint` for the accepted geometry.
-    algorithm : {'centroid', 'area', 'centerofmass'}, optional
-        Type of smoothing algorithm to apply. Classic centroid by default.
-    fixed : sequence[int], optional
-        Vertices that the smoothing algorithm must not move at all. Default is None.
-    symmetric : bool, optional
-        Keep a mesh made by ``expand_symmetrically`` exactly symmetric: every
-        iteration averages each vertex over its orbit (read from
-        ``attributes['orbits']``, not searched for) before projecting onto the
-        constraints. ``None`` (default) means: when the mesh has orbits. Without
-        it, each iteration drifts by floating point and by the constraint
-        projections, and the symmetry the expansion built slowly erodes.
-
-    Returns
-    -------
-    None
-        The mesh is modified in place.
-
-    """
-    constraints = constraints or {}
-    if symmetric is None:
-        symmetric = bool(mesh.attributes.get('orbits'))
-    orbit_maps = None
-    if symmetric:
-        from compas_singular.symmetry.replicate import orbit_maps as _orbit_maps
-        from compas_singular.symmetry.replicate import symmetrise_positions
-        orbit_maps = _orbit_maps(mesh)
-
-    # polylines get a projector that only searches around the previous result
-    projectors = {}
-    for constraint in constraints.values():
-        if _is_polyline_like(constraint) and id(constraint) not in projectors:
-            projectors[id(constraint)] = _PolylineProjector(constraint)
-    hints = {}
-
-    def project(vertex: int, constraint: Any, xyz: list[float]) -> list[float] | None:
-        projector = projectors.get(id(constraint))
-        if projector is None:
-            return closest_point_on_constraint(constraint, xyz)
-        point, hints[vertex] = projector.closest_point(xyz, hints.get(vertex))
-        return point
-
-    def callback(k: int, args: tuple[Mesh, dict[int, Any]]) -> None:
-        mesh, constraints = args
-        if orbit_maps is not None:
-            symmetrise_positions(mesh, orbit_maps)
-        for vertex, constraint in constraints.items():
-            if constraint is None:
-                continue
-            xyz = project(vertex, constraint, mesh.vertex_coordinates(vertex))
-            if xyz is None:
-                continue
-            mesh.vertex_attributes(vertex, 'xyz', xyz)
-
-    if algorithm == 'area':
-        mesh.smooth_area(fixed=fixed, kmax=kmax, damping=damping, callback=callback, callback_args=[mesh, constraints])
-    elif algorithm == 'centerofmass':
-        mesh_smooth_centerofmass(mesh, fixed=fixed, kmax=kmax, damping=damping, callback=callback, callback_args=[mesh, constraints])
-    elif algorithm == 'centroid':
-        mesh.smooth_centroid(fixed=fixed, kmax=kmax, damping=damping, callback=callback, callback_args=[mesh, constraints])
-    else:
-        raise ValueError(f'{algorithm} is not a recognised smoothing algorithm. Pick area, centerofmass or centroid instead')
-        # mesh.smooth_centroid(fixed=fixed, kmax=kmax, damping=damping, callback=callback, callback_args=[mesh, constraints])
-
-
-def automated_boundary_constraints(mesh: Mesh, curves: Sequence[Any] | None = None, corner_angle: float = pi / 6,
-                                   fix_corners: bool = True) -> dict[int, Any]:
-    """Automatically constrain the boundary vertices of a mesh to the boundary.
-
-    Every boundary vertex is constrained to the curve it belongs to, so that it slides
-    along the boundary during smoothing instead of being pinned to its start position.
-    Without input curves, the boundary of the mesh itself -- in its current state -- is
-    the constraint. Vertices at a kink are pinned, so that corners survive the smoothing.
+def automated_boundary_constraints(mesh: Mesh, curves: Sequence[Constraint] | None = None, corner_angle: float = pi / 6,
+                                   fix_corners: bool = True) -> dict[int, Constraint]:
+    """Constrain every boundary vertex to the boundary curve it belongs to, pinning kinks.
 
     Parameters
     ----------
@@ -451,23 +361,21 @@ def automated_boundary_constraints(mesh: Mesh, curves: Sequence[Any] | None = No
 
     Returns
     -------
-    dict
+    dict[int, Constraint]
         A dictionary of mesh constraints for smoothing, as vertex keys pointing to
         point, polyline or curve objects.
-
     """
     constraints = {}
     corners = set(mesh_boundary_corners(mesh, corner_angle)) if fix_corners else set()
 
     for loop in mesh_boundary_loops(mesh):
         if not curves:
-            points = [mesh.vertex_coordinates(vertex) for vertex in loop]
-            polyline = Polyline(points + points[:1])
+            polyline = _loop_polyline(mesh, loop)
             for vertex in loop:
                 constraints[vertex] = polyline
         else:
-            for segment in _split_loop_at_corners(loop, corners):
-                curve = _closest_curve(mesh, segment, curves)
+            for segment in split_loop_at_corners(loop, corners):
+                curve = closest_curve(mesh, segment, curves)
                 for vertex in segment:
                     constraints[vertex] = curve
 
@@ -477,15 +385,118 @@ def automated_boundary_constraints(mesh: Mesh, curves: Sequence[Any] | None = No
     return constraints
 
 
-def boundary_constrained_smoothing(mesh: Mesh, curves: Sequence[Any] | None = None, kmax: int = 100, damping: float = 0.5,
-                                   algorithm: str = 'centroid', corner_angle: float = pi / 6, fix_corners: bool = True,
-                                   constraints: dict[int, Any] | None = None) -> dict[int, Any]:
-    """Smooth a mesh with its boundary vertices automatically constrained to the boundary.
+# ==============================================================================
+# Smoothing
+# ==============================================================================
 
-    The boundary vertices are identified and constrained by
-    :func:`automated_boundary_constraints`, then :func:`constrained_smoothing` snaps them
-    back onto that boundary after every iteration. The interior vertices relax freely, the
-    boundary vertices slide along the boundary, and the corners stay put.
+def _smoothers(algorithm: str | Sequence[str]) -> list[Any]:
+    """The smoothing functions for one algorithm name or a sequence of them, in order.
+
+    Raises
+    ------
+    ValueError
+        If no algorithm is given, or one of them is not recognised.
+    """
+    names = [algorithm] if isinstance(algorithm, str) else list(algorithm)
+    if not names:
+        raise ValueError(f'No smoothing algorithm given. Pick one or more of {", ".join(ALGORITHMS)}.')
+    unknown = [name for name in names if name not in ALGORITHMS]
+    if unknown:
+        raise ValueError(f'{", ".join(map(repr, unknown))} is not a recognised smoothing algorithm. '
+                         f'Pick one or more of {", ".join(ALGORITHMS)}.')
+
+    smoothers = {
+        'area': lambda mesh, **kwargs: mesh.smooth_area(**kwargs),
+        'centroid': lambda mesh, **kwargs: mesh.smooth_centroid(**kwargs),
+        'centerofmass': mesh_smooth_centerofmass,
+    }
+    return [smoothers[name] for name in names]
+
+
+def constrained_smoothing(mesh: Mesh, kmax: int = 100, damping: float = 0.5, constraints: dict[int, Constraint] | None = None,
+                          algorithm: str | Sequence[str] = 'centroid', fixed: Sequence[int] | None = None,
+                          symmetric: bool | None = None) -> None:
+    """Smooth a mesh in place, moving each constrained vertex back onto its constraint after every iteration.
+
+    Parameters
+    ----------
+    mesh : :class:`compas.datastructures.Mesh`
+        A mesh to smooth, modified in place.
+    kmax : int, optional
+        Number of iterations for smoothing, per algorithm. Default is ``100``.
+    damping : float, optional
+        Damping value for smoothing between 0 and 1. Default is ``0.5``.
+    constraints : dict[int, Constraint], optional
+        Dictionary of constraints as vertex keys pointing to COMPAS geometry
+        (points, polylines, curves or surfaces). Empty by default.
+        See :func:`closest_point_on_constraint` for the accepted geometry.
+    algorithm : {'centroid', 'area', 'centerofmass'} | sequence of them, optional
+        Smoothing algorithm to apply. Classic centroid by default. A sequence of
+        algorithms, such as ``['area', 'centroid']``, runs each in turn for ``kmax``
+        iterations, in the order given.
+    fixed : sequence[int], optional
+        Vertices that the smoothing algorithm must not move at all. Default is None.
+    symmetric : bool, optional
+        Keep a mesh made by ``expand_symmetrically`` exactly symmetric by averaging
+        each vertex over its ``attributes['orbits']`` every iteration. ``None``
+        (default) means: when the mesh has orbits.
+
+    Returns
+    -------
+    None
+        The mesh is modified in place.
+
+    Raises
+    ------
+    ValueError
+        If an algorithm is not recognised.
+    """
+    smoothers = _smoothers(algorithm)
+    constraints = constraints or {}
+
+    if symmetric is None:
+        symmetric = bool(mesh.attributes.get('orbits'))
+    orbit_maps = None
+    if symmetric:
+        from compas_singular.symmetry.replicate import orbit_maps as mesh_orbit_maps
+        from compas_singular.symmetry.replicate import symmetrise_positions
+        orbit_maps = mesh_orbit_maps(mesh)
+
+    # polylines get a projector that only searches around the previous result
+    projectors = {}
+    for constraint in constraints.values():
+        if _is_polyline_like(constraint) and id(constraint) not in projectors:
+            projectors[id(constraint)] = _PolylineProjector(constraint)
+    hints = {}
+
+    def project(vertex: int, constraint: Constraint, xyz: list[float]) -> list[float] | None:
+        projector = projectors.get(id(constraint))
+        if projector is None:
+            return closest_point_on_constraint(constraint, xyz)
+        point, hints[vertex] = projector.closest_point(xyz, hints.get(vertex))
+        return point
+
+    def callback(k: int, args: tuple[Mesh, dict[int, Constraint]]) -> None:
+        mesh, constraints = args
+        if orbit_maps is not None:
+            symmetrise_positions(mesh, orbit_maps)
+        for vertex, constraint in constraints.items():
+            if constraint is None:
+                continue
+            xyz = project(vertex, constraint, mesh.vertex_coordinates(vertex))
+            if xyz is None:
+                continue
+            mesh.vertex_attributes(vertex, 'xyz', xyz)
+
+    for smooth in smoothers:
+        smooth(mesh, fixed=fixed, kmax=kmax, damping=damping, callback=callback, callback_args=[mesh, constraints])
+
+
+def boundary_constrained_smoothing(mesh: Mesh, curves: Sequence[Constraint] | None = None, kmax: int = 100, damping: float = 0.5,
+                                   algorithm: str | Sequence[str] = 'centroid', corner_angle: float = pi / 6,
+                                   fix_corners: bool = True,
+                                   constraints: dict[int, Constraint] | None = None) -> dict[int, Constraint]:
+    """Smooth a mesh with its boundary vertices sliding along the boundary and corners fixed.
 
     Parameters
     ----------
@@ -495,27 +506,27 @@ def boundary_constrained_smoothing(mesh: Mesh, curves: Sequence[Any] | None = No
         The boundary geometry to snap the boundary vertices to, as COMPAS polylines or
         curves. Default is None, in which case the mesh boundary polylines are used.
     kmax : int, optional
-        Number of iterations for smoothing. Default is ``100``.
+        Number of iterations for smoothing, per algorithm. Default is ``100``.
     damping : float, optional
         Damping value for smoothing between 0 and 1. Default is ``0.5``.
-    algorithm : {'centroid', 'area', 'centerofmass'}, optional
-        Type of smoothing algorithm to apply. Classic centroid by default.
+    algorithm : {'centroid', 'area', 'centerofmass'} | sequence of them, optional
+        Smoothing algorithm to apply, or several to run in turn.
+        Classic centroid by default. See :func:`constrained_smoothing`.
     corner_angle : float, optional
         Threshold deviation angle for a boundary kink, in radians.
         Default is ``pi / 6`` (30 degrees).
     fix_corners : bool, optional
         If True, pin the boundary vertices at a kink to their current position.
         Default is True.
-    constraints : dict, optional
+    constraints : dict[int, Constraint], optional
         Additional constraints, as vertex keys pointing to COMPAS geometry, applied on
         top of the automated ones. Default is None.
 
     Returns
     -------
-    dict
+    dict[int, Constraint]
         The constraints that were applied, as vertex keys pointing to point, polyline or
         curve objects. The mesh itself is modified in place.
-
     """
     boundary_constraints = automated_boundary_constraints(
         mesh, curves=curves, corner_angle=corner_angle, fix_corners=fix_corners)
@@ -528,35 +539,60 @@ def boundary_constrained_smoothing(mesh: Mesh, curves: Sequence[Any] | None = No
 
     return boundary_constraints
 
-def boundary_smoothing(mesh: Mesh, kmax: int = 100, damping: float = 0.5) -> None:
-    """Only the boundary vertices are smoothened by sliding them along the boundary curves."""
 
-    vertices = list(mesh.vertices())
-    boundary_vertices = list(flatten(mesh.vertices_on_boundaries()))
+def boundary_smoothing(mesh: Mesh, curves: Sequence[Constraint] | None = None, kmax: int = 100, damping: float = 0.5,
+                       algorithm: str | Sequence[str] = 'area', corner_angle: float = pi / 6,
+                       fix_corners: bool = True) -> dict[int, Constraint]:
+    """Smooth only the boundary of a mesh, sliding its vertices along the boundary.
 
-    fixed = [vkey for vkey in vertices if vkey not in boundary_vertices]
+    Unlike :func:`boundary_constrained_smoothing`, every interior vertex is fixed: the
+    boundary vertices are redistributed along the boundary and nothing else moves.
 
-    boundary_constraints = automated_boundary_constraints(mesh)
+    Parameters
+    ----------
+    mesh : :class:`compas.datastructures.Mesh`
+        A mesh to smooth, modified in place.
+    curves : sequence, optional
+        The boundary geometry to slide the boundary vertices along, as COMPAS polylines or
+        curves. Default is None, in which case the mesh boundary polylines are used.
+    kmax : int, optional
+        Number of iterations for smoothing, per algorithm. Default is ``100``.
+    damping : float, optional
+        Damping value for smoothing between 0 and 1. Default is ``0.5``.
+    algorithm : {'area', 'centroid', 'centerofmass'} | sequence of them, optional
+        Smoothing algorithm to apply, or several to run in turn.
+        Area by default. See :func:`constrained_smoothing`.
+    corner_angle : float, optional
+        Threshold deviation angle for a boundary kink, in radians.
+        Default is ``pi / 6`` (30 degrees).
+    fix_corners : bool, optional
+        If True, pin the boundary vertices at a kink to their current position.
+        Default is True.
 
-    constrained_smoothing(mesh, kmax=kmax, damping=damping, constraints=boundary_constraints, algorithm='area', fixed=fixed)
+    Returns
+    -------
+    dict[int, Constraint]
+        The constraints that were applied to the boundary vertices.
+        The mesh itself is modified in place.
+
+    """
+    boundary = set(flatten(mesh.vertices_on_boundaries()))
+    fixed = [vertex for vertex in mesh.vertices() if vertex not in boundary]
+
+    constraints = automated_boundary_constraints(
+        mesh, curves=curves, corner_angle=corner_angle, fix_corners=fix_corners)
+
+    constrained_smoothing(
+        mesh, kmax=kmax, damping=damping, constraints=constraints, algorithm=algorithm, fixed=fixed)
+
+    return constraints
 
 
-def smoothing_region(mesh: Mesh, vertices: Sequence[int] | dict[int, float], kmax: int = 50, damping: float = 0.5,
-                     blend: int = 3, constraints: dict[int, Any] | None = None) -> dict[int, float]:
-    """Area-weighted smoothing of a region of a mesh, with per-vertex damping.
+def region_smoothing(mesh: Mesh, vertices: Sequence[int] | dict[int, float], kmax: int = 50, damping: float = 0.5,
+                     blend: int = 3, constraints: dict[int, Constraint] | None = None) -> dict[int, float]:
+    """Area-weighted smoothing of one region, with damping tapered to zero over ``blend`` rings.
 
-    Only the selected region moves: every vertex outside it is fixed. The damping is
-    tapered from full strength on the selected core down to zero over ``blend`` rings of
-    neighbours around it, so the region blends into the rest of the mesh. A region
-    smoothed at full strength up to a hard edge leaves a CREASE at that edge -- a fixed
-    ring next to a fully relaxed one is a kink, which is the sort of defect this is meant
-    to remove. The taper is what makes it blend.
-
-    The smoothing is area-weighted, not centroid: centroid equalises edge lengths, which
-    fights the grading a frame-field mesh is supposed to have.
-
-    This is the region counterpart of :func:`boundary_constrained_smoothing`, and the
-    headless form of the region branch of the Rhino ``CMD_smoothen`` command.
+    Everything outside the region is fixed; the taper avoids a crease at its edge.
 
     Parameters
     ----------
@@ -568,18 +604,20 @@ def smoothing_region(mesh: Mesh, vertices: Sequence[int] | dict[int, float], kma
         pointing to damping weights between 0 and 1, in which case ``blend`` is ignored.
         A vertex that is absent, or whose weight is not positive, is fixed.
     kmax : int, optional
-        Number of iterations for smoothing. Default is ``50``.
+        Number of iterations for smoothing. Default is ``50``, fewer than the whole-mesh
+        functions, since a region is small and needs fewer to settle.
     damping : float, optional
         Damping value for smoothing between 0 and 1, scaled per vertex by its weight.
         Default is ``0.5``.
     blend : int, optional
         Rings of vertices outside the core over which the damping falls to zero.
         Default is ``3``. Ignored if ``vertices`` is a dictionary of weights.
-    constraints : dict, optional
+    constraints : dict[int, Constraint], optional
         Dictionary of constraints as vertex keys pointing to COMPAS geometry, applied to
-        the vertices of the region after every iteration. Default is None, in which case
-        :func:`automated_boundary_constraints` is used: a region touching the boundary
-        then slides along it instead of being dragged inward.
+        the vertices of the region after every iteration. Constraints on vertices outside
+        the region are ignored, since those vertices do not move. Default is None, in
+        which case :func:`automated_boundary_constraints` is used: a region touching the
+        boundary then slides along it instead of being dragged inward.
         See :func:`closest_point_on_constraint` for the accepted geometry.
 
     Returns
@@ -587,7 +625,6 @@ def smoothing_region(mesh: Mesh, vertices: Sequence[int] | dict[int, float], kma
     dict[int, float]
         The damping weights that were applied, as vertex keys pointing to a weight
         between 0 and 1. The mesh itself is modified in place.
-
     """
     def taper(core: set[int], rings: int) -> dict[int, float]:
         """Per-vertex damping weight: 1 in the core, falling to 0 outside the blend.
@@ -656,53 +693,134 @@ def smoothing_region(mesh: Mesh, vertices: Sequence[int] | dict[int, float], kma
 # Relaxation
 # ==============================================================================
 
+@lru_cache(maxsize=None)
+def _fd_polyline_constraint_class() -> type:
+    """A ``compas_fd`` constraint that holds a vertex on a polyline, built on first use."""
+    from compas.geometry import Vector
+    from compas.geometry import vector_component
+    from compas_fd.constraints import Constraint as FDConstraint
 
-def relaxation(mesh: Mesh, fixed: str = "corners", fixed_vertices: list[int] = [], constraints: Any | None = None,
-              q_factor: float = 100, algorithm: str = 'forcedensity') -> Mesh:
+    class PolylineConstraint(FDConstraint):
+        """Constraint for limiting the movement of a vertex to a polyline."""
+
+        def __new__(cls, *args, **kwargs):
+            # FDConstraint.__new__ picks the class from the type of the geometry, and has
+            # none registered for a polyline
+            return object.__new__(cls)
+
+        def __init__(self, polyline: Polyline, name: str | None = None) -> None:
+            super().__init__(polyline, name=name)
+            self._projector = _PolylineProjector(polyline)
+            self._segment = None
+
+        def project(self) -> None:
+            point, self._segment = self._projector.closest_point(list(self._location), self._segment)
+            self._location = Point(*point)
+
+        def compute_tangent(self) -> None:
+            start, end = self._projector.segments[self._segment]
+            self._tangent = Vector(*vector_component(self.residual, subtract_vectors(end, start)))
+
+        def compute_normal(self) -> None:
+            self._normal = self.residual - self.tangent
+
+        def update(self, damping: float = 0.1) -> None:
+            self._location = self.location + self.tangent * damping
+            self.project()
+
+    return PolylineConstraint
+
+
+def _fd_constraint(constraint: Constraint) -> Any:
+    """Wrap a constraint geometry in the ``compas_fd`` constraint that holds a vertex on it."""
+    from compas_fd.constraints import Constraint as FDConstraint
+
+    if isinstance(constraint, FDConstraint):
+        return constraint
+    if _is_polyline_like(constraint):
+        polyline = constraint if isinstance(constraint, Polyline) else Polyline(constraint)
+        return _fd_polyline_constraint_class()(polyline)
+    try:
+        return FDConstraint(constraint)
+    except Exception as exc:
+        raise TypeError(
+            f'relaxation cannot hold a vertex on a {type(constraint).__name__}. Use a point, a '
+            'polyline, a compas Vector, Frame, Line, Plane, Circle, NurbsCurve or NurbsSurface, '
+            'or a compas_fd Constraint.') from exc
+
+
+def relaxation(mesh: Mesh, fixed: str | Sequence[int] = 'corners', constraints: dict[int, Constraint] | None = None,
+               q_factor: float = 100.0) -> None:
+    """Force-density relaxation of a mesh with ``compas_fd``, boundary edges ``q_factor`` times stiffer.
+
+    Parameters
+    ----------
+    mesh : :class:`compas.datastructures.Mesh`
+        A mesh to relax, modified in place.
+    fixed : {'corners', 'boundary'} | sequence[int], optional
+        The vertices that do not move: ``'corners'`` (default) for the boundary vertices at
+        a kink, ``'boundary'`` for every boundary vertex, or the vertex keys themselves.
+    constraints : dict[int, Constraint], optional
+        Dictionary of constraints as vertex keys pointing to geometry the vertex must stay
+        on. A point pins the vertex there, like a fixed vertex. A polyline or a sequence of
+        points, a compas Vector, Frame, Line, Plane, Circle, NurbsCurve or NurbsSurface, or
+        a ``compas_fd`` Constraint lets it slide along. Constraints on fixed vertices are
+        ignored. Default is None.
+    q_factor : float, optional
+        How much larger the force density of a boundary edge is than that of an interior
+        edge. Default is ``100``.
+
+    Returns
+    -------
+    None
+        The mesh is modified in place.
+
+    Raises
+    ------
+    ValueError
+        If ``fixed`` is an unrecognised string.
+    TypeError
+        If a constraint cannot be turned into a ``compas_fd`` constraint.
+    ImportError
+        If ``compas_fd`` is not installed.
+    """
     from compas_fd.solvers import fd_constrained_numpy
 
-    if fixed == "corners":
+    if fixed == 'corners':
         fixed = mesh_boundary_corners(mesh)
-    elif fixed == "boundary":
-        boundaries = mesh_boundary_loops(mesh)
-        fixed = list(flatten(boundaries))
-    elif fixed=="manual":
-        fixed = fixed_vertices
-    else:
-        raise ValueError("This type of fixing is not recognised. Choose corners, boundary or manual with fixed_vertices.")
+    elif fixed == 'boundary':
+        fixed = list(flatten(mesh_boundary_loops(mesh)))
+    elif isinstance(fixed, str):
+        raise ValueError(f"{fixed!r} is not a recognised set of fixed vertices. "
+                         "Pick 'corners', 'boundary', or give the vertex keys.")
+    fixed = set(fixed)
 
-    vertices = mesh.vertices_attributes("xyz")
+    # compas_fd works on indices, which match the keys only on a mesh that never lost a vertex
+    vertex_index = mesh.vertex_index()
+    vertices = [mesh.vertex_coordinates(vertex) for vertex in mesh.vertices()]
+
+    fd_constraints = [None] * len(vertices)
+    for vertex, constraint in (constraints or {}).items():
+        if constraint is None or vertex in fixed:
+            continue
+        if isinstance(constraint, Point) or _is_xyz(constraint):
+            # a point pins the vertex there
+            vertices[vertex_index[vertex]] = [float(constraint[0]), float(constraint[1]), float(constraint[2])]
+            fixed.add(vertex)
+            continue
+        fd_constraints[vertex_index[vertex]] = _fd_constraint(constraint)
+
     edges = list(mesh.edges())
-    constraints = []
-    q = []
-    q_baseline = 1.0
-    for edge in edges:
-        if mesh.is_edge_on_boundary(edge):
-            q.append(q_factor*q_baseline)
-        else:
-            q.append(q_baseline)
-    loads = [[0, 0, 0] for _ in range(mesh.number_of_vertices())]
+    forcedensities = [q_factor if mesh.is_edge_on_boundary(edge) else 1.0 for edge in edges]
 
     result = fd_constrained_numpy(
         vertices=vertices,
-        fixed=fixed,
-        edges=edges,
-        forcedensities=q,
-        loads=loads,
-        constraints=constraints,
-        )
+        fixed=[vertex_index[vertex] for vertex in fixed],
+        edges=[(vertex_index[u], vertex_index[v]) for u, v in edges],
+        forcedensities=forcedensities,
+        loads=[[0.0, 0.0, 0.0] for _ in vertices],
+        constraints=fd_constraints,
+    )
 
-    for vertex, attr in mesh.vertices(data=True):
-        attr["x"] = result.vertices[vertex, 0]
-        attr["y"] = result.vertices[vertex, 1]
-        attr["z"] = result.vertices[vertex, 2]
-
-    return mesh
-
-
-# ==============================================================================
-# Main
-# ==============================================================================
-
-if __name__ == '__main__':
-    pass
+    for vertex, index in vertex_index.items():
+        mesh.vertex_attributes(vertex, 'xyz', [float(x) for x in result.vertices[index]])

@@ -24,11 +24,12 @@ from __future__ import division
 import os
 
 
-__author__ = ['Robin Oval', ]
+__author__ = ['Robin Oval', 'Casper Bladt']
 __copyright__ = 'Copyright 2019 - Block Research Group, ETH Zurich'
 __license__ = 'MIT License'
 __email__ = 'rpho2@cam.ac.uk'
 
+#: The one place the version is set; pyproject.toml reads it from here.
 __version__ = '0.1.0'
 
 

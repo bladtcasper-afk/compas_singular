@@ -44,28 +44,14 @@ def _shrunk_face(points: Sequence[Sequence[float]], scale: float) -> list[list[f
 
 
 def _f32(point: Sequence[float]) -> tuple[float, ...]:
-    """``point`` rounded the way a Rhino mesh vertex stores it.
-
-    A mesh vertex is a ``Point3f``, so two corners 1e-9 apart are the SAME
-    corner to Rhino -- and coincidence is what it refuses. Measured: 1e-9 apart
-    is refused, 1e-7 apart is not.
-    """
+    """``point`` rounded the way a Rhino mesh vertex (``Point3f``) stores it."""
     return struct.unpack('<3f', struct.pack('<3f', point[0], point[1], point[2]))
 
 
 def _append_face(vertices: list[list[float]], points: Sequence[Sequence[float]]) -> list[list[int]]:
-    """Append ``points`` as fresh corners of ``vertices``; return their faces.
+    """Append ``points`` as fresh corners of ``vertices`` and return their faces, collapsed at float32.
 
-    **A face may not have two coincident corners, and one that does invalidates
-    the WHOLE mesh.** ``doc.Objects.AddMesh`` then returns an empty guid and
-    ``rs.AddMesh`` RAISES. Measured against openNURBS 8: a quad whose corners 2
-    and 3 sit at the same point is refused, so is one pinched across either
-    diagonal, and a single such face carries a mesh of good quads down with it.
-
-    So the corners are collapsed at float32 first, and what is left is spelled
-    the way Rhino spells it: a triangle is a quad with its last index REPEATED,
-    never a fourth corner placed on top of the third. Returns ``[]`` for what is
-    no longer a face at all.
+    One face with two coincident corners makes Rhino refuse the whole mesh.
     """
     kept = []
     for point in points:
@@ -94,22 +80,7 @@ def _lerp(a: Sequence[float], b: Sequence[float], t: float) -> list[float]:
 
 
 class _Ribbon(object):
-    """One strip's ribbon as ONE welded mesh: neighbouring faces share corners.
-
-    Built face by face, but a corner is never appended twice -- the difference
-    from :func:`_append_face`, which gives every face fresh corners, and then
-    Rhino shades each quad on its own and the band reads as a row of tiles.
-
-    Two things make the sharing exact rather than approximate:
-
-    * **a rung point is computed the same way from both sides.** The next face
-      walks the shared rung the other way round, and ``lerp(a, b, t)`` and
-      ``lerp(b, a, 1 - t)`` are the same point but not always the same bits. So
-      it is always computed from the lower vertex key;
-    * **corners are merged at float32, across the whole ribbon.** Two corners
-      equal at float32 are the same corner to Rhino, and one face with two of
-      them invalidates the entire mesh (see :func:`_append_face`).
-    """
+    """One strip's ribbon as one welded mesh, corners shared and merged at float32."""
 
     def __init__(self, mesh: Any, half: float) -> None:
         self.mesh = mesh
@@ -137,12 +108,7 @@ class _Ribbon(object):
         return self._add(self.mesh.vertex_coordinates(vkey))
 
     def add_face(self, indices: Sequence[int]) -> None:
-        """Add a face; dropped if fewer than three distinct corners are left.
-
-        Repeats are removed wherever they are, not only when consecutive: a quad
-        pinched across a diagonal is refused by Rhino just as a collapsed side
-        is. A triangle is spelled with its last index repeated.
-        """
+        """Add a face; dropped if fewer than three distinct corners are left."""
         kept = []
         for index in indices:
             if index not in kept:
@@ -268,15 +234,7 @@ class RhinoCoarseObject(RhinoSingularMeshObject):
         strip_colors: dict[int, tuple[int, int, int]] | None = None,
         labels: dict[int, Any] | None = None,
     ) -> dict[Any, int]:
-        """**Draw strips as pickable ribbons**, replacing any drawn before. ``{guid: skey}``.
-
-        A strip is a band of faces, and the obvious way to draw one -- fill its
-        faces -- cannot be picked: **every face belongs to TWO strips**, so the
-        filled bands overlap everywhere and whichever was drawn last takes every
-        click. Each band is drawn as a RIBBON down its own middle instead: within
-        each face, the quad between its two rungs, narrowed to ``width`` of them.
-        Two crossing strips then overlap only in a small square at the centre of
-        the face they share.
+        """Draw strips as pickable ribbons down their middles, replacing any drawn before. ``{guid: skey}``.
 
         Parameters
         ----------
@@ -298,20 +256,6 @@ class RhinoCoarseObject(RhinoSingularMeshObject):
             ``{skey: text}``, a text dot on the middle rung of each strip. A rung
             belongs to one strip only, so unlike a face centre it is never shared
             with the crossing band's label.
-
-        Notes
-        -----
-        **Each ribbon is ONE welded mesh** (``_Ribbon``), so the band
-        shades as one patch and a closed strip closes.
-
-        **A pseudo-quad is part of the ribbon, not skipped.** Where a strip ends at
-        a pole the ribbon tapers into it as a triangle. Skipping pseudo-quads was
-        exactly wrong: on a plate with a hole and four poles, none of the 12
-        strips that got a ribbon could be deleted, while all 8 single-pseudo-quad
-        strips could. Only a strip no ribbon face can be built for falls back to
-        its faces drawn shrunk. Every face goes through ``_append_face``: a
-        triangle padded with a fourth corner on its third is refused by Rhino, and
-        takes the whole strip down with it.
         """
         self.clear_strips()
         ensure_layer(self.layer)

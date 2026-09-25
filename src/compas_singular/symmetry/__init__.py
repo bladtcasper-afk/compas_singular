@@ -1,24 +1,10 @@
-"""
-********************************************************************************
+"""********************************************************************************
 compas_singular.symmetry
 ********************************************************************************
 
-**Symmetry for any meshing route: find it, mesh one unit, expand it.**
+Symmetry for any meshing route: find it, mesh one unit, expand it by the group.
 
-.. code-block:: python
-
-    report = decomposition.find_symmetry()
-    coarse_unit = decomposition.symmetry_unit(keys=('M0', 'M45'))
-    coarse_unit.collect_strips()
-    coarse_unit.set_strips_density_target(0.5)
-    quad_unit = coarse_unit.quad_mesh()
-    quad_mesh = quad_unit.expand_symmetrically()
-
-The route (skeleton, field, or anything that turns a domain into a coarse quad
-layout) only ever meshes the UNIT -- one fundamental region of the chosen group,
-cut out along seams. The global mesh is the unit's images under the group,
-welded along the seams, so it is symmetric by construction rather than repaired
-into symmetry afterwards.
+Design notes: ``design_notes/symmetry.md``.
 
 .. currentmodule:: compas_singular.symmetry
 

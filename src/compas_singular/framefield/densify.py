@@ -1,124 +1,11 @@
-"""Step 7 -- **field-aware densification**. The field decides patch INTERIORS.
+"""Field-aware densification: patch interiors relaxed towards the field, patch boundaries fixed.
 
-The missing half of the objective. ``cable -> field`` has worked and been
-measured since ``12_cables`` part 1: a hard-constrained cable puts the field
-0.0 degrees off itself. ``field -> mesh`` never worked, because
-``CoarsePseudoQuadMesh.densification`` fills every patch with
-``discrete_coons_patch`` -- a bilinear blend of the four coarse edges that
-never consults the field. A square with a diagonal cable came out as a plain
-axis-aligned grid with the cable running through it, identically at every
-background resolution and however hard the cable pulled.
-
-WHAT IS AND IS NOT FREE TO MOVE
--------------------------------
-
-The four boundary polylines of a patch are **fixed**, exactly as
-``discrete_coons_patch`` receives them. Only the interior nodes move. That is
-not a simplification, it is the load-bearing decision:
-
-* the shared edge between two patches comes from one ``edges_to_curves``
-  polyline sampled at one strip density, so leaving boundaries alone keeps
-  the patches welding into a manifold mesh, and keeps opposite edges of a patch
-  at matching densities -- ``collect_strips``, ``set_strips_density`` and
-  ``add_strip`` all keep working on the result (``11_downstream``);
-* the coarse edges ALREADY follow the field. They are separatrices, handed
-  through ``edges_to_curves``. It is only the interiors that ignored it.
-
-THE ENERGY
-----------
-
-Write the patch as a grid ``x[i][j]``, ``i`` along ``ab``, ``j`` along ``ad``,
-the same indexing ``discrete_coons_patch`` uses. Let ``e1`` be the cross arm
-the ``i`` family follows and ``e2 = perp(e1)`` the one the ``j`` family
-follows. A perfectly field-aligned grid has every ``i`` step parallel to
-``e1`` and every ``j`` step parallel to ``e2``, so minimise what is left over::
-
-    E = sum over i-edges  ( n1 . (x[i+1][j] - x[i][j]) )^2
-      + sum over j-edges  ( n2 . (x[i][j+1] - x[i][j]) )^2
-
-with ``n1 = perp(e1)``, ``n2 = perp(e2) = e1``, both sampled at the edge
-midpoint, each row scaled by ``1 / |edge|`` so the residual is an angle rather
-than a distance and a long edge cannot outvote a short one.
-
-This is linear in the free nodes, so each round is one sparse least-squares
-solve. The only nonlinearity is which arm of the cross each family follows, and
-that is re-decided from the current geometry between solves.
-
-Alignment ALONE is not enough, and the failure is loud rather than subtle. A
-square patch under a field constant at 36.87 degrees -- ``15_baseline``'s
-``square+cable`` -- wants a rotated grid inside a boundary pinned to the walls,
-which is impossible. The unregularised solve tears it apart: 25 of 100 quads
-folded, minimum angle 2.68 degrees, and it never converges. So the energy
-carries a second term, ``stiffness`` times the Laplacian of the CORRECTION
-``x - x_coons``, and the stiffness is chosen per patch by
-:func:`relax_patch` -- weakest that :func:`_accepts` will take. The conflict
-between a fixed boundary and a field that disagrees with it is genuine, and the
-answer is to price it rather than to pretend it is not there.
-
-Note that the two families constrain *different* components: an ``i`` edge says
-nothing about spacing ALONG ``e1``, only about drift across it. The ``j`` edges
-supply exactly that missing component, and vice versa. Together they pin both
-coordinates of every interior node; neither family alone would.
-
-WHY A CONSTANT FIELD GIVES THE GRID BACK, EXACTLY
--------------------------------------------------
-
-The rectilinear plates -- square, L, T, U, plus, comb, slotted rectangle,
-square with a square hole -- have an exactly constant field (measured: maximum
-angular deviation 0.000 degrees). On a rectangular patch with uniformly sampled
-straight sides, the Coons grid has every ``i`` step parallel to ``e1`` and every
-``j`` step parallel to ``e2``, so **every residual above is identically zero**.
-A sum of squares cannot go below zero, so the Coons grid is already the global
-minimum and the solver has nothing to do. The Tikhonov term is anchored to the
-Coons grid rather than to the running iterate for the same reason: it is zero
-there too. Those eight domains come out bit-for-bit unchanged, which
-``--constant-field`` in ``16_field_densify.py`` checks directly rather than
-inferring from the baseline.
-
-POLES ARE NOT DONE HERE, DELIBERATELY
--------------------------------------
-
-A pseudo-quad patch keeps its Coons interior. Three reasons, and they are
-reasons rather than an omission:
-
-* a pole is a collapsed side, so one whole boundary row of the grid is a single
-  repeated point and the least-squares system loses rank along it;
-* the field at a pole is at or beside a singularity, which is precisely where
-  ``theta`` has no continuous branch -- the arm-matching that makes the ``i``
-  family well defined across a patch relies on the patch interior being
-  singularity-free, which is true of every ordinary patch by construction of
-  the separatrix layout and false here;
-* the pole faces are where the suite's remaining degeneracies already live
-  (``12_cables``' ring cable), so a scheme that guessed at them would be
-  measured against noise.
-
-:func:`field_densification` reports how many patches it skipped for this
-reason, so a caller is never left inferring it.
-
-QUALITY IS SPENT ONLY WHERE A GUIDE ASKED FOR IT
-------------------------------------------------
-
-Every relaxed interior is guarded, per patch rather than per mesh, so one bad
-patch costs one patch rather than the whole domain's alignment. But the guard
-is not one rule: a patch in a domain carrying a GUIDE CURVE may be spent down
-to ``PATCH_MIN_ANGLE`` / ``PATCH_MAX_ANGLE`` / ``PATCH_MAX_ASPECT``, and a
-patch in a domain without one may not be made worse in any respect at all.
-
-:func:`_accepts` sets out the reasoning and the measurements. The short version
-is that a cable is an instruction and distortion is its price, whereas on an
-unguided domain the leftover misalignment is discretisation noise and paying
-twelve degrees of minimum angle for half a degree of it is a trade nobody
-wanted.
+Each round is one sparse least-squares solve; quality is spent only where a guide asked for it.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 from __future__ import annotations
 
 from math import atan2
 from math import cos
-from math import degrees
-from math import pi
 from math import sin
 from typing import Any
 from typing import TYPE_CHECKING
@@ -132,138 +19,130 @@ from compas.itertools import pairwise
 from compas.tolerance import TOL
 from compas_singular.datastructures import meshes_join_and_weld
 from compas_singular.datastructures import PseudoQuadMesh
+from compas_singular.framefield.constraints import PERIOD
 
 if TYPE_CHECKING:
     from compas_singular.datastructures import CoarsePseudoQuadMesh
     from compas_singular.framefield.field import CrossField
-    from compas_singular.framefield.trace import Tracer
 
 
 __all__ = ['field_densification', 'FieldSampler', 'relax_patch',
            'PATCH_MIN_ANGLE', 'PATCH_MAX_ANGLE', 'PATCH_MAX_ASPECT']
 
 
-#: The cross's period. Four arms, 90 degrees apart.
-PERIOD = pi / 2.0
-
-#: How far a patch may be spent to satisfy a GUIDE curve -- and only a guide;
-#: see :func:`_accepts`. Angles in degrees, aspect as longest edge over
-#: shortest. Floors, not targets: a patch already worse than these keeps its
-#: own values as the limit rather than being allowed down to them.
+#: How far a patch may be spent to satisfy a GUIDE curve. Floors, not targets:
+#: a Coons patch already worse than these keeps its own values as the limit.
 PATCH_MIN_ANGLE = 30.0
 PATCH_MAX_ANGLE = 150.0
 PATCH_MAX_ASPECT = 5.0
 
-#: Solve / re-arm rounds within one stiffness. The element quality is final
-#: long before the last digit of the position is: on ``square+cable`` at
-#: stiffness 1.0 the minimum angle is 42.7 degrees after 8 rounds and 42.65
-#: after 40, while the per-round movement is still 0.15 at round 8. Twelve is
-#: where the geometry has stopped changing; chasing the fixed point costs
-#: another 30 rounds per stiffness and buys two hundredths of a degree.
+#: Solve / re-arm rounds per stiffness. The angles stop changing well before the
+#: positions converge, so more rounds cost time without changing the mesh.
 ITERATIONS = 12
 
-#: Stiffnesses tried, weakest first: how hard the smoothing term resists the
-#: alignment term. The first one that settles AND yields an acceptable patch
-#: wins, so a patch buys the most alignment its own boundary can carry and no
-#: more. Measured on ``square+cable`` at bg 0.50, which is the suite's hardest
-#: case for this -- a field constant at 36.87 degrees inside a square boundary
-#: pinned axis-aligned::
-#:
-#:      stiffness    min     max  folds  ARmax  cable  verdict
-#:           0.25  21.99  171.83      5  52.29   21.2  rejected: 5 folds
-#:           0.50  26.25  163.75      0  22.29   23.4  rejected: 163.75 > 150
-#:           1.00  42.69  144.23      0   4.00   27.0  ACCEPTED
-#:           2.00  57.52  126.38      0   1.88   30.2
-#:           4.00  71.97  109.74      0   1.38   32.8
-#:          16.00  88.05   92.06      0   1.03   36.5
-#:          64.00  89.87   90.13      0   1.00   36.8  ~ the Coons grid
-#:
-#: ``16_field_densify.py --tradeoff`` regenerates that table. Note what the top
-#: of it costs: 0.50 buys 3.6 degrees of alignment over 1.00 and pays with an
-#: aspect ratio of 22.3 and a 163.75 degree corner. The schedule does not skip
-#: it -- :func:`_accepts` rejects it, which is the rule doing its job rather
-#: than a constant chosen to suit one domain.
+#: Stiffnesses tried, weakest first. The first that settles and is accepted
+#: wins, so a patch buys as much alignment as its own boundary can carry.
+#: ``16_field_densify.py --tradeoff`` prints what each one costs.
 STIFFNESS = (0.25, 0.5, 1.0, 2.0, 4.0, 16.0, 64.0)
 
-#: Weight of the pull back toward the Coons position, relative to the mean
-#: alignment row weight. Conditions the system and bounds how far a patch can
-#: drift; it is exactly zero on a constant field, where Coons IS the minimiser.
+#: Pull back towards the Coons position, relative to the mean alignment weight.
 TIKHONOV = 1e-3
 
-#: Stop early once no node moved further than this fraction of the patch's
-#: mean edge length.
+#: Stop a stiffness early once no node moves further than this fraction of the
+#: patch's mean edge length.
 TOLERANCE = 1e-4
 
-#: How far the per-round movement must have contracted, as a fraction of the
-#: first round's, before the result is treated as a solution rather than as
-#: wherever an oscillation happened to stop.
-#:
-#: An absolute threshold is the wrong tool here and was tried first: at
-#: stiffness 1.0 the movement is still 0.15 of an edge length after 8 rounds
-#: while the angles have not changed in six, so any threshold tight enough to
-#: exclude a genuine oscillation also excludes every stiffness worth having.
-#: Contraction separates them cleanly -- measured on ``square+cable``, the
-#: alignment-only solve oscillates at 2.2, 1.5, 1.5, 1.1, 1.96, 1.31 and never
-#: contracts at all, while stiffness 0.5 falls 1.646 -> 0.231 over eight.
+#: A stiffness only counts as settled once its per-round movement has shrunk to
+#: this fraction of the first round's -- an oscillation never contracts.
 CONTRACTION = 0.25
 
 
 # ------------------------------------------------------------------
-# sampling the field at an arbitrary point
+# sampling the field at arbitrary points
 # ------------------------------------------------------------------
 
 class FieldSampler(object):
-    """``theta`` at any point of the domain, with the tracer's point location.
+    """The field's angle at points that are not background vertices.
 
-    Wraps :meth:`Tracer.locate` and :meth:`CrossField.angle_in_face` so a patch
-    interior -- which has no vertices of its own on the background mesh -- can
-    ask the field what it is doing there. ``hint`` is threaded through because
-    grid neighbours land in the same or an adjacent triangle almost always.
-
-    The angle comes back folded into the cross's period; choosing a branch is
-    :func:`_unwrap`'s job, not this one's.
+    Parameters
+    ----------
+    field : CrossField
+    locator : PointLocator, optional
+        Defaults to ``field.locator()``. A :class:`Tracer` is accepted too.
     """
 
-    def __init__(self, field: CrossField, tracer: Tracer) -> None:
+    def __init__(self, field: CrossField, locator: Any = None) -> None:
         self.field = field
-        self.tracer = tracer
-        self.mesh = field.background.mesh
+        locator = locator if locator is not None else field.locator()
+        self.locator = getattr(locator, 'locator', locator)
+        u = field.u
+        faces = self.locator.fkeys
+        corners = [[u[v] for v in self.locator.face_vertices[f]] for f in faces]
+        self._re = np.array([[z.real for z in row] for row in corners], dtype=float)
+        self._im = np.array([[z.imag for z in row] for row in corners], dtype=float)
 
     def theta(self, point: Any, hint: Any = None) -> tuple[float | None, int | None]:
-        """``(theta, fkey)``, or ``(None, None)`` if the point is unreachable."""
-        found = self.tracer.locate(point, hint)
+        """``(theta, fkey)`` at one point, or ``(None, None)`` if it is unreachable.
+
+        A point just outside the domain -- a Coons node bulging past a concave
+        wall -- takes the nearest triangle's centre rather than dropping out.
+        """
+        found = self.locator.locate(point, hint)
         if found is None:
-            found = self._nearest(point)
+            found = self.locator.nearest(point)
         if found is None:
             return None, None
         fkey, bary = found
         return self.field.angle_in_face(fkey, bary), fkey
 
-    def _nearest(self, point: Any) -> tuple[int, tuple[float, float, float]] | None:
-        """Closest background face, for a node that fell outside the domain.
+    def thetas(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """:meth:`theta` along a sequence of points, each hinted by the one before.
 
-        A Coons interior can bulge a hair past a concave boundary arc. Rather
-        than drop the node's constraint -- which would leave a hole in the
-        least-squares system -- use the nearest triangle's centre. The error is
-        bounded by the background spacing and only ever applies to nodes that
-        are already outside.
+        Exactly the values a loop over :meth:`theta` gives, computed in bulk.
+
+        Returns
+        -------
+        (ndarray, ndarray)
+            The angles, folded into the cross's period, and whether each point
+            was reachable at all.
         """
-        tracer = self.tracer
-        if tracer._grid is None:
-            tracer._build_grid()
-        i = int((point[0] - tracer._origin[0]) // tracer._cell)
-        j = int((point[1] - tracer._origin[1]) // tracer._cell)
-        best, best_d = None, float('inf')
-        for di in (-1, 0, 1):
-            for dj in (-1, 0, 1):
-                for fkey in tracer._grid.get((i + di, j + dj), ()):
-                    c = self.mesh.face_centroid(fkey)
-                    d = (c[0] - point[0]) ** 2 + (c[1] - point[1]) ** 2
-                    if d < best_d:
-                        best, best_d = fkey, d
-        if best is None:
-            return None
-        return best, (1 / 3.0, 1 / 3.0, 1 / 3.0)
+        count = len(points)
+        locator = self.locator
+        status, faces, bary = locator.locate_arrays(points)
+        ok = status == 1
+
+        # Only a point no single face owns depends on the hint -- the face of
+        # the point before it -- so only those are walked in order.
+        for k in np.flatnonzero(~ok).tolist():
+            hit = None
+            if status[k] == 2:
+                hint = locator.fkeys[faces[k - 1]] if k and ok[k - 1] else None
+                hit = locator.locate(points[k], hint)
+            if hit is None:
+                hit = locator.nearest(points[k])
+            if hit is not None:
+                faces[k] = locator.index[hit[0]]
+                bary[k] = hit[1]
+                ok[k] = True
+
+        # ``angle_in_face`` in bulk. Python's ``float * complex`` is written out
+        # as real arithmetic so every value, and every signed zero, matches.
+        faces = np.where(ok, faces, 0)
+        re = np.zeros(count)
+        im = np.zeros(count)
+        for c in range(3):
+            w = bary[:, c]
+            ur, ui = self._re[faces, c], self._im[faces, c]
+            re = re + (w * ur - 0.0 * ui)
+            im = im + (w * ui + 0.0 * ur)
+
+        out = np.zeros(count)
+        for k, y, x in zip(np.flatnonzero(ok).tolist(), im[ok].tolist(), re[ok].tolist()):
+            if x == 0 and y == 0:
+                out[k] = self.field.angle_in_face(locator.fkeys[faces[k]], tuple(bary[k]))
+            else:
+                out[k] = atan2(y, x) / 4.0
+        return out, ok
 
 
 # ------------------------------------------------------------------
@@ -271,259 +150,208 @@ class FieldSampler(object):
 # ------------------------------------------------------------------
 
 def _unwrap(grid: np.ndarray, sampler: FieldSampler) -> np.ndarray | None:
-    """A CONTINUOUS ``i``-family angle over the patch, or ``None``.
-
-    ``angle_in_face`` returns the cross angle folded into one period, which
-    makes ``e1`` and ``e2`` interchangeable at every node independently. Left
-    like that, neighbouring rows of one patch can pick perpendicular arms and
-    the grid kinks. So pick a branch once, from the patch's own ``i`` direction
-    at one corner, and propagate it: along the ``j = 0`` column first, then
-    along each row from it. Every step chooses the branch within a quarter turn
-    of its predecessor, which is the same arm-matching that keeps a traced
-    separatrix going straight instead of turning 90 degrees at an arbitrary
-    triangle.
-
-    Path-independent because a patch interior contains no singularity -- the
-    separatrix layout puts every singularity on a patch CORNER. Pseudo-quads
-    are the exception and they never reach here.
-    """
+    """A continuous ``i``-family angle over the patch, or ``None``."""
     n, m, _ = grid.shape
-    raw = np.zeros((n, m))
-    ok = np.zeros((n, m), dtype=bool)
-    hint = None
-    for i in range(n):
-        for j in range(m):
-            t, hint = sampler.theta(grid[i, j], hint)
-            if t is None:
-                hint = None
-                continue
-            raw[i, j] = t
-            ok[i, j] = True
-
+    raw, ok = sampler.thetas(grid.reshape(n * m, 3))
     if not ok.any():
         return None
+    raw = raw.reshape(n, m)
+    ok = ok.reshape(n, m)
+
+    def branch(value: np.ndarray, reference: np.ndarray) -> np.ndarray:
+        return value + PERIOD * np.round((reference - value) / PERIOD)
 
     theta = np.zeros((n, m))
-
-    def branch(value: float, reference: float) -> float:
-        return value + PERIOD * round((reference - value) / PERIOD)
-
     seed = atan2(grid[1, 0][1] - grid[0, 0][1], grid[1, 0][0] - grid[0, 0][0])
     theta[0, 0] = branch(raw[0, 0], seed) if ok[0, 0] else seed
     for i in range(1, n):
         theta[i, 0] = branch(raw[i, 0], theta[i - 1, 0]) if ok[i, 0] else theta[i - 1, 0]
-    for i in range(n):
-        for j in range(1, m):
-            theta[i, j] = (branch(raw[i, j], theta[i, j - 1]) if ok[i, j]
-                           else theta[i, j - 1])
+    for j in range(1, m):
+        theta[:, j] = np.where(ok[:, j], branch(raw[:, j], theta[:, j - 1]), theta[:, j - 1])
     return theta
 
 
-def _solve(
-    grid: np.ndarray,
-    coons: np.ndarray,
-    theta: np.ndarray,
-    stiffness: float,
-    tikhonov: float,
-) -> np.ndarray | None:
-    """One least-squares solve for the interior, boundary held fixed.
+def _root(values: np.ndarray) -> np.ndarray:
+    """Elementwise ``x ** 0.5`` with Python's rounding, which is not ``np.sqrt``'s."""
+    return np.array([x ** 0.5 for x in values.tolist()], dtype=float)
 
-    Three kinds of row:
 
-    * one **alignment** residual per interior-touching grid edge, scaled by
-      ``1 / |edge|``;
-    * one **smoothing** residual per free node per axis, ``stiffness`` times the
-      discrete Laplacian OF THE CORRECTION ``x - x_coons``, not of ``x``. That
-      distinction is the whole reason a curved patch can be left alone: the
-      Laplacian of a Coons grid over a curved patch is not zero, so smoothing
-      ``x`` would pull every such patch about for reasons that have nothing to
-      do with the field. Smoothing the correction is zero at ``x = x_coons`` on
-      any patch whatever, so with no field influence nothing moves at all;
-    * one **Tikhonov** row per free coordinate, likewise anchored to Coons.
+class _PatchSystem(object):
+    """The least-squares system of one patch (alignment, smoothing and Tikhonov rows), structure built once."""
 
-    Alignment alone is not enough and the failure is not subtle. A square patch
-    under a field constant at 36.87 degrees -- ``15_baseline``'s
-    ``square+cable`` -- wants a rotated grid inside a boundary that is pinned to
-    the walls, which is impossible, and the unregularised solve tears it: 25 of
-    100 quads folded, minimum angle 2.68 degrees, and it never converges. The
-    conflict is genuine, so the answer is to trade it off rather than to pretend
-    it is not there.
+    def __init__(self, coons: np.ndarray) -> None:
+        n, m, _ = coons.shape
+        self.coons = coons
+        self.shape = (n, m)
+        fi, fj = np.meshgrid(np.arange(1, n - 1), np.arange(1, m - 1), indexing='ij')
+        self.fi, self.fj = fi.ravel(), fj.ravel()
+        self.nfree = len(self.fi)
+        column = -np.ones((n, m), dtype=int)
+        column[self.fi, self.fj] = 2 * np.arange(self.nfree)
+        self.column = column
 
-    Returns a new grid, or ``None`` if the system is singular.
-    """
-    n, m, _ = grid.shape
-    free = {}
-    for i in range(1, n - 1):
-        for j in range(1, m - 1):
-            free[i, j] = len(free) * 2
-    if not free:
-        return grid
+        # every grid edge in the order i-steps then j-steps, kept only if it
+        # touches a free node
+        ia, ja, ib, jb, istep = [], [], [], [], []
+        for i in range(n - 1):
+            for j in range(m):
+                ia.append(i), ja.append(j), ib.append(i + 1), jb.append(j), istep.append(True)
+        for i in range(n):
+            for j in range(m - 1):
+                ia.append(i), ja.append(j), ib.append(i), jb.append(j + 1), istep.append(False)
+        ia, ja, ib, jb = (np.array(x, dtype=int) for x in (ia, ja, ib, jb))
+        keep = (column[ia, ja] >= 0) | (column[ib, jb] >= 0)
+        self.ia, self.ja, self.ib, self.jb = ia[keep], ja[keep], ib[keep], jb[keep]
+        self.istep = np.array(istep)[keep]
+        self.ka = column[self.ia, self.ja]
+        self.kb = column[self.ib, self.jb]
 
-    rows, cols, vals, rhs = [], [], [], []
-    weights = []
+        # the four Laplacian neighbours, in a fixed order
+        self.neighbours = []
+        for di, dj in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            k = column[self.fi + di, self.fj + dj]
+            self.neighbours.append((k >= 0, k, self.fi + di, self.fj + dj))
 
-    def add(row: int, i: int, j: int, sign: float, nx: float, ny: float, w: float) -> None:
-        """+/- (nx, ny) . x[i][j], to the free columns or to the right side."""
-        if (i, j) in free:
-            k = free[i, j]
-            rows.extend([row, row])
-            cols.extend([k, k + 1])
-            vals.extend([sign * nx * w, sign * ny * w])
-        else:
-            rhs[row] -= sign * w * (nx * grid[i, j][0] + ny * grid[i, j][1])
+    def solve(self, grid: np.ndarray, theta: np.ndarray, stiffness: float,
+              tikhonov: float) -> np.ndarray | None:
+        """One least-squares solve for the interior. A new grid, or ``None`` if
+        the system is singular."""
+        if not self.nfree:
+            return grid
+        rows_n = len(self.ia)
+        if not rows_n:
+            return grid
 
-    def edge(ia: int, ja: int, ib: int, jb: int) -> None:
-        """One alignment row for the step (ia, ja) -> (ib, jb)."""
-        # The family this step belongs to decides which arm it follows: an i
-        # step follows e1 = theta, a j step follows e2 = theta + 90 degrees.
-        # Only the perpendicular of that arm enters the residual, and perp is
-        # insensitive to sign, so no orientation bookkeeping is needed.
-        ang = 0.5 * (theta[ia, ja] + theta[ib, jb])
-        if ia != ib:                      # i step -> perp(e1)
-            nx, ny = -sin(ang), cos(ang)
-        else:                             # j step -> perp(e2) = e1
-            nx, ny = cos(ang), sin(ang)
-        d = grid[ib, jb] - grid[ia, ja]
-        length = (d[0] * d[0] + d[1] * d[1]) ** 0.5
-        w = 1.0 / max(length, 1e-9)
-        if (ia, ja) not in free and (ib, jb) not in free:
-            return
-        row = len(rhs)
-        rhs.append(0.0)
-        weights.append(w)
-        add(row, ib, jb, +1.0, nx, ny, w)
-        add(row, ia, ja, -1.0, nx, ny, w)
+        ang = 0.5 * (theta[self.ia, self.ja] + theta[self.ib, self.jb])
+        s = np.array([sin(a) for a in ang.tolist()])
+        c = np.array([cos(a) for a in ang.tolist()])
+        # an i step follows e1 = theta, so its residual is along perp(e1);
+        # a j step follows e2, whose perpendicular is e1 itself
+        nx = np.where(self.istep, -s, c)
+        ny = np.where(self.istep, c, s)
+        d = grid[self.ib, self.jb] - grid[self.ia, self.ja]
+        weight = 1.0 / np.maximum(_root(d[:, 0] * d[:, 0] + d[:, 1] * d[:, 1]), 1e-9)
 
-    for i in range(n - 1):
-        for j in range(m):
-            edge(i, j, i + 1, j)
-    for i in range(n):
-        for j in range(m - 1):
-            edge(i, j, i, j + 1)
+        rows, cols, vals = [], [], []
+        rhs = np.zeros(rows_n)
+        row = np.arange(rows_n)
+        for k, gi, gj, sign in ((self.kb, self.ib, self.jb, 1.0), (self.ka, self.ia, self.ja, -1.0)):
+            free = k >= 0
+            rows += [row[free], row[free]]
+            cols += [k[free], k[free] + 1]
+            vals += [(sign * nx[free]) * weight[free], (sign * ny[free]) * weight[free]]
+            g = grid[gi, gj]
+            fixed_term = (sign * weight) * (nx * g[:, 0] + ny * g[:, 1])
+            rhs = rhs - np.where(free, 0.0, fixed_term)
 
-    if not rhs:
-        return grid
+        # a plain left-to-right sum: ``sum()`` over Python floats is compensated
+        # on 3.12+, and would not reproduce the same mean on every interpreter
+        mean_w = float(np.cumsum(weight)[-1]) / rows_n
 
-    mean_w = sum(weights) / len(weights)
-
-    # smoothing: stiffness * Laplacian(x - x_coons) = 0, per free node per axis.
-    # A FIXED neighbour is at its Coons position by construction, so its
-    # correction is exactly zero and it drops out of the row entirely -- neither
-    # a column nor a right-hand-side term. That is what makes the correction
-    # decay smoothly to nothing at the patch boundary.
-    mu = stiffness * mean_w
-    for (i, j), k in free.items():
-        movable = [nb for nb in ((i - 1, j), (i + 1, j), (i, j - 1), (i, j + 1))
-                   if nb in free]
+        # smoothing: a fixed neighbour sits at its Coons position, so its
+        # correction is zero and it drops out of the row altogether
+        mu = stiffness * mean_w
         share = mu / 4.0
+        coons = self.coons
+        base = rows_n
+        smooth_rhs = []
         for axis in (0, 1):
-            row = len(rhs)
-            target = mu * coons[i, j][axis]
-            rows.append(row)
-            cols.append(k + axis)
-            vals.append(mu)
-            for ni, nj in movable:
-                rows.append(row)
-                cols.append(free[ni, nj] + axis)
-                vals.append(-share)
-                target -= share * coons[ni, nj][axis]
-            rhs.append(target)
+            r = base + 2 * np.arange(self.nfree) + axis
+            k = 2 * np.arange(self.nfree) + axis
+            rows.append(r)
+            cols.append(k)
+            vals.append(np.full(self.nfree, mu))
+            target = mu * coons[self.fi, self.fj, axis]
+            for movable, nk, ni, nj in self.neighbours:
+                rows.append(r[movable])
+                cols.append(nk[movable] + axis)
+                vals.append(np.full(int(movable.sum()), -share))
+                target = target - np.where(movable, share * coons[ni, nj, axis], 0.0)
+            smooth_rhs.append(target)
+        smoothing = np.empty(2 * self.nfree)
+        smoothing[0::2], smoothing[1::2] = smooth_rhs
 
-    lam = tikhonov * mean_w
-    for (i, j), k in free.items():
+        lam = tikhonov * mean_w
+        base2 = base + 2 * self.nfree
+        tik_rhs = np.empty(2 * self.nfree)
         for axis in (0, 1):
-            row = len(rhs)
-            rhs.append(lam * coons[i, j][axis])
-            rows.append(row)
-            cols.append(k + axis)
-            vals.append(lam)
+            k = 2 * np.arange(self.nfree) + axis
+            rows.append(base2 + k)
+            cols.append(k)
+            vals.append(np.full(self.nfree, lam))
+            tik_rhs[axis::2] = lam * coons[self.fi, self.fj, axis]
 
-    A = coo_matrix((vals, (rows, cols)), shape=(len(rhs), 2 * len(free))).tocsr()
-    b = np.array(rhs)
-    normal = (A.T @ A).tocsc()
-    try:
-        solution = spsolve(normal, A.T @ b)
-    except Exception:
-        return None
-    if solution is None or not np.all(np.isfinite(solution)):
-        return None
+        total = base2 + 2 * self.nfree
+        A = coo_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))),
+                       shape=(total, 2 * self.nfree)).tocsr()
+        b = np.concatenate([rhs, smoothing, tik_rhs])
+        normal = (A.T @ A).tocsc()
+        try:
+            solution = spsolve(normal, A.T @ b)
+        except Exception:  # noqa: BLE001 -- any failure of the solve means "no solution"
+            return None
+        if solution is None or not np.all(np.isfinite(solution)):
+            return None
 
-    out = grid.copy()
-    for (i, j), k in free.items():
-        out[i, j][0] = solution[k]
-        out[i, j][1] = solution[k + 1]
-    return out
+        out = grid.copy()
+        out[self.fi, self.fj, 0] = solution[0::2]
+        out[self.fi, self.fj, 1] = solution[1::2]
+        return out
 
 
 def _measure(grid: np.ndarray, coons: np.ndarray) -> tuple[float, float, float, int]:
-    """``(min_angle, max_angle, aspect_max, folds)`` of a relaxed patch.
+    """``(min_angle, max_angle, aspect_max, folds)`` of a patch grid, folds relative to Coons."""
+    def corners(g: np.ndarray) -> list[np.ndarray]:
+        return [g[:-1, :-1, :2], g[:-1, 1:, :2], g[1:, 1:, :2], g[1:, :-1, :2]]
 
-    ``folds`` counts quads whose orientation flipped relative to their Coons
-    counterpart -- compared against Coons rather than against an absolute
-    winding, so a patch whose Coons parameterisation is itself reversed is
-    judged on whether the relaxation CHANGED it.
+    def signed_area(q: list[np.ndarray]) -> np.ndarray:
+        total = np.zeros(q[0].shape[:2])
+        for a, b in zip(q, q[1:] + q[:1]):
+            total = total + (a[..., 0] * b[..., 1] - b[..., 0] * a[..., 1])
+        return 0.5 * total
+
+    quad = corners(grid)
+    folds = int(np.count_nonzero(signed_area(quad) * signed_area(corners(coons)) <= 0.0))
+
+    lengths = []
+    for a, b in zip(quad, quad[1:] + quad[:1]):
+        d = (a - b).reshape(-1, 2).tolist()
+        # Python's ``x ** 2`` and ``** 0.5``, which numpy does not reproduce exactly
+        lengths.append(np.array([(x ** 2 + y ** 2) ** 0.5 for x, y in d]))
+    angles = []
+    for k in range(4):
+        a, b, c = quad[k - 1], quad[k], quad[(k + 1) % 4]
+        u, v = (a - b).reshape(-1, 2), (c - b).reshape(-1, 2)
+        lu = _root(u[:, 0] * u[:, 0] + u[:, 1] * u[:, 1])
+        lv = _root(v[:, 0] * v[:, 0] + v[:, 1] * v[:, 1])
+        degenerate = (lu < 1e-12) | (lv < 1e-12)
+        dot = (u[:, 0] * v[:, 0] + u[:, 1] * v[:, 1]) / np.where(degenerate, 1.0, lu * lv)
+        angle = np.degrees(np.arccos(np.clip(dot, -1.0, 1.0)))
+        angles.append(np.where(degenerate, 0.0, angle))
+
+    angles = np.stack(angles)
+    lengths = np.stack(lengths)
+    shortest = lengths.min(axis=0)
+    if np.any(shortest <= 0.0):
+        aspect = float('inf')
+    else:
+        aspect = max(0.0, float((lengths.max(axis=0) / shortest).max()))
+    return float(min(180.0, angles.min())), float(max(0.0, angles.max())), aspect, folds
+
+
+def _accepts(measured: tuple[float, float, float, int],
+             reference: tuple[float, float, float, int], spend: bool) -> bool:
+    """Whether a relaxed patch may replace its Coons interior: never folded, and improving unless ``spend``.
+
+    Parameters
+    ----------
+    measured, reference : tuple
+        :func:`_measure` of the relaxed grid and of the Coons grid.
     """
-    n, m, _ = grid.shape
-    lo, hi, aspect, folds = 180.0, 0.0, 0.0, 0
-    for i in range(n - 1):
-        for j in range(m - 1):
-            quad = [grid[i, j], grid[i, j + 1], grid[i + 1, j + 1], grid[i + 1, j]]
-            ref = [coons[i, j], coons[i, j + 1], coons[i + 1, j + 1], coons[i + 1, j]]
-            if _signed_area(quad) * _signed_area(ref) <= 0.0:
-                folds += 1
-            angles = _angles(quad)
-            lo = min(lo, min(angles))
-            hi = max(hi, max(angles))
-            lengths = [((quad[k][0] - quad[(k + 1) % 4][0]) ** 2
-                        + (quad[k][1] - quad[(k + 1) % 4][1]) ** 2) ** 0.5
-                       for k in range(4)]
-            shortest = min(lengths)
-            aspect = (float('inf') if shortest <= 0.0
-                      else max(aspect, max(lengths) / shortest))
-    return lo, hi, aspect, folds
-
-
-def _accepts(grid: np.ndarray, coons: np.ndarray, spend: bool) -> bool:
-    """**The rule that lets tier 2 and tier 3 coexist.**
-
-    Nothing may fold, ever. Past that there are two regimes, and which one a
-    patch is in is decided by whether the domain carries a GUIDE CURVE.
-
-    * ``spend=False`` -- no guide. **Improvement only.** The relaxation may
-      make the patch better aligned but may not make a single element worse:
-      minimum angle may not fall, maximum angle may not rise, aspect ratio may
-      not grow. If no stiffness manages that, the patch keeps its Coons
-      interior and the domain does not move at all.
-    * ``spend=True`` -- a guide curve. The patch may be spent down to
-      ``PATCH_MIN_ANGLE`` / ``PATCH_MAX_ANGLE`` / ``PATCH_MAX_ASPECT``, or to
-      the Coons patch's own values where those are already worse.
-
-    That distinction is the design decision in this module, so it is worth
-    being explicit about why it is not merely a way of passing two sets of
-    tests. **Element quality is spent only to satisfy something the user
-    actually asked for.** A cable is an explicit instruction that a curve
-    matters and that the mesh should follow it; distortion is the price and the
-    user has asked to pay it. A domain with no guide has issued no such
-    instruction -- its field is just the smoothest cross field the boundary
-    admits, and there is nothing to buy.
-
-    That "nothing to buy" is measured, not assumed. Per-patch mean
-    misalignment of the Coons interior, over the suite::
-
-        disc         1.3 - 11.0 deg      hexagon      3.1 - 16.3 deg
-        ellipse      2.3 - 15.0 deg      stadium      1.8 -  7.3 deg
-        square+cable       23.3 deg      (36.9 deg along the cable itself)
-
-    and the alignment the weakest stiffness buys on the unguided ones is 0.1 to
-    5.5 degrees of that. Paying 12 degrees of minimum angle -- which is what
-    the disc did at bg 0.50 before this rule existed -- to recover half a
-    degree of alignment that was discretisation noise to begin with is not a
-    trade anybody wanted.
-    """
-    lo, hi, aspect, folds = _measure(grid, coons)
+    lo, hi, aspect, folds = measured
     if folds:
         return False
-    ref_lo, ref_hi, ref_aspect, _ = _measure(coons, coons)
+    ref_lo, ref_hi, ref_aspect, _ = reference
     if not spend:
         return lo >= ref_lo and hi <= ref_hi and aspect <= ref_aspect
     return (lo >= min(PATCH_MIN_ANGLE, ref_lo)
@@ -531,28 +359,44 @@ def _accepts(grid: np.ndarray, coons: np.ndarray, spend: bool) -> bool:
             and aspect <= max(PATCH_MAX_ASPECT, ref_aspect))
 
 
-def _signed_area(points: Any) -> float:
-    total = 0.0
-    for a, b in pairwise(list(points) + list(points[:1])):
-        total += a[0] * b[1] - b[0] * a[1]
-    return 0.5 * total
+def _settle(
+    system: _PatchSystem,
+    coons: np.ndarray,
+    sampler: FieldSampler,
+    stiffness: float,
+    iterations: int,
+    tikhonov: float,
+    still: float,
+) -> tuple[str, np.ndarray | None]:
+    """Solve and re-arm until the grid stops moving, at one stiffness.
 
-
-def _angles(points: Any) -> list[float]:
-    out = []
-    k = len(points)
-    for i in range(k):
-        a, b, c = points[i - 1], points[i], points[(i + 1) % k]
-        ux, uy = a[0] - b[0], a[1] - b[1]
-        vx, vy = c[0] - b[0], c[1] - b[1]
-        lu = (ux * ux + uy * uy) ** 0.5
-        lv = (vx * vx + vy * vy) ** 0.5
-        if lu < 1e-12 or lv < 1e-12:
-            out.append(0.0)
-            continue
-        dot = max(-1.0, min(1.0, (ux * vx + uy * vy) / (lu * lv)))
-        out.append(degrees(np.arccos(dot)))
-    return out
+    Returns
+    -------
+    (str, ndarray or None)
+        ``'failed'`` (no field under the patch, or a singular system),
+        ``'unsettled'`` (it never contracted -- an oscillation, not a
+        solution), ``'flat'`` (it settled on the Coons grid) or ``'settled'``,
+        with the grid.
+    """
+    grid = coons.copy()
+    first = shift = float('inf')
+    for _ in range(iterations):
+        theta = _unwrap(grid, sampler)
+        if theta is None:
+            return 'failed', None
+        nxt = system.solve(grid, theta, stiffness, tikhonov)
+        if nxt is None:
+            return 'failed', None
+        shift = float(np.max(np.abs(nxt - grid)))
+        first = shift if first == float('inf') else first
+        grid = nxt
+        if shift < still:
+            break
+    if shift > CONTRACTION * first and shift > still:
+        return 'unsettled', grid
+    if float(np.max(np.abs(grid - coons))) < still:
+        return 'flat', grid
+    return 'settled', grid
 
 
 def relax_patch(
@@ -566,101 +410,96 @@ def relax_patch(
     stiffness: tuple[float, ...] = STIFFNESS,
     guard: bool = True,
     spend: bool = False,
+    early_exit: bool = True,
 ) -> tuple[list[list[float]], list[list[int]], str, dict[str, Any]]:
-    """**The field-aware replacement for** ``discrete_coons_patch``.
-
-    Same signature, same vertex order -- ``i * m + j`` -- so it drops into the
-    densification loop unchanged and a patch that does not move comes out
-    bit-identical.
-
-    Works down the ``stiffness`` schedule, weakest first, and takes the first
-    result :func:`_accepts` passes. Weakest-first is the point: a patch buys as
-    much alignment as its own fixed boundary can carry, and a patch that can
-    carry none is left exactly as Coons made it. There is no global tuning
-    constant deciding that -- each patch answers for itself.
+    """The field-aware replacement for ``discrete_coons_patch``, same arguments and vertex order.
 
     Parameters
     ----------
     ab, bc, dc, ad : list[[x, y, z]]
-        The four boundary polylines, exactly as ``discrete_coons_patch`` wants
-        them. Held FIXED; only the interior moves.
+        The four boundary polylines, as ``discrete_coons_patch`` takes them.
+        Held fixed.
     sampler : FieldSampler
     iterations, tikhonov, stiffness : optional
+        See :data:`ITERATIONS`, :data:`TIKHONOV`, :data:`STIFFNESS`.
     guard : bool, optional
-        ``False`` takes the first stiffness that SETTLES without asking whether
-        the patch it produced is usable. Only for measuring the trade-off --
-        ``16_field_densify.py --tradeoff`` -- never for producing a mesh.
+        ``False`` takes the first stiffness that settles without asking whether
+        the patch is usable. For measuring the trade-off only.
     spend : bool, optional
-        Whether element quality may be spent to buy alignment. True only where
-        a guide curve asked for it. See :func:`_accepts`.
+        Whether element quality may be spent to buy alignment. See
+        :func:`_accepts`.
+    early_exit : bool, optional
+        When quality may not be spent, try the STIFFEST setting first -- the one
+        closest to Coons, so the likeliest to pass -- and keep the Coons
+        interior at once if even that is refused, instead of walking the whole
+        schedule to the same answer.
 
     Returns
     -------
     (list, list, str, dict)
-        Vertices, faces, a one-word verdict -- ``'relaxed'``, ``'flat'`` (no
-        interior node, or none that moved) or ``'guarded'`` (nothing on the
-        schedule was acceptable, so the Coons interior was kept) -- and what
-        was measured: ``stiffness``, ``min``, ``max``, ``folds``.
+        Vertices, faces, a verdict -- ``'relaxed'``, ``'flat'`` (nothing moved)
+        or ``'guarded'`` (no stiffness was acceptable, the Coons interior is
+        kept) -- and ``stiffness``, ``min``, ``max``, ``aspect``, ``folds`` of
+        the last result measured.
     """
     vertices, faces = discrete_coons_patch(ab, bc, dc, ad)
     n, m = len(ab), len(bc)
-    coons = np.array([[v[0], v[1], v[2]] for v in vertices], dtype=float)
-    coons = coons.reshape(n, m, 3)
-    info = {'stiffness': None, 'min': None, 'max': None, 'folds': None,
-            'aspect': None}
+    coons = np.array([[v[0], v[1], v[2]] for v in vertices], dtype=float).reshape(n, m, 3)
+    info = {'stiffness': None, 'min': None, 'max': None, 'folds': None, 'aspect': None}
 
     if n < 3 or m < 3:
         return vertices, faces, 'flat', info
 
     scale = float(np.mean(np.abs(np.diff(coons[:, :, :2], axis=0)))) or 1.0
     still = TOLERANCE * scale
+    system = _PatchSystem(coons)
+    reference = _measure(coons, coons)
+
+    def verdict(mu: float, grid: np.ndarray) -> tuple[bool, dict[str, Any]]:
+        measured = _measure(grid, coons)
+        lo, hi, aspect, folds = measured
+        found = {'stiffness': mu, 'min': lo, 'max': hi, 'folds': folds, 'aspect': aspect}
+        return (not guard or _accepts(measured, reference, spend)), found
+
+    known = {}
+    if early_exit and guard and not spend and len(stiffness) > 1:
+        mu = stiffness[-1]
+        known[mu] = _settle(system, coons, sampler, mu, iterations, tikhonov, still)
+        status, grid = known[mu]
+        if status == 'failed':
+            return vertices, faces, 'guarded', info
+        if status == 'unsettled':
+            return vertices, faces, 'guarded', info
+        if status == 'settled':
+            ok, info = verdict(mu, grid)
+            if not ok:
+                return vertices, faces, 'guarded', info
 
     for mu in stiffness:
-        grid = coons.copy()
-        first = shift = float('inf')
-        for _ in range(iterations):
-            theta = _unwrap(grid, sampler)
-            if theta is None:
-                return vertices, faces, 'guarded', info
-            nxt = _solve(grid, coons, theta, mu, tikhonov)
-            if nxt is None:
-                return vertices, faces, 'guarded', info
-            shift = float(np.max(np.abs(nxt - grid)))
-            first = shift if first == float('inf') else first
-            grid = nxt
-            if shift < still:
-                break
-
-        if shift > CONTRACTION * first and shift > still:
-            continue                      # never contracted -- not a solution
-
-        if float(np.max(np.abs(grid - coons))) < still:
-            # The Coons grid was ALREADY the minimiser and the solve only added
-            # its own round-off -- a constant field over a rectangular patch,
-            # which is every rectilinear plate in the suite. Hand back the input
-            # untouched so those domains come out bit-identical rather than
-            # identical to fourteen decimal places. TRAP 3, module docstring.
+        status, grid = known.get(mu) or _settle(system, coons, sampler, mu, iterations, tikhonov, still)
+        if status == 'failed':
+            return vertices, faces, 'guarded', info
+        if status == 'unsettled':
+            continue
+        if status == 'flat':
+            # Coons was already the minimiser; hand the input back untouched
             return vertices, faces, 'flat', info
-
-        lo, hi, aspect, folds = _measure(grid, coons)
-        info = {'stiffness': mu, 'min': lo, 'max': hi, 'folds': folds,
-                'aspect': aspect}
-        if not guard or _accepts(grid, coons, spend):
-            out = [[float(p[0]), float(p[1]), float(p[2])]
-                   for p in grid.reshape(n * m, 3)]
+        ok, info = verdict(mu, grid)
+        if ok:
+            out = [[float(p[0]), float(p[1]), float(p[2])] for p in grid.reshape(n * m, 3)]
             return out, faces, 'relaxed', info
 
     return vertices, faces, 'guarded', info
 
 
 # ------------------------------------------------------------------
-# the densification itself
+# the densification
 # ------------------------------------------------------------------
 
 def field_densification(
     coarse: CoarsePseudoQuadMesh,
     field: CrossField,
-    tracer: Tracer,
+    locator: Any = None,
     edges_to_curves: dict[tuple[int, int], list[list[float]]] | None = None,
     iterations: int = ITERATIONS,
     tikhonov: float = TIKHONOV,
@@ -668,26 +507,22 @@ def field_densification(
     guard: bool = True,
     spend: bool = False,
     field_aware: bool = True,
+    early_exit: bool = True,
 ) -> tuple[Any, dict[str, Any]]:
-    """**Densify a coarse layout with the field steering patch interiors.**
+    """Densify a coarse layout with the field steering ordinary patch interiors.
 
-    A drop-in for ``CoarsePseudoQuadMesh.densification`` -- same strip
-    densities, same ``edges_to_curves``, same welding, same ``face_pole``
-    bookkeeping, and it sets the result on ``coarse`` so ``get_quad_mesh``
-    keeps working. The single difference is that an ordinary patch's interior
-    comes from :func:`relax_patch` instead of ``discrete_coons_patch``.
-
-    ``compas_singular`` itself is not touched; this is a parallel
-    implementation of the same loop.
+    A drop-in for ``CoarsePseudoQuadMesh.densification``.
 
     Parameters
     ----------
     coarse : CoarsePseudoQuadMesh
-        Strips already collected and densities already set.
+        Strips collected and densities set.
     field : CrossField
-    tracer : Tracer
+    locator : PointLocator, optional
+        Defaults to ``field.locator()``. A :class:`Tracer` is accepted too.
     edges_to_curves : dict, optional
-    iterations, tikhonov, stiffness, guard, spend : optional
+        ``{(u, v): polyline}``. An edge missing from it densifies as a chord.
+    iterations, tikhonov, stiffness, guard, spend, early_exit : optional
         Passed to :func:`relax_patch`.
     field_aware : bool, optional
         ``False`` reproduces ``discrete_coons_patch`` exactly, for A/B tests.
@@ -695,10 +530,14 @@ def field_densification(
     Returns
     -------
     (mesh, dict)
-        The dense mesh, and counts: ``patches``, ``relaxed``, ``poles``
-        (skipped because they are pseudo-quads), ``guarded`` (relaxed and
-        rejected) and ``flat`` (no interior node to move), plus ``stiffness``
-        -- the stiffnesses actually used, worst first -- and ``folds``.
+        The dense mesh, and counts: ``patches``; ``relaxed``, ``guarded`` and
+        ``flat`` (from :func:`relax_patch`); ``poles`` (pseudo-quads, kept
+        Coons); ``coons`` (patches left Coons because ``field_aware`` is off);
+        ``stiffness`` (per relaxed patch) and ``folds``. ``seam_edge`` maps the
+        geometric key of every patch-boundary node to ``(u, v, index)`` -- the
+        coarse edge it lies on and its position along it -- which
+        :func:`relax.relax_mesh` needs to slide seam nodes without reordering
+        them.
     """
     edge_strip = {}
     for strip, edges in coarse.strips(data=True):
@@ -706,24 +545,11 @@ def field_densification(
             edge_strip[u, v] = strip
             edge_strip[v, u] = strip
 
-    pole_map = [TOL.geometric_key(coarse.vertex_coordinates(pole))
-                for pole in coarse.poles()]
+    pole_map = [TOL.geometric_key(coarse.vertex_coordinates(pole)) for pole in coarse.poles()]
 
-    sampler = FieldSampler(field, tracer) if field_aware else None
+    sampler = FieldSampler(field, locator) if field_aware else None
     stats = {'patches': 0, 'relaxed': 0, 'poles': 0, 'guarded': 0, 'flat': 0,
-             'stiffness': [], 'folds': 0}
-    # ``geometric_key -> (u, v, index)``: which coarse edge each patch-boundary node
-    # came from, and its position ALONG that edge. Geometric key is the one identity
-    # that survives ``meshes_join_and_weld``, which is keyed the same way.
-    #
-    # A post-pass that lets a seam node SLIDE along its own separatrix needs both
-    # halves. The curve, because recovering it afterwards by proximity picks the
-    # wrong polyline wherever two seams meet. The index, because a node free to slide
-    # anywhere along a curve can slide PAST its neighbour and collapse the edge
-    # between them -- measured, that turns the ring cable into a 0.00/180.00 degree
-    # mesh. Order along the curve is the guard, and here is the only place it is
-    # still known exactly.
-    stats['seam_edge'] = {}
+             'coons': 0, 'stiffness': [], 'folds': 0, 'seam_edge': {}}
 
     meshes = []
     for fkey in coarse.faces():
@@ -731,11 +557,6 @@ def field_densification(
         polylines = []
         for u, v in coarse.face_halfedges(fkey):
             d = coarse.get_strip_density(edge_strip[u, v])
-            # Falls back to a straight chord for any edge missing from
-            # ``edges_to_curves`` instead of raising -- the mapping no longer
-            # has to be complete for the whole layout, only for the edges the
-            # caller (``CoarseQuadMesh.densification``'s ``boundary_curvature``
-            # / ``skeleton_curvature`` split) actually wants curved.
             polyline = coarse._create_patch_edge(u, v, d, edges_to_curves)
             for index, point in enumerate(polyline):
                 stats['seam_edge'].setdefault(TOL.geometric_key(point), (u, v, index))
@@ -744,34 +565,26 @@ def field_densification(
         pseudo = coarse.is_face_pseudo_quad(fkey)
         if pseudo:
             pole = coarse.attributes['face_pole'][fkey]
-            idx = coarse.face_vertices(fkey).index(pole)
-            polylines.insert(idx, None)
+            polylines.insert(coarse.face_vertices(fkey).index(pole), None)
 
         ab, bc, cd, da = polylines
         dc = cd[::-1] if cd else None
         ad = da[::-1] if da else None
 
         if sampler is None or pseudo:
-            # A pole keeps its Coons interior -- see the module docstring. The
-            # collapsed side costs the system its rank, and the field has no
-            # continuous branch at a singularity to integrate anyway.
             vertices, faces = discrete_coons_patch(ab, bc, dc, ad)
-            stats['poles' if pseudo else 'coons'] = stats.get(
-                'poles' if pseudo else 'coons', 0) + 1
+            stats['poles' if pseudo else 'coons'] += 1
         else:
             vertices, faces, verdict, info = relax_patch(
-                ab, bc, dc, ad, sampler, iterations=iterations,
-                tikhonov=tikhonov, stiffness=stiffness, guard=guard,
-                spend=spend)
+                ab, bc, dc, ad, sampler, iterations=iterations, tikhonov=tikhonov,
+                stiffness=stiffness, guard=guard, spend=spend, early_exit=early_exit)
             stats[verdict] += 1
             if verdict == 'relaxed':
                 stats['stiffness'].append(info['stiffness'])
                 stats['folds'] += info['folds'] or 0
 
-        faces = [[u for u, v in pairwise(face + face[:1]) if u != v]
-                 for face in faces]
-        meshes.append(PseudoQuadMesh.from_vertices_and_faces_with_face_poles(
-            vertices, faces))
+        faces = [[u for u, v in pairwise(face + face[:1]) if u != v] for face in faces]
+        meshes.append(PseudoQuadMesh.from_vertices_and_faces_with_face_poles(vertices, faces))
 
     face_pole_map = {}
     for mesh in meshes:

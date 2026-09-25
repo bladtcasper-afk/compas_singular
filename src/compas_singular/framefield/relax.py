@@ -1,61 +1,6 @@
-"""Step 7b -- **global relaxation** of the dense mesh, after densification.
+"""Global relaxation of the dense mesh after densification, with topological per-vertex constraints.
 
-WHY THIS EXISTS AND WHAT IT IS NOT
-----------------------------------
-
-``densify.relax_patch`` solves ``alignment + stiffness * Laplacian`` **per patch, with
-the four patch boundaries held fixed** -- the load-bearing decision that keeps patches
-welding into a manifold and keeps opposite sides at matching densities. Two things are
-structurally out of its reach because of it, and both were measured:
-
-* **Seams.** The worst element in a mesh is routinely ON a patch boundary, which no
-  stiffness setting can move: ``square+cable`` min 42.88 on the seams against 66.43
-  inside the patches.
-* **Anything Coons already got wrong.** ``_accepts`` clamps its floor to
-  ``min(PATCH_MIN_ANGLE, ref_lo)``, so it can stop a patch being spent below its Coons
-  reference but can never make one BETTER than it. Raising the floors 30 -> 45 -> 55
-  moves ``square+ring cable`` not at all: min 13.73 at every setting.
-
-WHAT IS CONSTRAINED, AND WHY NOT THE GUIDES
--------------------------------------------
-
-Every constraint is chosen **topologically**, never by proximity, and that is measured
-rather than stylistic. Pinning the interior vertices *nearest* a guide takes
-``square+ring cable`` from 13.73/135.00 to **11.56/167.37**, worse than no post-pass at
-all; constraining those same vertices ONTO the guide curve **folds faces** (max 180.00).
-A radius around a curve collects a ragged band from both sides, and projecting that band
-onto a line collapses it.
-
-======================  ==================================================
- domain boundary         slides along the boundary curve, corners pinned
- patch seams             slide along their own ``edges_to_curves`` polyline
- singularities, poles    pinned
- everything else         free
- guides                  **nothing** -- see below
-======================  ==================================================
-
-Guides get no constraint. They are already in the field and in the separatrix routing,
-and there is nothing well defined to constrain anyway: the field route never snaps a
-polyedge onto a guide, so no chain of vertices *is* the guide -- ``square+ring cable``
-carries **2** vertices within 0.05 of its ring in a 207-face mesh. What protects the
-guide through this pass is that the layout carrying it is topological.
-
-TWO GUARDS, BOTH LEARNED THE HARD WAY
--------------------------------------
-
-**Order along the curve.** A vertex free to slide anywhere on its polyline can slide
-past its neighbour, collapsing the edge between them. Unguarded, this pass took the ring
-cable to **min 0.00 / max 180.00 / aspect inf** -- a hard-floor breach, far worse than
-the mesh it started from. So every chain of vertices sharing a curve keeps its original
-order along it, clamped by arc-length parameter with a minimum gap.
-
-**Improvement only, unless there is something to buy.** On an already-good domain this
-pass makes things worse: ``disc+round hole`` starts at 80.63/99.37 and a free relaxation
-takes it to 74.26/108.00, because an area-based smoother redistributes boundary vertices
-that were already right. So the result is accepted only if it does not worsen the
-minimum angle, the maximum angle or the aspect ratio -- exactly the rule
-``densify._accepts`` applies to an unguided patch. A domain with nothing to gain is left
-untouched rather than nudged.
+Sliding vertices keep their order; the result is kept only if no quality measure got worse.
 """
 from __future__ import annotations
 
@@ -65,6 +10,7 @@ from typing import Any
 from typing import Sequence
 from typing import TYPE_CHECKING
 
+import numpy as np
 from compas.tolerance import TOL
 
 from compas_singular.geometry.polyline import closest_on_polyline
@@ -75,13 +21,12 @@ if TYPE_CHECKING:
 
 __all__ = ['relax_mesh', 'relaxation_constraints']
 
-#: Smoothing schedule, gentlest first. The first setting whose result is accepted
-#: wins, so a mesh takes the least relaxation that helps it and no more -- the same
-#: shape of rule as ``densify.STIFFNESS``.
+#: ``(iterations, damping)`` settings, gentlest first. The first accepted wins,
+#: so a mesh takes the least relaxation that helps it.
 SCHEDULE = ((20, 0.3), (50, 0.5), (100, 0.5))
 
-#: Minimum spacing between two vertices sliding on the same curve, as a fraction of
-#: their original spacing. Zero would let an edge collapse; 1 would freeze the chain.
+#: Minimum spacing between two vertices sliding on one curve, as a fraction of
+#: their mean spacing: 0 would let an edge collapse, 1 would freeze the chain.
 MIN_GAP = 0.25
 
 
@@ -99,24 +44,52 @@ class _Curve(object):
         for a, b in zip(self.points, self.points[1:]):
             self.cumulative.append(self.cumulative[-1] + _distance(a, b))
         self.length = self.cumulative[-1]
+        pts = np.array(self.points, dtype=float).reshape(-1, 3)
+        self._a = pts[:-1]
+        self._ab = pts[1:] - pts[:-1]
+        self._len2 = (self._ab * self._ab).sum(axis=1)
 
     def project(self, xyz: list[float]) -> tuple[list[float] | None, float]:
-        """``(point, parameter)`` of the closest point, parameter as arc length.
-
-        The arc length is an O(1) lookup rather than a second pass: the search
-        reports WHICH segment won, and :attr:`cumulative` already holds the
-        length up to it.
-        """
+        """``(point, parameter)`` of the closest point, parameter as arc length."""
         index, t, q, d = closest_on_polyline(xyz, self.points)
         if d == float('inf'):
             return None, 0.0
+        return q, self._parameter(index, t)
+
+    def _parameter(self, index: int, t: float) -> float:
         a, b = self.points[index], self.points[index + 1]
-        # not _distance: it squares with ``** 2``, which is not always exactly
-        # ``x * x`` here, and the cumulative table this adds to was built the
-        # other way round
         abx, aby, abz = b[0] - a[0], b[1] - a[1], b[2] - a[2]
         span = (abx * abx + aby * aby + abz * abz) ** 0.5
-        return q, self.cumulative[index] + t * span
+        return self.cumulative[index] + t * span
+
+    def project_many(self, points: list[list[float]]) -> list[tuple[list[float] | None, float]]:
+        """:meth:`project` for many points, with the same results."""
+        if not points or not len(self._a):
+            return [self.project(p) for p in points]
+        p = np.asarray([[x[0], x[1], x[2]] for x in points], dtype=float)
+        a, ab, len2 = self._a[None, :, :], self._ab[None, :, :], self._len2[None, :]
+        valid = len2 != 0.0
+        with np.errstate(invalid='ignore', divide='ignore'):
+            t = ((p[:, None, 0] - a[..., 0]) * ab[..., 0] + (p[:, None, 1] - a[..., 1]) * ab[..., 1]
+                 + (p[:, None, 2] - a[..., 2]) * ab[..., 2]) / len2
+        t = np.clip(np.where(valid, t, 0.0), 0.0, 1.0)
+        q = a + ab * t[..., None]
+        d = np.sqrt(((q - p[:, None, :]) ** 2).sum(axis=2))
+        d = np.where(valid, d, np.inf)
+        near = d <= d.min(axis=1, keepdims=True) * (1.0 + 1e-9) + 1e-12
+
+        out = []
+        for row, xyz in enumerate(points):
+            best = None
+            for i in np.flatnonzero(near[row]).tolist():
+                index, ti, qi, di = closest_on_polyline(xyz, self.points[i:i + 2])
+                if di != float('inf') and (best is None or di < best[3]):
+                    best = (i + index, ti, qi, di)
+            if best is None:
+                out.append((None, 0.0))
+            else:
+                out.append((best[2], self._parameter(best[0], best[1])))
+        return out
 
     def point_at(self, parameter: float) -> list[float]:
         """The point at an arc-length parameter, clamped to the curve."""
@@ -139,20 +112,7 @@ def _distance(a: list[float], b: list[float]) -> float:
 # ------------------------------------------------------------------
 
 def _singularities(mesh: Mesh) -> set[int]:
-    """Interior vertices whose valency is not 4, plus every pole.
-
-    A pole is a collapsed side, so it is a singularity a valency count cannot see --
-    ``face_pole`` is where it is recorded.
-
-    **Off by default**, and the reasoning that said otherwise was wrong. Pinning these
-    looks principled -- they are the layout's irregular nodes -- but moving one does
-    not change its valency, so it is not a topology change at all, just a vertex
-    finding a better position. Measured on ``square+ring cable``, pinning them is what
-    stopped this pass working: singularities+poles pinned, rejected; poles only,
-    rejected; nothing pinned, **accepted at min 13.73 -> 17.63, max 135.00 -> 129.78,
-    aspect 4.69 -> 3.32**. Which is the same mistake as pinning the vertices nearest a
-    guide, wearing better clothes.
-    """
+    """Interior vertices whose valency is not 4, plus every pole."""
     out = set()
     for vertex in mesh.vertices():
         if mesh.is_vertex_on_boundary(vertex):
@@ -185,18 +145,18 @@ def relaxation_constraints(
     seams: str = 'free',
     pin_singularities: bool = False,
 ) -> tuple[dict[_Curve, list[int]], set[int]]:
-    """Work out what each vertex may do.
+    """What each vertex may do.
 
     Returns
     -------
     (dict, set)
-        ``chains`` maps a :class:`_Curve` to the ordered list of vertices sliding on
-        it, and ``pinned`` is the set of vertices that may not move at all.
+        ``chains`` maps a :class:`_Curve` to the ordered vertices sliding on
+        it; ``pinned`` is the set of vertices that may not move.
     """
     pinned = set(_singularities(mesh)) if pin_singularities else set()
     chains = {}
 
-    # -- the domain outline: slide along it, pin the corners ------------------
+    # the outline: slide along it, pin the corners
     limit = cos(radians(180.0 - corner_angle))
     for keys, curve in _boundary_curves(mesh):
         count = len(keys)
@@ -210,19 +170,19 @@ def relaxation_constraints(
             if lu <= 0.0 or lv <= 0.0:
                 continue
             cosine = sum(u[k] * v[k] for k in range(3)) / (lu * lv)
-            if cosine < limit:                       # a kink: this is a domain corner
+            if cosine < limit:
                 pinned.add(vertex)
         chains[curve] = [v for v in keys if v not in pinned]
 
-    # -- patch seams ----------------------------------------------------------
     if seams == 'free':
         return chains, pinned
 
+    # the patch seams: each chain in its order along its own coarse edge
     if seam_edge and edges_to_curves:
         by_edge = {}
         for vertex in mesh.vertices():
             if mesh.is_vertex_on_boundary(vertex):
-                continue                              # the outline already claimed it
+                continue
             found = seam_edge.get(TOL.geometric_key(mesh.vertex_coordinates(vertex)))
             if found is None:
                 continue
@@ -270,16 +230,13 @@ def _reproject(mesh: Mesh, chains: dict[_Curve, list[int]]) -> None:
     for curve, ordered in chains.items():
         if not ordered:
             continue
-        wanted = []
-        for vertex in ordered:
-            _, parameter = curve.project(mesh.vertex_coordinates(vertex))
-            wanted.append(parameter)
+        found = curve.project_many([mesh.vertex_coordinates(v) for v in ordered])
+        wanted = [parameter for _, parameter in found]
 
-        # the spacing the chain started with, as the floor each gap may not go below
         floor = MIN_GAP * (curve.length / (len(ordered) + 1))
 
-        # one forward sweep then one backward sweep leaves the sequence increasing
-        # and inside the curve, which is what stops a vertex passing its neighbour
+        # a forward then a backward sweep leaves the parameters increasing and
+        # on the curve, so no vertex passes its neighbour
         for i in range(1, len(wanted)):
             wanted[i] = max(wanted[i], wanted[i - 1] + floor)
         upper = curve.length if not curve.closed else curve.length - floor
@@ -298,29 +255,27 @@ def _smooth(
     kmax: int,
     damping: float,
 ) -> None:
-    """Area-weighted smoothing, with the sliding vertices reprojected every round."""
+    """``kmax`` rounds of area-weighted smoothing, reprojecting the sliding
+    vertices after each."""
     fixed = set(pinned)
-    for k in range(kmax):
+    movable = [v for v in mesh.vertices() if v not in fixed]
+    around = {v: [f for f in mesh.vertex_faces(v, ordered=True) if f is not None] for v in movable}
+    for _ in range(kmax):
+        area = {f: mesh.face_area(f) for f in mesh.faces()}
+        centre = {f: list(mesh.face_centroid(f)) for f in mesh.faces()}
         centroid = {}
-        for vertex in mesh.vertices():
-            if vertex in fixed:
-                continue
-            areas, points = [], []
-            for face in mesh.vertex_faces(vertex, ordered=True):
-                if face is None:
-                    continue
-                areas.append(mesh.face_area(face))
-                points.append(mesh.face_centroid(face))
+        for vertex in movable:
+            faces = around[vertex]
+            areas = [area[f] for f in faces]
+            points = [centre[f] for f in faces]
             if not areas or not sum(areas):
                 continue
             total = sum(areas)
-            centroid[vertex] = [
-                sum(a * p[i] for a, p in zip(areas, points)) / total for i in range(3)]
+            centroid[vertex] = [sum(a * p[i] for a, p in zip(areas, points)) / total for i in range(3)]
 
         for vertex, target in centroid.items():
             xyz = mesh.vertex_coordinates(vertex)
-            mesh.vertex_attributes(vertex, 'xyz', [
-                xyz[i] + damping * (target[i] - xyz[i]) for i in range(3)])
+            mesh.vertex_attributes(vertex, 'xyz', [xyz[i] + damping * (target[i] - xyz[i]) for i in range(3)])
 
         _reproject(mesh, chains)
 
@@ -334,42 +289,37 @@ def relax_mesh(
     seams: str = 'free',
     pin_singularities: bool = False,
 ) -> dict[str, Any]:
-    """**Relax a dense mesh globally**, seams and outline sliding, singularities pinned.
+    """**Relax a dense mesh globally**, its outline sliding along itself.
 
-    Modifies ``mesh`` in place, and only if the result is an improvement -- see the
-    module docstring on why a domain with nothing to gain is left alone.
+    Modifies ``mesh`` in place, and only if no quality measure gets worse.
 
     Parameters
     ----------
     mesh : Mesh
         The dense mesh.
     seam_edge : dict, optional
-        ``{geometric_key: (u, v, index)}`` from ``field_densification``'s stats, i.e.
-        ``FieldDecomposition.densify_stats['seam_edge']``. Without it the patch seams
-        are not recognised and only the outline is constrained.
+        ``{geometric_key: (u, v, index)}``, as in
+        ``FieldDecomposition.densify_stats['seam_edge']``. Needed for ``seams``
+        other than ``'free'``.
     edges_to_curves : dict, optional
-        ``{(u, v): [point, ...]}`` from :meth:`FieldDecomposition.edges_to_curves`.
+        ``{(u, v): [point, ...]}``, from :meth:`FieldDecomposition.edges_to_curves`.
     corner_angle : float, optional
-        Kink angle, in degrees, past which a boundary vertex is a domain corner.
+        Kink angle, in degrees, past which a boundary vertex is a pinned corner.
     schedule : sequence[(int, float)], optional
-        ``(kmax, damping)`` settings, gentlest first.
+        ``(iterations, damping)`` settings, gentlest first.
     seams : {'free', 'slide', 'fixed'}, optional
-        What the patch-seam vertices may do. ``'free'`` -- the default, and the only
-        one measured to help -- lets them leave the separatrix. ``'slide'`` keeps them
-        on their own curve, which never hurts but never helps either: sliding cannot
-        repair a 13.73 degree angle that the seam's own shape causes. ``'fixed'``
-        reproduces today's behaviour, patch interiors only.
+        What the patch-seam vertices may do. ``'free'`` (the default, and the
+        only one measured to help) lets them leave their separatrix; ``'slide'``
+        keeps them on it; ``'fixed'`` pins them.
     pin_singularities : bool, optional
-        Hold the irregular vertices and poles in place. **Off by default** -- see
-        :func:`_singularities` for the measurement that says pinning them is what
-        stops this pass working.
+        Hold irregular vertices and poles in place. Off by default.
 
     Returns
     -------
     dict
-        ``accepted`` -- the setting used, or None if the mesh was left untouched.
-        ``before`` / ``after`` -- ``(min angle, max angle, max aspect)``.
-        ``sliding`` / ``pinned`` -- how many vertices were in each category.
+        ``accepted`` -- the setting used, or ``None`` if the mesh was left
+        untouched; ``before`` / ``after`` -- ``(min angle, max angle, max
+        aspect)``; ``sliding`` / ``pinned`` -- how many vertices of each kind.
     """
     chains, pinned = relaxation_constraints(
         mesh, seam_edge=seam_edge, edges_to_curves=edges_to_curves,
@@ -382,11 +332,16 @@ def relax_mesh(
     report = {'accepted': None, 'before': before, 'after': before,
               'sliding': sliding, 'pinned': len(pinned)}
 
+    done = None                 # (iterations, damping) the mesh is at right now
     for kmax, damping in schedule:
-        _restore(mesh, original)
-        _smooth(mesh, chains, pinned, kmax, damping)
+        if done is not None and done[1] == damping and done[0] <= kmax:
+            # the same damping, further on: continue rather than start again
+            _smooth(mesh, chains, pinned, kmax - done[0], damping)
+        else:
+            _restore(mesh, original)
+            _smooth(mesh, chains, pinned, kmax, damping)
+        done = (kmax, damping)
         after = _quality(mesh)
-        # improvement only: no worse on any of the three
         if after[0] >= before[0] and after[1] <= before[1] and after[2] <= before[2]:
             report['accepted'] = (kmax, damping)
             report['after'] = after

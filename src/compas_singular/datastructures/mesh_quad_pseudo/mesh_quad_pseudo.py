@@ -72,12 +72,7 @@ class PseudoQuadMesh(QuadMesh):
         return [fkey for fkey, pole in self.attributes['face_pole'].items() if pole == vkey]
 
     def is_strip_face(self, fkey: int) -> bool:
-        """A quad, or a triangle registered as a pseudo-quad in ``face_pole``.
-
-        A triangle WITHOUT a pole entry -- one drawn by hand on a dense mesh -- is
-        not a pseudo-quad, and walking it used to raise ``KeyError`` on the
-        ``face_pole`` lookup below.
-        """
+        """A quad, or a triangle registered as a pseudo-quad in ``face_pole``."""
         degree = len(self.face_vertices(fkey))
         return degree == 4 or (degree == 3 and fkey in self.attributes['face_pole'])
 

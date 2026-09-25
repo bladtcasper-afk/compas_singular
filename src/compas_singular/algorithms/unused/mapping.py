@@ -12,8 +12,8 @@ from compas_singular.datastructures import delete_strips
 from compas_singular.datastructures import add_strips
 
 # from .isomorphism import are_strips_isomorphic
-from compas_singular.algorithms.isomorphism import are_meshes_isomorphic
-from compas_singular.algorithms.isomorphism import matches_between_ismorphic_meshes
+from compas_singular.algorithms.unused.isomorphism import are_meshes_isomorphic
+from compas_singular.algorithms.unused.isomorphism import matches_between_ismorphic_meshes
 
 if TYPE_CHECKING:
     from compas_singular.datastructures import QuadMesh

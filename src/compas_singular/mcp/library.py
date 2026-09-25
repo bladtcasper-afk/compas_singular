@@ -1,29 +1,6 @@
-"""**The knowledge the server serves: guidance, workflows, and worked examples.**
+"""The guidance, workflows and worked examples the MCP server serves, as Markdown and JSON on disk.
 
-``agent`` keeps the equivalent in ``runner/prompt.py``, as Python string
-constants assembled at import time. That makes it byte-stable, which is worth
-something for prompt caching, and completely unchangeable without editing the
-package, which is worth rather less. Here it is Markdown and JSON on disk, read
-per request, exposed over MCP's ``resources`` and ``prompts``. Retuning what
-counts as a good mesh is an edit to a text file.
-
-Three kinds of thing live here:
-
-``guidance/*.md``
-    Prose the client can read: what good quality looks like, when to reach for
-    which smoother, how to write a remark. Also read by
-    :mod:`~compas_singular.mcp.describe`, so the thresholds a reading uses and
-    the thresholds a model is told about cannot drift apart.
-``prompts/*.md``
-    Whole workflows, offered through ``prompts/list``.
-``sessions/*.json``
-    Finished sessions with a verdict on them. ``agent`` writes a transcript and
-    never reads one back; this is the half that was missing.
-
-**Nothing here fails loudly.** A missing directory, an unreadable file or a
-malformed example is a gap in the library, not a broken server -- the tools must
-still work with an empty one, because on a fresh checkout that is what there is.
-Every loader returns a default and logs nothing to stdout.
+Nothing here fails loudly; missing files give defaults.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -212,13 +189,7 @@ def get_prompt(name: str, arguments: dict[str, Any] | None = None) -> dict[str, 
 # ==============================================================================
 
 def fingerprint(metrics: dict[str, Any] | None, walls: int = 0, faces: int | None = None) -> dict[str, Any]:
-    """The shape of a PROBLEM, for matching one session against another.
-
-    Deliberately coarse, and deliberately not text. The corpus will be small and
-    what repeats in it is geometry: how many boundary loops, roughly how big,
-    and which defect dominated. Matching on the wording of an instruction would
-    rank a differently-shaped mesh above an identically-shaped one.
-    """
+    """The geometric shape of a problem, for matching one session against another."""
     metrics = metrics or {}
     faces = faces if faces is not None else metrics.get('faces') or 0
     aspect = metrics.get('aspect_max')
@@ -337,12 +308,7 @@ def render_example(record: dict[str, Any]) -> str:
 
 
 def save_example(record: dict[str, Any], directory: str | None = None) -> str:
-    """Write a finished session into the corpus. Returns the path.
-
-    The name is slugged and collisions get a numeric suffix, so saving twice
-    under the same name keeps both rather than overwriting the earlier one --
-    the older run is evidence too.
-    """
+    """Write a finished session into the corpus without overwriting. Returns the path."""
     folder = directory or _folder('sessions')
     if not os.path.isdir(folder):
         os.makedirs(folder)

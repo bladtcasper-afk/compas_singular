@@ -1,31 +1,6 @@
-"""**Match the corners of two rotation seams** (step U4, rotation-only groups).
+"""Match the corners of two rotation seams so copies of the unit weld exactly.
 
-Seam B is seam A rotated. The route meshed the unit without knowing that, so the
-corners it put on B are not, in general, the rotations of the corners on A -- and
-two copies of the unit only weld if they are.
-
-1. **Align.** The corners on each seam, sorted by distance from the centre, are
-   aligned like two sequences: in order, junction with junction (a corner where
-   the seam meets a wall, or the apex, can only pair with its counterpart), with
-   exactly as many corners left unpaired as the two counts differ, and among
-   those alignments the one that moves corners least.
-2. **Split.** Each unpaired corner -- on seam B at distance ``t``, say -- gets a
-   partner by splitting the strip that crosses seam A at ``t``
-   (``CoarseEditor.divide(skey, t)``): every rung of that strip is cut at the
-   same parameter, the one layout edit that stays all-quad by construction. A
-   split that is refused (a strip running into a pole) rules that corner out as
-   the unpaired one and the alignment is redone. Each split is counted in
-   ``attributes['symmetry']['matching_cuts']``.
-3. **Slide and snap.** Paired corners move to their mean distance (a junction
-   stays put and its partner comes to it), and the corner on B is set to exactly
-   ``R`` times its partner on A, so the weld is exact to floating point. No face
-   may turn over doing so.
-
-A drawn cut along the arc of radius ``t`` was the first idea and is wrong: a
-cut must cross every patch through opposite sides, and an arc across a wedge
-generally does not. Greedy nearest-corner pairing was the second: corners half a
-patch apart on either seam are routinely the same corner, and pairing them only
-when they are close sent layouts with equal counts into needless splits.
+Align corners by distance from the centre, split strips for unpaired ones, then slide and snap.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -49,16 +24,7 @@ __all__ = ['match_rotation_seams']
 
 
 def _move(unit: SymmetricUnit, vkey: int, point: Sequence[float]) -> None:
-    """Move a corner and bring the shapes of its edges with it.
-
-    An edge lying along a seam is re-made straight between its new ends. Moving
-    only the end point of its stored polyline is NOT enough: the interior samples
-    stay where the old corner put them, the polyline folds back past the new end,
-    and densification -- which spaces points by arclength along it -- puts the
-    dense vertices of the two seams at different distances, so they do not weld.
-    Other edges only have their end point replaced; they are walls or interior
-    edges, and a matching move is small against them.
-    """
+    """Move a corner and bring its edge shapes along; seam edges are re-made straight."""
     unit.vertex_attributes(vkey, 'xyz', [point[0], point[1], 0.0])
     curves = unit.edges_to_curves()
     if not curves:

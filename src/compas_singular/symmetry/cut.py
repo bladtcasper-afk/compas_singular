@@ -1,39 +1,6 @@
-"""**Cut the unit out of a domain.** One fundamental region of a symmetry group.
+"""Cut the fundamental unit (a wedge between two seams) out of a domain by half-plane clips.
 
-THE WEDGE
----------
-
-Every finite group of the plane about a centre ``c`` has a fundamental region
-that is a WEDGE at ``c``, bounded by two rays, the SEAMS:
-
-========  ====================================  ===============================
-group     seams                                 what gluing along them means
-========  ====================================  ===============================
-``Dn``    two adjacent mirror axes, ``pi/n``    **mirror seams** -- each is fixed
-          apart (``D1``: the two halves of its  point by point by its mirror, so
-          single axis)                          both sides agree automatically
-``Cn``    a ray at ``theta`` and its rotation   **rotation seams** -- a pair, one
-          by ``2 pi / n``                       the image of the other; their
-                                                corners have to be matched
-========  ====================================  ===============================
-
-A wedge is at most a half-plane, so it is the intersection of at most two
-half-planes and cutting a domain by it is two half-plane clips. That is all this
-module does, in plain Python (no shapely -- Rhino 8 does not have it).
-
-HALF-PLANE CLIP OF A REGION WITH HOLES
---------------------------------------
-
-Loops are oriented outer-anticlockwise, holes-clockwise, so the region is always
-on the LEFT of every loop. A loop is split at every crossing of the clip line
-into the chains that lie in the kept half-plane. Each chain starts where the
-loop ENTERS and ends where it EXITS. Along the line, the region's interior is
-the set of intervals from an exit to the next entry, so sorting all entries and
-exits by position along the line and pairing them in order joins the chains up
-along the line into closed loops. A hole that the line cuts becomes a notch in
-an outer loop by this rule, with no special case. Vertices exactly on the line
-count as inside, which handles polygons whose corners sit on a mirror axis -- the
-common case, not the rare one.
+Plain Python, no shapely. Design notes: ``design_notes/symmetry.md``.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -342,12 +309,7 @@ class UnitDomain(object):
         return out
 
     def _line_of(self, a: Sequence[float], b: Sequence[float]) -> int | None:
-        """Index of the seam LINE both points lie on, or ``None``.
-
-        By line rather than by ray: in a half-plane unit (``D1``, ``C2``) the two
-        seams are the two halves of one line, and a wall edge can run straight
-        through the centre from one to the other.
-        """
+        """Index of the seam line both points lie on, or ``None``."""
         lines = self._lines()
         for index, (dx, dy) in enumerate(lines):
             ok = True
@@ -486,13 +448,7 @@ def rotation_seam_candidates(
 def _score_rotation_seams(
     domain: Domain, group: SymmetryGroup, eps: float, samples: int = 180
 ) -> list[tuple[float, float]]:
-    """``[(score, angle)]`` for every sampled seam angle of a rotation-only group.
-
-    Scored by: crossings with holes and guides, poles near the ray, extra
-    crossings of the outer wall (a ray that leaves and re-enters splits the unit
-    into pieces), passing near an outer VERTEX (it would make a sliver corner).
-    Ties go to the smallest angle, so the choice is deterministic.
-    """
+    """``[(score, angle)]`` for every sampled seam angle of a rotation-only group; lower is better."""
     c = group.centre
     span = 2 * pi / group.n
     radius = 2.0 * (domain.diagonal or 1.0)

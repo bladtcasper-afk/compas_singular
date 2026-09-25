@@ -1,15 +1,4 @@
-"""**Reading a mesh, and the three ways of improving one.**
-
-Each tool takes the session first and keyword arguments after, and returns a
-plain dict. The descriptions carry the measurements, because an automated caller
-with no context picks the worst setting available and every one of those is
-cheap to prevent in a sentence and expensive to discover in a loop.
-
-**The ungated passes snapshot themselves.** ``relax`` has a real gate and cannot
-make a mesh worse; the other two apply what they are told and can. Rather than
-rely on a caller remembering to snapshot first, they take one, and report
-``all_improved`` so the decision to undo is a reading rather than a judgement.
-"""
+"""MCP tools that read a mesh and improve it; the ungated passes snapshot themselves."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -23,7 +12,7 @@ from compas_singular.datastructures.mesh.smoothing import automated_boundary_con
 from compas_singular.datastructures.mesh.smoothing import boundary_constrained_smoothing
 from compas_singular.datastructures.mesh.smoothing import constrained_smoothing
 from compas_singular.datastructures.mesh.smoothing import relaxation
-from compas_singular.datastructures.mesh.smoothing import smoothing_region
+from compas_singular.datastructures.mesh.smoothing import region_smoothing
 from compas_singular.editing.guide_chain import GuideCurve
 from compas_singular.editing.guide_chain import attach_chain
 from compas_singular.editing.guide_chain import collect_polyedges
@@ -87,12 +76,7 @@ def _needs_mesh(session: MeshSession) -> dict[str, Any] | None:
 
 
 def _failed(session: MeshSession, what: str, exc: Exception) -> dict[str, Any]:
-    """Refuse a pass that RAISED after its snapshot, putting the mesh back first.
-
-    The library may have moved vertices before it gave up, so returning a bare
-    refusal would leave a half-smoothed mesh in hand with an orphan snapshot on
-    the stack. Restoring that snapshot here makes a failure cost nothing.
-    """
+    """Restore the snapshot and refuse a pass that raised."""
     restored, _detail = session.undo()
     return {'ok': False,
             'reason': '{} failed: {}: {}'.format(what, type(exc).__name__, exc),
@@ -107,12 +91,7 @@ def _reading(session: MeshSession) -> tuple[dict[str, Any] | None, dict[str, Any
 
 
 def _improved(before: dict[str, Any] | None, after: dict[str, Any] | None) -> tuple[dict[str, bool | None], bool, bool]:
-    """Which of the three got better, and whether all of them did.
-
-    The same three ``framefield.relax`` gates on. A pass that improves one and
-    wrecks another has not improved the mesh, so ``all_improved`` is the number
-    that matters and it is reported separately from the individual flags.
-    """
+    """Which of min angle, max angle and aspect got better, and whether all did."""
     keys = ('min_angle', 'max_angle', 'aspect_max')
     higher_is_better = {'min_angle': True, 'max_angle': False, 'aspect_max': False}
     flags = {}
@@ -524,7 +503,7 @@ def _t_smooth_region(session: MeshSession, region: dict[str, Any] | str, kmax: i
     before = session.quality()
     session.snapshot('before smooth_region')
     try:
-        weights = smoothing_region(
+        weights = region_smoothing(
             session.mesh, keys, kmax=int(kmax), damping=float(damping),
             blend=int(blend),
             # None means the region's own boundary vertices slide along the
@@ -676,12 +655,10 @@ def _t_smooth_guides(session: MeshSession, tolerance_factor: float = 2.0, max_an
     'minimal-tension shape under uniform force density, with boundary edges '
     'weighted q_factor times heavier than interior ones so the outline holds '
     'its shape. Needs the compas_fd package; a clean refusal comes back if it '
-    "is not installed. THIS PASS HAS NO GATE, and there is currently no way "
-    "to steer it with custom constraints or loads -- the underlying "
-    "function overwrites its own 'constraints' argument with an empty list "
-    'and uses zero loads, so do not expect anything except the fixed set to '
-    'hold its place. Snapshots first and reports all_improved; undo if that is '
-    'false.',
+    "is not installed. THIS PASS HAS NO GATE, and this tool takes no custom "
+    'constraints or loads (the loads are zero), so do not expect anything '
+    'except the fixed set to hold its place. Snapshots first and reports '
+    'all_improved; undo if that is false.',
     properties={
         'fixed': {
             'type': 'string', 'enum': ['corners', 'boundary', 'manual'],
@@ -729,8 +706,9 @@ def _t_relax_fdm(session: MeshSession, fixed: str = 'corners', fixed_vertices: l
     before = session.quality()
     session.snapshot('before relax_fdm')
     try:
-        relaxation(session.mesh, fixed=fixed, fixed_vertices=resolved_fixed,
-                  q_factor=float(q_factor))
+        relaxation(session.mesh,
+                   fixed=resolved_fixed if fixed == 'manual' else fixed,
+                   q_factor=float(q_factor))
     except ImportError as exc:
         session.undo()
         return {'ok': False,

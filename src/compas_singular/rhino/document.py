@@ -1,22 +1,6 @@
-"""**Where a session is kept inside a Rhino document -- the one module that knows.**
+"""Where a session is kept in a Rhino document: a compressed snapshot on a hidden anchor object's attributes.
 
-One snapshot of the whole session, on one hidden object (the "anchor") on the
-locked layer ``TopologyProblem::Session``, in its attributes' ``UserDictionary``.
-It is changed only through ``doc.Objects.ModifyAttributes``, which makes the
-change part of the running command's undo record: Rhino's own Ctrl+Z restores
-the previous snapshot together with the drawing, Ctrl+Y the next one, and no
-Python runs during either. It also saves inside the ``.3dm``.
-
-**(verify)** That attribute changes made this way are undone AND redone is what
-RhinoCommon documents, but it has not been checked in Rhino yet;
-``rhino_plugin/dev/CMD_probe_undo_storage.py`` does. If document user text
-(``doc.Strings``) turns out to be undoable too, it needs no object, and only this
-module changes.
-
-The snapshot is compressed (zlib, then base64 so it is a string): Rhino keeps a
-copy of it for every undo step, and a 48 640-face project is 6.8 MB of JSON but
-1.7 MB compressed. The revision is stored beside it, uncompressed, so checking
-whether the document still holds what a session last wrote costs nothing.
+Changed via ``ModifyAttributes`` so Rhino's undo restores it; redo not yet verified in Rhino.
 """
 from __future__ import absolute_import
 from __future__ import division

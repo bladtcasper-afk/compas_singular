@@ -1,65 +1,6 @@
-"""Directional guide metrics: does the mesh run ALONG the guide, and mid-block?
+"""Directional guide metrics per face the guide crosses: along, across and off-centre.
 
-``quality.curve_alignment`` cannot answer either question, deliberately. It folds
-the angle into the cross's period, so *"an edge crossing the curve at 90 degrees
-counts as aligned as one running along it, because a quad mesh has two families and
-a cable may be either."* That is the right convention for asking whether the FIELD
-is aligned -- it is what makes the mesh number and the field number comparable, which
-is what the whole field -> mesh objective is stated on.
-
-It is the wrong convention for asking whether the guide got what it was for. A cable
-is a cable and the quads are blocks, so the cable must run down the **middle of a row
-of faces**; a cable sitting on the shared edges between two rows is a cable in the
-joint between two blocks. Those two meshes score **identically** under a
-cross-symmetric metric. So does a mesh whose courses run across the cable instead of
-along it.
-
-WHY THE EDGES ARE NOT SELECTED BY INCIDENCE
--------------------------------------------
-
-Selecting the edges by INCIDENCE -- vertices within ``on_tol=0.05`` of the guide, i.e.
-essentially exactly on it -- only works when something *creates* that incidence by
-snapping a polyedge onto the guide. **The frame-field route never snaps.** The guide is
-a field constraint; no vertex is placed on it on purpose. At ``target_length=1.0`` on a
-10-unit domain, ``on_tol`` is half a percent of an edge, so the incident set is expected
-to be empty and ``along``/``across`` undefined. That is very likely why
-``curve_alignment`` was written radius-based in the first place.
-
-Loosening ``on_tol`` into a radius is the wrong repair: a radius around a curve collects
-a ragged band of vertices from BOTH sides, which is the selection that folded faces when
-it was tried as a smoothing constraint.
-
-So select by FACE instead, which has no incidence assumption. A face counts if the guide passes
-through it. Then:
-
-* the face's two edge families give **along** (the family nearer the tangent, want 0
-  degrees) and **across** (the other one, want 90);
-* the guide's offset from the face centre, in units of half the face width across the
-  guide, gives **off-centre** -- 0 is dead centre (mid-block), 1 is on the face edge
-  (in the joint).
-
-All three from one pass, no incidence, no chord tracking, no radius averaging.
-
-READING THE NUMBERS
--------------------
-
-**Always report the no-guide control.** Where a guide runs parallel to what the mesh
-would have done anyway, ``across`` scores ~90 whether or not the guide did anything, so
-an impressive number on a flat guide means nothing on its own. ``across_tilted`` bins to
-the stations where the guide is more than ``steep`` degrees off horizontal, which on an
-axis-aligned domain is where a course actually has to turn. Horizontal is a proxy, and
-only a meaningful one when the domain's natural grid is axis-aligned -- the control is
-the real defence, not the binning.
-
-**No boundary margin.** Excluding a fan of vertices near the boundary looks reasonable
-and, on a bowed guide, deletes exactly the tilted part -- the only part the metric is
-about. Measured on one such mesh: margin 0 -> 76.4 deg / 62% within 15; 1.5 -> 78.7 / 79;
-2.0 -> 80.6 / 88. None of those three numbers is about the boundary.
-
-**Poles are skipped, not reconstituted.** A pseudo-quad has three corners and no two
-edge families, so there is nothing to call along or across. They are counted separately
-rather than silently dropped, for the same reason ``quality.py`` never reconstitutes the
-phantom fourth corner.
+Compare with a no-guide control.
 """
 from __future__ import annotations
 
@@ -77,7 +18,7 @@ if TYPE_CHECKING:
 __all__ = ['guide_metrics', 'format_guide_metrics']
 
 #: A guide station is "tilted" past this many degrees off horizontal. See the
-#: module docstring on why this is a proxy and the control is the real defence.
+#: design_notes/framefield.md (guides.py) on why this is a proxy and the control is the real defence.
 STEEP = 12.0
 
 #: ``across`` counts as on target within this many degrees of 90.
@@ -102,12 +43,7 @@ def _nearest_on_polyline(
     point: list[float],
     polyline: list[list[float]],
 ) -> tuple[float, tuple[float, float] | None]:
-    """``(distance, unit tangent)`` of the closest point of a polyline, or ``(inf, None)``.
-
-    The tangent is the direction of the segment the point landed on, which is
-    why this needs the index :func:`closest_on_polyline` returns and not just
-    the closest point.
-    """
+    """``(distance, unit tangent)`` of the closest point of a polyline, or ``(inf, None)``."""
     index, _t, _q, distance = closest_on_polyline(point, polyline)
     if distance == float('inf'):
         return distance, None
@@ -118,12 +54,7 @@ def _nearest_on_polyline(
 
 
 def _families(points: list[list[float]]) -> list[tuple[float, float]] | None:
-    """Mean direction of a quad's two opposite edge families, or ``None``.
-
-    ``(v0 v1, v2 v3)`` is one family and ``(v1 v2, v3 v0)`` the other. Directions are
-    averaged without sense -- the two edges of a family run opposite ways round the
-    face, so the second is flipped onto the first before averaging.
-    """
+    """Mean direction of a quad's two opposite edge families, or ``None``."""
     if len(points) != 4:
         return None
 

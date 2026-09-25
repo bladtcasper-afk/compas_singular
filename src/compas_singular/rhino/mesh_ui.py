@@ -1,20 +1,6 @@
-"""**The Rhino side of editing by hand: ask, refuse, drag -- and the colours.**
+"""Rhino-side helpers every editing command shares: prompts, refusals, drags and colours.
 
-Module-level helpers every command shares. What they operate on -- a mesh drawn
-as pickable objects, picked back by key -- is the mesh's scene object, in
-:mod:`compas_singular.rhino.scene` (``RhinoCoarseObject``, ``RhinoDenseObject``),
-which replaced this module's ``PickableMesh`` on 2026-09-18. What an answer
-*means* belongs to :mod:`compas_singular.editing`, which imports none of this and
-runs with no Rhino at all.
-
-Two things in here are not obvious and were each a bug first:
-
-* **the drag preview must show the PROJECTED point, not the cursor.** A
-  boundary vertex is pulled back onto its wall, so previewing the cursor draws
-  a position the commit will not produce;
-* **a refusal goes in a dialog, not a print.** Rhino's command line shows one
-  line and the next prompt takes it, so a printed refusal reads to the user as
-  the command silently doing nothing.
+Previews show the projected point, and refusals go in a dialog, not a print.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -89,13 +75,7 @@ def density_colors(
     low: tuple[int, int, int] = DENSITY_COLOR_LOW,
     high: tuple[int, int, int] = DENSITY_COLOR_HIGH,
 ) -> dict[Any, tuple[int, int, int]]:
-    """``{skey: (r, g, b)}``, a blue darkening with density, RELATIVE to this layout.
-
-    The lightest shade goes to the smallest density present and the darkest to
-    the largest, so the scale always uses its full range. When every strip has
-    the same density there is no range to spread, and all are drawn mid-scale
-    rather than all-light, which would read as "all at the minimum".
-    """
+    """``{skey: (r, g, b)}``, a blue darkening with density relative to this layout."""
     if not strip_densities:
         return {}
     lo = min(strip_densities.values())
@@ -118,12 +98,7 @@ def _require_rhino() -> None:
 # ----------------------------------------------------------------------
 
 def ensure_layer(path: str, color: tuple[int, int, int] | None = None) -> str:
-    """Create a ``::`` layer path, parents first, and return the full path.
-
-    ``rs.AddLayer`` does not create intermediate parents, and ``bake_mesh``'s
-    own layer creation hard-codes ``parent="TopologyProblem"``, which is wrong
-    for a layer two levels down. Only the leaf gets the colour.
-    """
+    """Create a ``::`` layer path, parents first, and return the full path."""
     _require_rhino()
     parts = path.split('::')
     for i in range(len(parts)):
@@ -136,13 +111,7 @@ def ensure_layer(path: str, color: tuple[int, int, int] | None = None) -> str:
 
 
 def unlock(layer: str, guids: Sequence[Any] = ()) -> dict[str, Any]:
-    """Unlock a layer, every parent of it, and the given objects.
-
-    Returns what was locked, to hand back to :func:`relock`. Layer lock and
-    object lock are separate in Rhino and either one alone is enough to make
-    the points unpickable, so both are cleared. A locked PARENT locks the
-    child, which is why the whole path is walked.
-    """
+    """Unlock a layer, all its parents, and the given objects; returns what was locked for :func:`relock`."""
     _require_rhino()
     parts = layer.split('::')
     state = {'layers': {}, 'objects': []}
@@ -196,12 +165,7 @@ def ask_integer(
 
 
 def refuse(title: str, message: str) -> None:
-    """Tell the user why nothing happened, in a DIALOG.
-
-    Rhino's command line shows one line and the next prompt overwrites it, so a
-    printed refusal reads as the command silently doing nothing -- which is the
-    worst possible reading of a command that deliberately changed nothing.
-    """
+    """Tell the user why nothing happened, in a dialog."""
     _require_rhino()
     rs.MessageBox(message, 0, title)
 

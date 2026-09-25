@@ -1,15 +1,6 @@
-"""**Run a meshing route on a unit domain.** The only route-aware module.
+"""Run a meshing route on a unit domain with the caller's settings; the only route-aware module.
 
-A route here is a callable ``mesher(outer, holes, guides, poles)`` returning
-``(coarse, extras)``: a ``CoarsePseudoQuadMesh`` of the unit, and a dict with the
-decomposition that made it and, where the route has one, its field.
-
-Each adapter rebuilds the SAME route with the SAME settings the caller's
-decomposition was built with -- read from ``decomposition.inputs`` -- on the unit
-instead of on the whole domain. The one deliberate difference: the background
-spacing is the whole domain's RESOLVED spacing, never re-derived from the unit.
-The thesis default is a fraction of the bounding-box diagonal, and a unit's
-diagonal is smaller, so re-deriving it would mesh the unit finer than the plate.
+The background spacing is the whole domain's resolved spacing, never re-derived from the unit.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -117,7 +108,7 @@ class FieldMesher(object):
             mode=i.get('mode', 'perpendicular'), target_length=self.target,
             orthogonal=i.get('orthogonal'), guide_weight=i.get('guide_weight', 1.0),
             guide_band=i.get('guide_band'), relax=i.get('relax', False),
-            field_tau=i.get('field_tau'), symmetry=None)
+            tau=i.get('tau', i.get('field_tau')), symmetry=None)
         coarse = d.coarse_mesh(poles=poles or ())
         curves = d.edges_to_curves()
         coarse.set_edges_to_curves(curves)

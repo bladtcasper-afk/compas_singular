@@ -1,24 +1,6 @@
-"""The Rhino project the ``CMD_`` commands share: settings, layers and the layout.
+"""What the ``CMD_`` commands share in Rhino: settings, the layer tree and the coarse layout.
 
-Everything a command used to import from another command lives here, so that no
-command imports another. Three things:
-
-* **Settings** -- :func:`get_settings` / :func:`set_settings`, a plain dict view
-  of the session's :class:`~compas_singular.settings.Settings`. The ``resolve_*``
-  functions turn a stored setting into what a solve needs.
-* **Layers** -- ``ROOT`` and ``LAYER_DATA``, the one place the layer tree is
-  written down. :func:`layer_path` gives a full path by its short name.
-* **The layout** -- :func:`read_layout`, a copy of the session's coarse layout.
-
-Everything a command keeps between runs is in the session
-(:class:`~compas_singular.rhino.session.RhinoSession`), stored inside the
-``.3dm``. The JSON side-cars that used to sit beside it are only read once, to
-move an old document over (:mod:`compas_singular.rhino.legacy`).
-
-**Importing this module does nothing.** It reads no document, writes no settings
-and creates no layers. ``rhinoscriptsyntax`` is optional so the Rhino-free parts
-(``resolve_relax``, ``resolve_field_symmetry``, ``resolve_densities``, the layer names)
-import headless; anything that touches the document raises there.
+Importing it does nothing, and the Rhino-free parts import headless.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -55,7 +37,6 @@ __all__ = [
     'layer_path',
     'ensure_layers',
     'read_layout',
-    'layout_polylines',
 ]
 
 
@@ -106,17 +87,9 @@ def resolve_relax(settings: dict[str, Any], guides: Sequence[Any]) -> bool:
 
 
 def resolve_spacing(settings: dict[str, Any], loops: Sequence[Sequence[Sequence[float]]] | None = None) -> float:
-    """The background spacing as a NUMBER, for THIS document.
+    """The background spacing as a number for this document, from settings or thesis eq. 4.1.
 
-    ``triangulation_spacing`` is ``None`` by default: the decompositions then
-    take thesis eq. 4.1, ``alpha`` times the bounding-box diagonal, and a
-    number in the settings overrides it. Pass the SETTING, not this, to
-    ``FieldDecomposition.from_boundary`` / ``CrossField.mismatch`` -- they
-    resolve ``None`` themselves, against their own sampled loops. This is for
-    the Rhino side, which divides curves by a length before any loop exists.
-
-    ``loops`` are point lists to measure; without them the bounding box of the
-    curves on the Outer and Inner layers is used.
+    For the Rhino side only; pass the setting itself to the decompositions.
     """
     value = settings.get("triangulation_spacing")
     if value is not None:
@@ -144,14 +117,7 @@ def has_closed_guide() -> bool:
 
 
 def resolve_field_symmetry(settings: dict[str, Any]) -> str | None:
-    """The symmetry group to solve the FIELD under, for THIS document.
-
-    ``'auto'`` detects it from outer + holes + guides; JSON ``null`` disables it
-    and takes the pre-2026-08-14 route. Kept next to ``resolve_relax`` because
-    the three commands that build a decomposition MUST agree -- steps 4 and 6
-    re-solve, and a different group there is a different layout under the
-    user's edits.
-    """
+    """The symmetry group to solve the field under for this document (``'auto'`` or disabled)."""
     value = settings.get("field_symmetry", "auto")
     if isinstance(value, str):
         value = value.strip().lower()
@@ -162,15 +128,9 @@ def resolve_field_symmetry(settings: dict[str, Any]) -> str | None:
 
 
 def resolve_densities(coarse: CoarsePseudoQuadMesh, settings: dict[str, Any], verbose: bool = True) -> bool:
-    """The layout's saved densities if every strip has one; otherwise the global rule.
+    """Keep the layout's saved densities if every strip has one, else apply the global rule.
 
-    Shared by step 5 (``CMD_densities``) and step 6 (``CMD_quad_mesh``). A layout
-    step 5 gave densities keeps them as they are. One that has none -- step 5
-    never ran, its strips changed in step 4, or it was imported from an old
-    drawing -- gets every strip set by ``settings["density_mode"]``: ``"length"`` sizes
-    each strip from ``target_length``, ``"density"`` gives them all
-    ``target_density``. Densities picked per strip are not recovered then -- they
-    were keyed by strips that may no longer exist.
+    Returns True when the densities had to be re-derived.
 
     Returns
     -------
@@ -221,12 +181,7 @@ LAYER_DATA = {
 
 
 def layer_path(name: str) -> str:
-    """The full ``::`` path of a project layer, by its short name in ``LAYER_DATA``.
-
-    Use the full path, not the short name, with ``rhinoscriptsyntax``: a bare name
-    resolves with FindName, which returns the FIRST layer of that name anywhere in
-    the document.
-    """
+    """The full ``::`` path of a project layer by its short name; use it with ``rhinoscriptsyntax``."""
     return LAYER_DATA[name][0]
 
 
@@ -243,20 +198,13 @@ def ensure_layers() -> None:
 # ==============================================================================
 
 def read_layout(verbose: bool = True) -> CoarsePseudoQuadMesh:
-    """**The session's coarse layout, as a COPY.**
-
-    A copy because every caller changes it -- densities, patterns, snapped
-    corners -- and may then be cancelled. It goes back into the session only
-    when the caller assigns it and records (see
-    :class:`~compas_singular.rhino.session.RhinoSession`).
+    """A copy of the session's coarse layout; raises if the session holds none.
 
     Raises
     ------
     RuntimeError
         If the session holds no layout. The mesh drawn on ``Skeleton::Mesh`` is
-        NOT read instead: it is vertices and faces only, a view of the layout. A
-        document from before sessions has its drawn layout imported once
-        (:mod:`compas_singular.rhino.legacy`).
+        NOT read instead: it is vertices and faces only, a view of the layout.
     """
     _require_rhino()
     from compas_singular.rhino.session import RhinoSession
@@ -270,18 +218,3 @@ def read_layout(verbose: bool = True) -> CoarsePseudoQuadMesh:
         print("layout: {} patch(es), route {!r}".format(
             coarse.number_of_faces(), coarse.attributes.get("route", "unknown")))
     return coarse
-
-
-def layout_polylines(coarse: CoarsePseudoQuadMesh) -> list[list[list[float]]]:
-    """The polylines ``coarse``'s edges take their shape from (``shape_polylines``).
-
-    A layout recorded before 2026-09-18 carries none; its polylines are still
-    drawn on ``Skeleton::Polylines``, so they are read from there instead.
-    """
-    polylines = coarse.shape_polylines()
-    if polylines:
-        return polylines
-    _require_rhino()
-    from compas_singular.rhino.helpers import read_polylines
-    layer = layer_path("Polylines")
-    return read_polylines(layer) if rs.IsLayer(layer) else []

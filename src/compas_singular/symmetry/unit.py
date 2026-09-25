@@ -1,20 +1,6 @@
-"""**The symmetric unit: a coarse layout of one fundamental region, and its dense mesh.**
+""":class:`SymmetricUnit`: a coarse layout of one fundamental region, with its group and seams as plain data.
 
-:class:`SymmetricUnit` IS a ``CoarsePseudoQuadMesh`` -- strips, densities,
-patterns and densification all work on it unchanged -- plus the information that
-makes it a unit: the enforced group, the seams, the tolerances. All of that
-lives in ``attributes['symmetry']`` as plain data, so it survives ``copy()``,
-``save_to_json`` and an editor's commit. Python-only state (the unit's own field
-and decomposition) is carried as ordinary attributes and is not serialised.
-
-Two invariants make the expansion valid, and :meth:`SymmetricUnit.check` tests
-both before any densification or expansion:
-
-* **every seam junction is a corner** of the layout (a seam that ends in the
-  middle of a coarse edge cannot be glued), and
-* **rotation seams agree**: every corner on seam A has a partner on seam B at the
-  same distance from the centre, and strips that meet across the seam carry the
-  same density. The density setters keep the second automatically.
+:meth:`SymmetricUnit.check` requires seam junctions at corners and matching rotation seams.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -230,16 +216,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
         return gaps
 
     def snap_to_seams(self, fraction: float = 0.25) -> int:
-        """Project boundary corners that lie NEAR a seam onto it. In place.
-
-        A route meshes the unit without knowing which walls are seams, and may put
-        a corner a hair off one -- a pole, say, placed by a repair step. Left
-        there, the unit's boundary cuts across the seam and its mirror copy leaves
-        a sliver. A corner within ``fraction`` of its shortest edge of a seam, and
-        inside the seam's extent, is moved onto it; its edge shapes follow.
-
-        Returns the number of corners moved.
-        """
+        """Project boundary corners lying near a seam onto it, in place. Returns the number moved."""
         from compas_singular.symmetry.matching import _move
         runs = self.symmetry.get('seam_runs') or {}
         seams = dict((s.name, s) for s in self.seams)
@@ -276,12 +253,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
     # ------------------------------------------------------------------
 
     def glued_strips(self) -> list[list[int]]:
-        """Groups of strip keys that are ONE strip of the global mesh.
-
-        A strip that reaches seam A continues, in the neighbouring copy, as the
-        strip that reaches seam B at the same place. Mirror seams glue a strip to
-        its own reflection, so they add nothing here.
-        """
+        """Groups of strip keys that are one strip of the global mesh across rotation seams."""
         strips = self.attributes.get('strips') or {}
         parent = dict((k, k) for k in strips)
 
@@ -351,12 +323,7 @@ class SymmetricUnit(CoarsePseudoQuadMesh):
         return json.dumps([densities, patterns, corners])
 
     def quad_mesh(self, *args: Any, **kwargs: Any) -> SymmetricQuadUnit:
-        """Densify the unit. Returns a :class:`SymmetricQuadUnit`.
-
-        Takes exactly what ``CoarsePseudoQuadMesh.quad_mesh`` takes. ``field``
-        defaults to the unit's own field (field route; ``None`` on the skeleton
-        route) -- pass ``field=None`` to densify without it.
-        """
+        """Densify the unit into a :class:`SymmetricQuadUnit`, with the unit's own field by default."""
         self._require_ok('densify')
         kwargs.setdefault('field', self.field)
         if kwargs['field'] is not None and not args:

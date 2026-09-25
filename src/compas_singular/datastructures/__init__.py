@@ -6,17 +6,6 @@ compas_singular.datastructures
 .. currentmodule:: compas_singular.datastructures
 
 
-Network
-=======
-
-Network class.
-
-.. autosummary::
-    :toctree: generated/
-    :nosignatures:
-
-    Network
-
 Mesh
 =====
 
@@ -76,7 +65,9 @@ Constrained smoothing, without Rhino: the projections are computed with
     constrained_smoothing
     automated_boundary_constraints
     boundary_constrained_smoothing
-    smoothing_region
+    boundary_smoothing
+    region_smoothing
+    relaxation
 
 On a surface: interior vertices on the surface, boundary vertices on its borders.
 
@@ -223,7 +214,6 @@ from compas_singular.datastructures.mesh_quad import *  # noqa: F401 F403
 from compas_singular.datastructures.mesh_quad_coarse import *  # noqa: F401 F403
 from compas_singular.datastructures.mesh_quad_pseudo import *  # noqa: F401 F403
 from compas_singular.datastructures.mesh_quad_pseudo_coarse import *  # noqa: F401 F403
-from compas_singular.datastructures.network import *  # noqa: F401 F403
 from compas_singular.datastructures.skeleton import *  # noqa: F401 F403
 
 import types  # noqa: E402

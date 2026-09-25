@@ -13,12 +13,7 @@ __all__ = ['RhinoDenseObject']
 
 
 class RhinoDenseObject(RhinoSingularMeshObject):
-    """A dense mesh as pickable points and lines, kept up to date with :meth:`sync`.
-
-    Thousands of edges, so an editor redraws after a click with ``sync`` (only
-    what changed) rather than ``redraw`` (everything). No faces by default: the
-    points and lines are what is picked.
-    """
+    """A dense mesh as pickable points and lines, updated with :meth:`sync` rather than a full redraw."""
 
     def __init__(self, **kwargs: Any) -> None:
         kwargs.setdefault('show_faces', False)

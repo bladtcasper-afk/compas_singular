@@ -1,35 +1,6 @@
-"""**Giving a moved coarse edge back the curve it was traced with.**
+"""Give a moved coarse edge back the curve it was traced with, by warping its separatrix. No field needed.
 
-A coarse edge is a straight chord. Everything a layout knows about curvature
-lives in a separate mapping -- one polyline per edge -- that is handed to
-``densification``. On a GENERATED layout that mapping is easy: every edge either
-runs along a domain wall, and gets the wall's arc, or it was traced as a
-separatrix, and matches one by the geometric key of its two ends.
-
-**An edit breaks the match.** Drag a corner and the edges around it no longer end
-where any traced separatrix ends, so the exact lookup fails and they fall back to
-the chord between the moved corners -- which is precisely the field alignment the
-whole front end exists to produce, thrown away by a nudge.
-
-This module is the branch in between. It finds the separatrix an edge came FROM
-and moves that curve onto the edge's new endpoints, so a nudge costs the nudge and
-not the curvature.
-
-**It needs no field.** The warp itself is
-:func:`~compas_singular.editing.rebuild.warp_polyline`, which is arithmetic on a
-point list, and the search below reads only the traced polylines and one length
-scale. This used to live on ``FieldDecomposition`` and looked field-dependent
-because it read ``self.background.target_length``; that is a number, not a field.
-
-**The match is ANCHORED on an end that did not move**, and that rule is what makes
-it well posed rather than a nearest-neighbour guess. It follows from what an edit
-is: dragging one corner moves one end of each edge around it and leaves the other
-exactly where the tracer put it, so the right separatrix is the one still ending
-at the still point -- and among those, the one whose free end was nearest. Nothing
-has to cap the end that MOVED, which is the one the user may have dragged as far
-as they liked. An earlier version capped both ends at one background spacing and
-rejected every real edit: a 1.8-unit drag on a 0.6 background left five edges as
-straight chords, which is the exact loss this branch exists to prevent.
+The match is anchored on the end that did not move.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -57,7 +28,7 @@ def warp_edge_curve(
     scale: float,
     claimed: set[int] | None = None,
 ) -> list[list[float]] | None:
-    """**The traced separatrix this edge came from, moved onto its endpoints.**
+    """The traced separatrix this edge came from, warped onto its current endpoints, or ``None``.
 
     Parameters
     ----------
@@ -79,17 +50,6 @@ def warp_edge_curve(
     -------
     list[[x, y, z]] or None
         ``None`` when nothing fits, so the caller keeps the straight chord.
-
-    Notes
-    -----
-    Two guards stay, because the WRONG curve warped is worse than no curve at
-    all -- it densifies into a patch that bulges through its neighbour rather
-    than one that is merely straight:
-
-    * ``warp_polyline`` rejects a warp reaching further than the candidate's own
-      length, which would fold it;
-    * a candidate whose length is wildly out of proportion to the new chord is a
-      different curve, not this one moved.
     """
     if not polylines:
         return None
@@ -143,17 +103,7 @@ def warp_chorded_edges(
     polylines: list[list[list[float]]],
     scale: float,
 ) -> tuple[dict[tuple[int, int], list[list[float]]], int]:
-    """Give every straight-chord edge a warped curve where one fits.
-
-    ``mapping`` is what ``coarse_edges_to_curves`` produced: one polyline per
-    coarse edge, complete. An entry of exactly two points IS the chord -- that is
-    how an edge that matched nothing comes back -- so those are the entries to
-    try, and every other entry is left alone because it already has the shape it
-    should.
-
-    Returns ``(mapping, warped)``. The mapping is modified in place and returned
-    for convenience.
-    """
+    """Give every two-point (chord) entry of ``mapping`` a warped curve where one fits. ``(mapping, warped)``."""
     claimed = set()
     warped = 0
     for edge, curve in list(mapping.items()):

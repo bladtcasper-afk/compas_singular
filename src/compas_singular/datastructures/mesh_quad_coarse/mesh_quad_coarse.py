@@ -53,14 +53,7 @@ class CoarseQuadMesh(QuadMesh):
 
     @property
     def __data__(self) -> dict[str, Any]:
-        """Everything but the dense mesh this layout last produced.
-
-        ``quad_mesh`` and ``polygonal_mesh`` are derived: :meth:`densification`
-        rebuilds them, and the editors already drop them as stale. Written out,
-        a densified plate's layout grows from 11 KB to 71 KB, and a session that
-        also keeps the dense mesh as an item of its own would get it back as
-        TWO objects.
-        """
+        """Everything but the derived dense meshes this layout last produced."""
         data = super(CoarseQuadMesh, self).__data__
         data['attributes'] = dict(data['attributes'], quad_mesh=None, polygonal_mesh=None)
         return data
@@ -178,17 +171,7 @@ class CoarseQuadMesh(QuadMesh):
     # --------------------------------------------------------------------------
 
     def edges_to_curves(self) -> dict[tuple[int, int], list[list[float]]]:
-        """``{(u, v): polyline}`` -- the shape of every coarse edge that has one.
-
-        A coarse edge is a straight chord as far as the layout is concerned; the
-        layout is a topological quad graph and has to stay one, because strips,
-        densities, poles and ``add_strip`` are all defined on it. So the SHAPE of
-        each edge lives here, and :meth:`densification` picks it up.
-
-        Empty unless something put curves here -- a layout from
-        ``from_coarse_polylines``, or any caller of :meth:`set_edges_to_curves`. A
-        mesh from ``from_quad_mesh``, ``from_vertices_and_faces`` or
-        ``from_polylines`` has none, so it densifies exactly as it always has.
+        """``{(u, v): polyline}``: the stored shape of every coarse edge that has one, one direction per edge.
 
         Returns
         -------
@@ -200,12 +183,7 @@ class CoarseQuadMesh(QuadMesh):
                 for u, v, points in self.attributes.get('edges_to_curves') or []}
 
     def set_edges_to_curves(self, edges_to_curves: dict[tuple[int, int], list[list[float]]] | None) -> None:
-        """Remember the shape of each coarse edge. ``None`` or ``{}`` clears it.
-
-        Stored as a list of ``[u, v, points]`` rather than as the dict itself:
-        ``attributes`` round-trips through ``save_to_json``, and ``json.dumps``
-        refuses tuple keys. The same problem ``PseudoQuadMesh.__from_data__``
-        already solves for ``face_pole``, solved here by not creating it.
+        """Remember the shape of each coarse edge, stored JSON-safe as ``[u, v, points]``. ``None`` or ``{}`` clears it.
 
         Parameters
         ----------
@@ -216,15 +194,7 @@ class CoarseQuadMesh(QuadMesh):
             for (u, v), points in (edges_to_curves or {}).items()]
 
     def shape_polylines(self) -> list[list[list[float]]]:
-        """The polylines the coarse edges take their SHAPE from. ``[]`` if none.
-
-        The traced separatrices on the field route, the skeleton branches on the
-        skeleton route, the drawn pieces for a drawn layout -- plus any curve cut
-        in by hand. ``coarse_edges_to_curves`` matches coarse edges against these
-        to build :meth:`edges_to_curves` again after the corners moved, so they
-        belong to the layout: a layout with the wrong set here densifies its
-        interior edges as chords.
-        """
+        """The polylines the coarse edges take their shape from (separatrices, branches, drawn curves). ``[]`` if none."""
         return [[list(point) for point in polyline]
                 for polyline in self.attributes.get('shape_polylines') or []]
 
@@ -234,13 +204,7 @@ class CoarseQuadMesh(QuadMesh):
             [list(point) for point in polyline] for polyline in (polylines or [])]
 
     def _filtered_edges_to_curves(self, boundary_curvature: bool, skeleton_curvature: bool) -> dict[tuple[int, int], list[list[float]]]:
-        """The stored :meth:`edges_to_curves`, kept only where its toggle allows it.
-
-        The mapping itself carries no boundary/interior tag -- it is a flat
-        ``{edge: curve}`` -- but it does not need one: whether a coarse edge
-        sits on the layout's own boundary is purely topological, so
-        :meth:`is_edge_on_boundary` answers it directly and can never go stale
-        the way a stored tag could.
+        """The stored :meth:`edges_to_curves`, filtered by the boundary and skeleton curvature toggles.
 
         Parameters
         ----------
@@ -261,14 +225,7 @@ class CoarseQuadMesh(QuadMesh):
                 if (boundary_curvature if self.is_edge_on_boundary(u, v) else skeleton_curvature)}
 
     def _create_patch_edge(self, u: int, v: int, d: int, edges_to_curves: dict[tuple[int, int], list[list[float]]] | None) -> list[list[float]]:
-        """The ``d + 1`` points densifying edge ``(u, v)``.
-
-        Takes the curve ``edges_to_curves`` has for this edge -- either way
-        round -- and chords it, straight between its two vertices, when the
-        mapping has none for this particular edge. Unlike a plain lookup, a
-        missing edge falls back to a chord instead of raising ``KeyError``,
-        which is what lets a mapping cover only SOME edges -- see
-        :meth:`_filtered_edges_to_curves`.
+        """The ``d + 1`` points densifying edge ``(u, v)``, from its curve or else the chord.
 
         Parameters
         ----------
@@ -335,12 +292,7 @@ class CoarseQuadMesh(QuadMesh):
     # --------------------------------------------------------------------------
 
     def has_densities(self) -> bool:
-        """Does every strip already carry a density?
-
-        True for a layout loaded from a file its densities were saved to. False
-        for one with no densities set, or one whose strips changed since -- a
-        partial table is treated as none, because :meth:`densification` raises
-        ``KeyError`` on the first strip it cannot find.
+        """Whether every strip already carries a density; a partial table counts as none.
 
         Returns
         -------
@@ -508,14 +460,8 @@ class CoarseQuadMesh(QuadMesh):
             stored -- for every edge, regardless of ``boundary_curvature`` /
             ``skeleton_curvature``. The curves are lists of XYZ points.
         field : optional
-            A ``CrossField`` (from ``FieldDecomposition.get_field()`` or
-            ``CrossField.from_boundary(...)``). With it, each patch INTERIOR is
-            integrated from the field instead of blended from its own four
-            sides -- which is the only way a guide curve reaches a patch it
-            forced no topology in. The layout does not have to have come from
-            that field: a skeleton layout and a field solved on the same walls
-            work together. Boundaries stay fixed either way, so the result still
-            welds into a mesh whose strips can be collected and edited.
+            A ``CrossField`` to steer patch interiors; boundaries stay fixed. Any
+            layout on the same walls works, including a skeleton one.
 
         Returns
         -------

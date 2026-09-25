@@ -1,85 +1,7 @@
-"""Step 9 -- **the hand-edited coarse layout**. The one seam in the pipeline.
+"""Rebuild a hand-edited coarse layout (mesh or one closed polyline per patch) into a coarse mesh.
 
-``FieldDecomposition.quad_mesh`` owns the whole chain in one call -- solve the
-field, trace the separatrices, cut the coarse layout, densify it -- and that is
-what makes it usable and also what makes it closed. The coarse layout is the
-one artefact a designer actually wants to touch: merge two patches, drag a
-corner off a wall, delete a patch the tracer put somewhere silly. Until now
-there was nowhere to reach in.
-
-**Moved here from ``framefield/edit.py``.** Nothing in it ever touched the field,
-the tracer or the background -- it welds, snaps and repairs a layout from plain
-geometry -- so it belongs beside the editor that calls it rather than beside the
-solver.
-
-This module opens exactly one seam, and no more. The generated layout goes out
-to Rhino, comes back edited, and densification proceeds from THAT layout. See
-:meth:`FieldDecomposition.edit_coarse`, which is the entry point; everything
-here is the machinery it needs.
-
-THE FIELD IS NOT RE-SOLVED, AND THE SEPARATRICES ARE KEPT
----------------------------------------------------------
-
-The edit enters at ``decomposition.mesh`` and nowhere else. ``field``,
-``tracer``, ``background`` and ``separatrices`` are untouched, which is the
-requirement -- an edit to the layout is not evidence about the field, and
-letting a dragged corner feed back into the solve would mean the user could
-never move anything without changing what they were moving it relative to.
-
-Keeping the separatrices is the other half of that, and it is what makes the
-edit worth anything. A coarse edge whose endpoint moved no longer matches any
-traced polyline by geometric key, so the naive answer is to densify it as a
-straight chord -- which throws away precisely the field alignment the front end
-exists to produce. Instead the edge is re-matched to the separatrix it came
-from and that curve is WARPED onto its new endpoints
-(:func:`warp_polyline`). A nudged corner costs the nudge, not the curvature.
-
-WHAT COMES BACK FROM RHINO
---------------------------
-
-Two forms, because both are natural to produce there and neither is more
-correct than the other:
-
-* **a mesh** -- ``compas_rhino.conversions.mesh_to_compas`` of an edited Rhino
-  mesh, or a ``CoarsePseudoQuadMesh`` handed straight back;
-* **closed polylines, one per patch** -- easier to edit, and the only one of the
-  two in which deleting a patch or splitting one in half is a two-second
-  operation.
-
-Both reduce to the same thing: a list of faces, each a list of CORNER points,
-welded by rounded coordinate. That welding is the whole topology recovery --
-two patches share a corner because their corner points coincide, at the same
-3-decimal precision ``from_polylines`` matches endpoints at. Nothing carries an
-index across the round trip, which is what lets the face count change.
-
-ONE POINT PER CORNER
---------------------
-
-A patch outline must have one point per corner, not one point per sample of a
-curved edge. The round trip cannot tell the difference -- a 4-sided patch whose
-edges were baked as their traced separatrices comes back as a 40-gon, and
-:func:`repair.solve_non_quad_faces` will dutifully fan it into 38 patches. That
-is why :func:`face_polylines` bakes CORNERS only and the curved separatrices go
-out separately as reference geometry. The side-count histogram in the returned
-notes says immediately when this has gone wrong.
-
-SNAPPING IS LOAD-BEARING, NOT COSMETIC
---------------------------------------
-
-``decomposition._on_loop`` tests membership of a boundary loop at ``1e-6``. A
-corner dragged in Rhino to what looks like the wall is not on the wall, so
-``edges_to_curves`` finds no boundary arc for it, densifies the edge as a
-chord, and the mesh quietly loses the area between chord and arc -- the same
-failure that took an ellipse down to 65% coverage before ``_arc_between``
-existed. So incoming corners are PROJECTED onto the wall before anything is
-measured or validated.
-
-Which corners, though, is decided by TOPOLOGY and not by distance, and
-:func:`snap_to_loops` sets out why: "everything within ``snap_tol`` of a wall"
-would drag interior corners that are legitimately near one -- the comb plate's
-teeth are 2 units wide -- onto it, silently collapsing patches nobody touched.
-A vertex on the coarse mesh's own boundary belongs on a domain loop by
-definition; an interior one is never moved however close it is.
+Welds corners, snaps boundary corners to the walls, repairs to all-quad; the field is not re-solved.
+Design notes: ``design_notes/editing.md``.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -125,12 +47,7 @@ def _is_mesh(thing: Any) -> bool:
 
 
 def _as_points(thing: Any) -> list[list[float]]:
-    """A polyline, a compas ``Polyline``, or a bare list of points -> point list.
-
-    The closing point of a closed polyline is dropped: Rhino writes it, a face
-    must not have it, and a face that keeps it has a repeated vertex and is
-    thrown away by :func:`mesh_from_faces` as degenerate.
-    """
+    """A polyline, compas ``Polyline`` or point list as a point list, without a closing repeat."""
     points = [list(p)[:3] for p in getattr(thing, 'points', thing)]
     points = [p + [0.0] * (3 - len(p)) for p in points]
     if len(points) > 1 and distance_point_point(points[0], points[-1]) < 1e-9:
@@ -139,15 +56,7 @@ def _as_points(thing: Any) -> list[list[float]]:
 
 
 def faces_from_geometry(geometry: Any) -> list[list[list[float]]]:
-    """``[[corner, corner, ...], ...]`` from a mesh or from closed polylines.
-
-    Accepts, in order of how it is checked:
-
-    * a mesh -- anything with ``vertices``/``faces``/``vertex_coordinates``;
-    * an iterable of closed polylines, ``Polyline`` or bare point lists;
-    * an iterable of faces already given as point lists, which is the same
-      thing and is what makes this idempotent.
-    """
+    """``[[corner, corner, ...], ...]`` from a mesh, closed polylines, or faces already given as point lists."""
     if _is_mesh(geometry):
         return [[list(geometry.vertex_coordinates(v))
                  for v in geometry.face_vertices(f)]
@@ -188,20 +97,9 @@ def closest_on_loop(point: list[float], loop: list[list[float]]) -> tuple[float,
 
 
 def snap_to_loops(mesh: "QuadMesh", loops: list[list[list[float]]], tol: float) -> tuple[int, int]:
-    """Project the mesh's own BOUNDARY corners onto the domain walls.
+    """Project the mesh's own boundary corners onto the domain walls; interior corners never move.
 
-    **Which corners are eligible is decided topologically, not by distance.**
-    That distinction is the whole safety of this step. Snapping anything within
-    ``tol`` of a wall is destructive on the domains where it matters: a patch
-    corner that legitimately sits a fifth of a background spacing inside a
-    narrow slot -- the comb plate has several -- would be yanked onto the wall
-    it was near, silently collapsing a patch nobody touched. Whereas a vertex
-    on the coarse mesh's own boundary belongs on a domain loop by definition,
-    whatever its distance, so moving it there cannot destroy information; it can
-    only restore it.
-
-    So: a vertex with a naked edge gets projected, an interior one never does,
-    however close it is.
+    Returns ``(moved, left_off_wall)``; the second should be 0.
 
     Returns
     -------
@@ -248,15 +146,9 @@ def _key(point: list[float]) -> tuple[float, float]:
 
 
 def mesh_from_faces(faces: list[list[list[float]]], cls: type = CoarsePseudoQuadMesh) -> tuple["QuadMesh | None", int]:
-    """A coarse mesh from faces given as lists of corner points.
+    """A coarse mesh from faces as corner point lists, welded at :data:`PRECISION`. ``None`` if nothing is left.
 
-    Corners are welded by rounded coordinate at :data:`PRECISION`, the same
-    resolution ``from_polylines`` matches endpoints at, so two patches meeting
-    at a cut share that vertex instead of each carrying its own copy.
-
-    A face that visits one corner twice is degenerate -- a patch with no
-    interior -- and is dropped rather than welded into a mesh that will not
-    densify. ``None`` when nothing is left.
+    Faces that repeat a corner are dropped as degenerate.
     """
     if not faces:
         return None, 0
@@ -292,18 +184,15 @@ def coarse_from_skeleton(
     snap_tol: float = 0.0,
     cls: type = CoarsePseudoQuadMesh,
 ) -> tuple["QuadMesh | None", dict[str, Any]]:
-    """**A coarse quad layout from an edited patch skeleton.**
+    """A coarse quad layout from an edited patch skeleton (the wireframe handed back from Rhino).
 
-    ``skeleton`` here means THE PATCH SKELETON HANDED BACK FROM RHINO -- the
-    corner-and-edge wireframe of a coarse layout. It has nothing to do with
-    ``SkeletonDecomposition`` or the medial-axis front end this package
-    replaces, which is what the word means everywhere else in this repository.
+    Pass one point per patch corner, not curve samples.
 
     Parameters
     ----------
     geometry : mesh or list
         A compas mesh, or closed polylines with ONE POINT PER PATCH CORNER.
-        See the module docstring on why the distinction matters.
+        See design_notes/editing.md (rebuild.py) on why.
     loops : list[list[[x, y, z]]], optional
         Boundary loops -- outer first, then holes. Used for snapping and handed
         to :func:`repair.solve_non_quad_faces` so a split vertex lands on the
@@ -365,22 +254,9 @@ def coarse_from_skeleton(
 # ------------------------------------------------------------------
 
 def warp_polyline(points: list[list[float]], pa: list[float], pb: list[float], limit: float = 1.0) -> list[list[float]] | None:
-    """**End-anchored warp of a traced separatrix onto moved endpoints.**
+    """End-anchored warp of a traced polyline onto moved endpoints, blending by arc length.
 
-    The reason an edited layout keeps its field alignment. ``points`` is the
-    curve as traced; ``pa`` and ``pb`` are where its two ends have to be now.
-    Every sample is displaced by a blend of the two end displacements, weighted
-    by normalised arc length::
-
-        d0 = pa - c[0]
-        d1 = pb - c[-1]
-        c'[k] = c[k] + (1 - t_k) * d0 + t_k * d1
-
-    so the ends land exactly on ``pa`` and ``pb``, and everything between keeps
-    the shape it was traced with, rigidly translated where both ends moved the
-    same way and sheared where they did not. This is the standard curve warp
-    (Sederberg's, in its one-dimensional case); nothing here is novel and it is
-    the cheapest thing that preserves curvature exactly under translation.
+    ``None`` when an end moves more than ``limit`` times the curve length.
 
     Parameters
     ----------
@@ -429,16 +305,7 @@ def warp_polyline(points: list[list[float]], pa: list[float], pb: list[float], l
 # ------------------------------------------------------------------
 
 def face_polylines(coarse: "QuadMesh") -> list[Polyline]:
-    """**One closed polyline per patch: the thing to bake and edit.**
-
-    CORNERS ONLY -- four points and the closing repeat, or three for a
-    pseudo-quad. Deliberately not the curved separatrix geometry, however much
-    better that looks: the round trip recovers a patch's corners from the
-    polyline's points, so a polyline carrying forty samples of a traced curve
-    comes back as a forty-sided patch. Bake
-    ``decomposition.decomposition_polylines()`` on a separate reference layer
-    if the curvature needs to be visible while editing -- it is drawn, not
-    read.
+    """One closed polyline per patch with corners only, to bake and edit.
 
     Returns
     -------

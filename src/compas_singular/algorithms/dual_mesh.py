@@ -1,67 +1,7 @@
-"""The dual of a quad mesh, closed on the boundary with an extra layer of quads.
+"""The dual of a quad mesh, closed on the boundary so every face is a quad.
 
-:func:`compas.datastructures.mesh_conway_dual` emits one dual face per primal
-vertex, but only for the INTERIOR ones -- its comprehension reads
-``if not mesh.is_vertex_on_boundary(vkey)``. That is right for a closed
-polyhedron (its own doctest dualises a cube) and wrong for a plate or a folded
-slab: the result shrinks inward by one full ring and the outline is gone.
-
-This module keeps that function for the interior and closes the boundary
-afterwards. A boundary vertex ``v`` gets the dual cell::
-
-    [ midpoint(v, nbrs[0]) ] + [ centroid(f) for f in faces ] + [ midpoint(v, nbrs[-1]) ]
-
-which works because COMPAS guarantees ``vertex_neighbors(v, ordered=True)``
-starts and ends on the boundary, with ``vertex_faces(v, ordered=True)`` giving
-the faces between them in the same angular order. The primal vertex itself is
-inserted ONLY at a domain corner (valence 2), which is the one place the cell
-would otherwise be a triangle:
-
-===================  =======  =====  ==============================
-primal bnd. vertex   valence  faces  dual cell
-===================  =======  =====  ==============================
-corner               2        1      mid + centroid + mid + v = quad
-regular              3        2      mid + 2 centroids + mid = quad
-boundary singularity 4        3      pentagon (unavoidable)
-===================  =======  =====  ==============================
-
-``Mesh.dual(include_boundary=True)`` also closes the boundary, and closes it on
-the outline exactly -- but it inserts the primal vertex into EVERY closure face
-(``duality.py:96``), so every regular boundary vertex becomes a pentagon. That
-is the only thing this function does differently, and it is the whole point of
-it. Measured:
-
-===============================  ==============  ==============  ==========
-input                            mesh.dual(bnd)  dual_mesh       primal area
-===============================  ==============  ==============  ==========
-5x4 planar grid                  16 quad, 14 pt  **30 quad**     20.0000
-folded grid, floor + one wall    19 quad, 16 pt  **35 quad**     24.0000
-annulus 4x16, curved boundary    48 quad, 32 pt  **80 quad**     64.2908
-===============================  ==============  ==============  ==========
-
-The cost of the all-quad boundary is paid on a CURVED wall, and the trade is not
-removable: a mesh edge is a straight chord, so the boundary either runs midpoint
--> midpoint and cuts the corner at each primal vertex, or holds that vertex and
-is a pentagon. On the annulus above, ``mesh.dual(include_boundary=True)`` keeps
-the area exactly (64.2908) while this function loses 3.8% (61.8439). Where the
-primal boundary is straight between its vertices -- a plate, a wall, a folded
-slab -- the midpoints are collinear with the vertex they skip and nothing is
-lost (grid: 20.0000 both ways, deviation 0.000000000000).
-
-So: use this when every face must be a quad. Use
-``Mesh.dual(include_boundary=True)`` when a curved outline matters more than the
-face count.
-
-Either way the raw dual leaves its boundary blocks HALF a block deep, because
-its boundary sits on the primal's edge midpoints -- and a corner block, half in
-both directions, a quarter. :func:`redistribute_blocks` slides every grid line
-to even that out, and :func:`dual_mesh` runs it by default; see its docstring
-for why the obvious alternative, smoothing, is wrong. Measured block area
-max/min on a 5x4 grid: 4.00 raw, 1.00 redistributed.
-
-One more caveat: **do not dualise a mesh with poles.** A pole is already a face
-rather than a gathering joint, so duality trades it the wrong way and turns it
-into a valence-3 joint. All-quad meshes only.
+Loses some area on a curved outline; use ``Mesh.dual(include_boundary=True)`` when that matters.
+Do not dualise a mesh with poles. Design notes: ``design_notes/algorithms.md``.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -157,12 +97,7 @@ def dual_mesh(mesh: Mesh, redistribute: bool = True) -> Mesh:
 
 
 def _is_oriented(faces: Sequence[Sequence[int]]) -> bool:
-    """True if no directed halfedge is claimed twice -- the orientability test.
-
-    Two faces claiming ``(u, v)`` the same way round are wound against each
-    other. ``Mesh.add_face`` does not raise on that, it overwrites the halfedge,
-    so the damage is silent and this is what catches it.
-    """
+    """True if no directed halfedge is claimed twice."""
     seen = set()
     for face in faces:
         for u, v in zip(face, face[1:] + face[:1]):
@@ -177,59 +112,7 @@ def _is_oriented(faces: Sequence[Sequence[int]]) -> bool:
 # ----------------------------------------------------------------------------
 
 def redistribute_blocks(dual: Mesh, primal: Mesh, project: bool = True) -> Mesh:
-    """Even out the block sizes of a dual, in place.
-
-    The raw dual puts its boundary on the primal's edge MIDPOINTS, so the outer
-    ring of blocks is half a block deep and a corner block -- half-size in both
-    directions -- is a quarter. Nothing else is wrong: the interior blocks
-    already span centroid to centroid, a full primal cell. So the fix is to
-    slide every grid line, not to inflate the edge ring.
-
-    Every line to slide lies on a CHAIN with two fixed ends, and on a chain the
-    problem is one-dimensional and has a closed form. Two families of chain
-    cover the whole mesh:
-
-    * a primal **strip** -- the run of quads reached by stepping across opposite
-      edges -- whose chain is ``[boundary midpoint, centroid, ..., boundary
-      midpoint]``. Strips are well defined through singularities, so this needs
-      no special case for them;
-    * a primal **boundary arc** between two domain corners, whose chain is
-      ``[corner, edge midpoint, ..., corner]``.
-
-    On both, the chain's segments ARE the block widths along it, and the two end
-    segments are the half blocks. The rule is therefore the whole algorithm:
-
-        double the two end segments, then rescale all of them to the chain length
-
-    On a uniform strip of n cells that turns widths ``0.5, 1, ..., 1, 0.5`` into
-    ``n+1`` equal ones, which is the intended result; on a graded strip it keeps
-    the grading, because every interior width is carried through untouched. A
-    face lies on two strips, so it takes the sum of the two displacements --
-    exact on a grid, where they are orthogonal.
-
-    Chains with no end are skipped, and correctly: a strip that closes into a
-    loop and a boundary ring with no corner -- a smooth hole -- have no half
-    block to fix. Their DEPTH is fixed by the strips that cross them.
-
-    Measured, block area max/min:
-
-    =============================  =====  =============  =============
-    input                          raw    redistributed  primal itself
-    =============================  =====  =============  =============
-    5x4 planar grid                4.00   **1.00**       1.00
-    folded grid, floor + one wall  4.00   **1.35**       1.00
-    annulus 4x16, curved           3.89   **2.04**       1.95
-    =============================  =====  =============  =============
-
-    The annulus does not reach 1.00 and should not: its own primal blocks
-    measure 1.95, because a ring at r=5 is genuinely wider than one at r=2. What
-    is left after redistribution is the shape, not the artefact.
-
-    Note what this is NOT. Smoothing the dual towards uniform blocks looks like
-    the obvious alternative and is wrong on any curved domain: the harmonic
-    equilibrium of an annulus piles its rings against the inner boundary, giving
-    max/min **34.50** -- far worse than the 3.89 it started from. That is
-    Laplacian shrinkage and no amount of tuning removes it.
+    """Even out the half-size boundary blocks of a dual in place, by respacing along strips and boundary arcs.
 
     Parameters
     ----------
@@ -248,7 +131,6 @@ def redistribute_blocks(dual: Mesh, primal: Mesh, project: bool = True) -> Mesh:
     -------
     :class:`compas.datastructures.Mesh`
         ``dual``, modified in place.
-
     """
     gkey_vertex = {TOL.geometric_key(dual.vertex_coordinates(v)): v
                    for v in dual.vertices()}
@@ -335,15 +217,7 @@ def redistribute_blocks(dual: Mesh, primal: Mesh, project: bool = True) -> Mesh:
 
 
 def _respaced(stops: Sequence[float]) -> list[float]:
-    """New positions along a chain for its interior points, evening the gaps.
-
-    ``stops`` are the arc positions of the chain's points, so the gaps between
-    them are the widths of the blocks along the chain -- and the first and last
-    gap are the half blocks the dual is born with. Doubling those two and
-    rescaling all of them back to the chain length is the whole redistribution:
-    every interior width is carried through untouched, which is what keeps a
-    graded strip graded.
-    """
+    """New positions for a chain's interior points: double the two end gaps, rescale to the chain length."""
     widths = [b - a for a, b in zip(stops, stops[1:])]
     span = stops[-1] - stops[0]
     widths[0] *= 2.0
@@ -371,12 +245,7 @@ def _point_at(polyline: Sequence[Sequence[float]], lengths: Sequence[float], dis
 def _boundary_chains(
     primal: Mesh, gkey_vertex: dict[str, int]
 ) -> list[tuple[list[int], list[Sequence[float]]]]:
-    """Each primal boundary arc, as ``(dual vertices, primal outline points)``.
-
-    The dual vertices run corner, edge midpoint, ..., edge midpoint, corner. The
-    outline is the primal boundary polyline over the same arc, which is what the
-    dual vertices get placed along -- their own chords would cut every bend.
-    """
+    """Each primal boundary arc, as ``(dual vertices, primal outline points)``."""
     chains = []
     for ring in primal.vertices_on_boundaries():
         if ring[0] == ring[-1]:
@@ -408,12 +277,7 @@ def _boundary_chains(
 
 
 def _strips(primal: Mesh) -> list[tuple[list[int], tuple[Sequence[float], Sequence[float]]]]:
-    """Open primal strips, as ``(faces, (start midpoint, end midpoint))``.
-
-    A strip is the run of quads reached by stepping across opposite edges. Only
-    the ones that END on the boundary are returned -- a closed strip has no half
-    block to fix, and no fixed point to redistribute against.
-    """
+    """Open primal strips, as ``(faces, (start midpoint, end midpoint))``."""
     strips, seen = [], set()
     # hoisted: Mesh.number_of_faces() is len(list(self.faces())), so leaving it
     # in the walk below makes the whole pass quadratic -- 14 s of a 15 s run on

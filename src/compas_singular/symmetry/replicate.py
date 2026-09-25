@@ -1,24 +1,6 @@
-"""**Expand a unit into the global mesh: replicate by the group, weld along seams.**
+"""Expand a unit into the global mesh: replicate by the group and weld along seams topologically.
 
-Coarse and dense meshes go through the same code, because the operation does
-not care what the faces mean.
-
-THE WELD IS TOPOLOGICAL, NOT GEOMETRIC
---------------------------------------
-
-Every global vertex is a pair ``(unit vertex v, element g)`` sitting at ``g v``.
-Two pairs are the SAME vertex exactly when a seam says so:
-
-* **mirror seam** with mirror ``m``: ``m`` fixes every point of the seam, so for
-  ``v`` on it, ``(v, g)`` and ``(v, g o m)`` sit at the same point and are welded;
-* **rotation seams** A and B, with ``R`` taking A onto B: a vertex ``w`` on B at
-  distance ``t`` from the centre is matched to the vertex ``v`` on A at the same
-  ``t``, so ``w = R v``, and ``(w, g)`` is welded to ``(v, g o R)``.
-
-Nothing is matched by rounded coordinates -- that is the bucket failure the old
-detector had, moved one stage down. Positions come out of the labels, so the
-result is symmetric to floating point and its vertex maps are known EXACTLY:
-:func:`orbit_maps` reads them back for symmetric smoothing.
+No vertex is matched by rounded coordinates, so the result is symmetric to floating point.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -245,14 +227,7 @@ def orbit_maps(mesh: PseudoQuadMesh | CoarsePseudoQuadMesh) -> dict[str, dict[in
 def symmetrise_positions(
     mesh: PseudoQuadMesh | CoarsePseudoQuadMesh, maps: dict[str, dict[int, int]] | None = None
 ) -> float:
-    """Replace every vertex by the average of its orbit, mapped back. In place.
-
-    ``x_v <- mean over h of  h^-1 ( x_{sigma_h(v)} )``: the orthogonal projection
-    onto symmetric configurations. Exact and idempotent; for smoothing, where each
-    iteration drifts by floating point and by projection onto walls.
-
-    Returns the largest displacement.
-    """
+    """Replace every vertex by the average of its orbit, in place. Returns the largest displacement."""
     orbits = mesh.attributes['orbits']
     group = SymmetryGroup.from_data(orbits['group'])
     maps = orbit_maps(mesh) if maps is None else maps

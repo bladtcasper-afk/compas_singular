@@ -1,32 +1,6 @@
-"""**Checking the input before a layout is built, and comparing two steps after.**
+"""MCP tools that check inputs before a layout is built (``check_inputs``) and compare two history steps.
 
-``check_inputs`` exists because the skeleton route fails QUIETLY. Every case
-below was measured on a 10 by 10 square at the default background spacing
-``T`` (4% of the bounding-box diagonal, 0.57 there), densified at 3, and none
-of them raised:
-
-=====================================  ===============================================
-input                                  what came out
-=====================================  ===============================================
-point feature 4T / 2T / 1T from wall   min angle 10.3 / 3.4 / 0.6, aspect 5.6 / 12 / 25
-point feature 0.25T from wall          min angle 0.5, aspect 105
-hole 1T / 0.5T / 0.25T from wall       aspect 11.9 / 22.4 / 7.7 -- min angle 0.0 at 0.25T
-hole radius 0.5T / 0.25T               aspect 7.0 / 14.4
-guide leaving the outer wall           two poles nobody drew, min angle 1.8
-point feature outside, or in a hole    silently ignored -- no pole
-two holes, any gap down to 0.25T       fine (min angle >= 15.7)
-=====================================  ===============================================
-
-So the thresholds below are those rows, not round numbers. One row is not
-monotone -- a hole 2T from the wall read 3.9 degrees, worse than at 1T -- which
-is why a hole near a wall is flagged below 1T only, and the report says the
-reading is a warning, not a prediction.
-
-The cross-field rule that a sampled turn above 45 degrees reads as a corner is
-deliberately NOT checked: this package does not solve a field.
-
-``compare`` reads the history. It cannot draw an old state -- only the current
-mesh is kept -- so it compares NUMBERS, which every dense step records.
+Thresholds are measured skeleton-route failure cases; see ``design_notes/mcp.md``.
 """
 from __future__ import absolute_import
 from __future__ import division

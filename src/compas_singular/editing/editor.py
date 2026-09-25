@@ -1,40 +1,7 @@
-"""**What every hand-editor of a quad mesh needs, with no CAD in it.**
+"""Shared base for the coarse and dense hand-editors, with no CAD in it.
 
-:class:`MeshEditor` is the half that ``CoarseEditor`` and
-``DenseMeshEditor`` had written out twice: holding a mesh being edited, holding
-the domain walls a boundary vertex is kept on, moving one vertex, undoing, and
-deleting the strip through an edge. Nothing here picks, prompts, draws or prints
--- a refusal is recorded in :attr:`MeshEditor.last_reason` and returned, and
-whoever is driving decides how to say so.
-
-**The mesh is edited on a COPY, and the caller's object is untouched until a
-commit.** :attr:`MeshEditor.target` is what was handed in and
-:attr:`MeshEditor.mesh` is the working copy. That is a tightening: previously
-``move_vertex`` wrote straight into the caller's mesh while the topological
-operations replaced ``self.mesh`` with a copy, so half an edit was visible
-outside the editor before anything was committed -- which contradicts the promise
-the Rhino command already makes, that nothing is written until commit. It also
-makes :meth:`MeshEditor.reset` mean what it says for a move.
-
-**Refusals return** ``(False, {'error': reason})`` **and successes**
-``(True, notes)``, and both subclasses publish the same shape. ``DenseMeshEditor``
-used to return bare booleans; it moved to this convention when its Rhino command
-was rebuilt on it.
-
-**Deleting a strip is a template, because the two subclasses gate it
-differently.** The walk is identical -- resolve the edge to a strip, optionally
-pre-split to save a boundary, run the grammar on a copy, check the copy -- but
-what counts as an acceptable result is not, so :meth:`MeshEditor._gate` is left
-to the subclass. On a coarse layout that gate is all-quad **plus manifold**, and
-the manifold half is the one that actually decides it: swept over four layouts, a
-square with one circular hole had **10 of 20** strips come out non-manifold,
-while every one of its 7 pole-bearing strips deleted cleanly. Nothing about a
-strip predicts it, which is why :meth:`MeshEditor.plan_strip_deletion` performs
-the deletion on a copy and reports what came out instead of estimating.
-
-**The plan and the deletion are the same code path.** They have to be: a front
-end puts the numbers from the plan in front of a user, and if the deletion then
-did something else the confirmation would be a lie.
+Holds the working copy and the walls, moves a vertex, undoes, and deletes a strip.
+Design notes: ``design_notes/editing.md``.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -168,10 +135,7 @@ class MeshEditor(object):
     def project_to_wall(self, xyz: list[float]) -> list[float]:
         """The nearest point of the nearest wall, or ``xyz`` if there is no wall.
 
-        Only ever called for a vertex that is TOPOLOGICALLY on the mesh boundary.
-        Projecting anything merely near a wall would drag an interior vertex that
-        legitimately sits in a narrow slot onto it -- the same rule
-        ``rebuild.snap_to_loops`` keeps, and for the same reason.
+        Only for vertices topologically on the mesh boundary.
         """
         if not self.walls:
             return list(xyz)
@@ -191,20 +155,7 @@ class MeshEditor(object):
         return mean_edge_length(self.mesh if mesh is None else mesh)
 
     def boundary_vertices(self, mesh: "QuadMesh | None" = None) -> set[int]:
-        """Every vertex on every boundary -- holes included -- as a set.
-
-        Read straight off the halfedges: a vertex is on a boundary exactly when
-        one of its halfedges, either way round, has no face. Two ways of getting
-        this wrong came first:
-
-        * ``vertices_on_boundary`` -- singular -- returns only the LONGEST
-          boundary, so on a mesh with a hole every vertex of that hole was
-          reported as interior. Measured on an annulus: 12 of 16 seen;
-        * ``vertices_on_boundaries`` -- plural -- walks each boundary as a loop,
-          and on a mesh where two faces only touch at a corner that walk can
-          NEVER END. Measured on a dense mesh after random removals: it spun
-          until killed, from inside ``move_vertex``. A set needs no walk.
-        """
+        """Every vertex on every boundary, holes included, as a set read off the halfedges."""
         mesh = self.mesh if mesh is None else mesh
         return boundary_vertex_set(mesh)
 
@@ -213,14 +164,7 @@ class MeshEditor(object):
         return vkey in self.boundary_vertices(mesh)
 
     def check_strip_count(self, mesh: "QuadMesh | None" = None) -> tuple[bool, int, int]:
-        """**Thesis Eq 5.6:** the number of OPEN strips is ``E - 2F``.
-
-        A free post-condition on the strip data. Every boundary edge is one of the
-        two extremity edges of an open strip, and summing four edges per face
-        counts boundary edges once and interior edges twice, which gives
-        ``S_open = E - 2F`` without collecting anything. If the stored strips
-        disagree, an edit corrupted them -- so this catches the class of bug where
-        a strip table quietly stops describing the mesh it belongs to.
+        """Check thesis Eq 5.6: the number of open strips is ``E - 2F``. ``(ok, counted, E - 2F)``.
 
         Returns
         -------
@@ -243,13 +187,7 @@ class MeshEditor(object):
     # ------------------------------------------------------------------
 
     def _refuse(self, reason: str) -> tuple[bool, dict[str, str]]:
-        """Record why an operation was not performed. Always ``(False, notes)``.
-
-        Recorded rather than printed: this module has no idea whether it is
-        driving a Rhino dialog, a log or a test. :attr:`last_reason` and
-        ``notes['error']`` carry the SAME string, because a front end that shows
-        one and a test that asserts the other must not be able to disagree.
-        """
+        """Record why an operation was not performed. Always ``(False, notes)``."""
         self.last_reason = reason
         return False, {'error': reason}
 
@@ -263,17 +201,7 @@ class MeshEditor(object):
     # ------------------------------------------------------------------
 
     def move_vertex(self, vkey: int, xyz: list[float], project: bool = True) -> tuple[bool, dict[str, Any]]:
-        """Move one vertex. ``(ok, notes)``.
-
-        A vertex on the mesh boundary is projected back onto the nearest domain
-        wall unless ``project`` is off -- so a caller that already previewed the
-        projected point may pass it straight back in, the projection being
-        idempotent for a point already on the wall. An interior vertex is never
-        projected, whatever its distance.
-
-        Topology is unchanged, so this is the one operation that stays available
-        on a mesh with poles.
-        """
+        """Move one vertex, projecting a boundary vertex back onto its wall unless ``project`` is off. ``(ok, notes)``."""
         if vkey not in self.mesh.vertex:
             return self._refuse('vertex {} is not in the mesh'.format(vkey))
 
@@ -304,13 +232,7 @@ class MeshEditor(object):
         self._snapshot = self.mesh.copy()
 
     def reset(self) -> tuple[bool, dict[str, Any]]:
-        """Put the mesh back as it was at construction, or at the last snapshot.
-
-        Restores the whole MESH, not just the coordinates: the topological
-        operations change the connectivity, and putting coordinates back would
-        leave the faces they created in place with nothing to say where they came
-        from.
-        """
+        """Restore the whole mesh as it was at construction or at the last snapshot."""
         self.mesh = self._snapshot.copy()
         self.last_deletion = {}
         self.edited = False
@@ -340,14 +262,7 @@ class MeshEditor(object):
         self.last_deletion = state['last_deletion']
 
     def push_undo(self) -> None:
-        """Remember the mesh as it is now, before the change about to happen.
-
-        Call this immediately before an operation that may mutate ``self.mesh``
-        -- one entry per attempt, whether or not it succeeds. A refused
-        operation never touches the mesh, so its snapshot is a harmless no-op
-        to undo back through; :meth:`discard_last_undo` is there for a caller
-        that would rather not leave one.
-        """
+        """Snapshot the mesh before an operation that may mutate it."""
         self._undo_stack.append(self._state())
 
     def discard_last_undo(self) -> None:
@@ -373,43 +288,31 @@ class MeshEditor(object):
     # ------------------------------------------------------------------
 
     def _split_strips(self, work: "QuadMesh", to_split: dict[int, int]) -> dict[int, list[int]]:
-        """Refine the strips that would otherwise let a boundary collapse.
+        """Refine the strips that would otherwise let a boundary collapse (thesis 5.3.2).
 
-        Thesis 5.3.2, Fig 5.18: a boundary collapses when fewer than three edges
-        represent it after a deletion, and the remedy is to REFINE the strips that
-        survive on it -- one left, split it in three; two left, split each in two,
-        "to avoid any bias". ``strips_to_split_to_prevent_boundary_collapse``
-        works that out; this performs it.
-
-        **The strips this adds have ZERO WIDTH**: the base asks the grammar for
-        topology only. A subclass MUST open them, because only it knows its walls;
-        both editors do it with the grammar's exact-thirds rule, projecting the
-        pairs on the boundary onto ``project_to_wall``. Leaving them closed welds
-        coincident vertices into the result, which survives ``is_manifold`` but
-        bakes as a broken mesh.
+        The new strips have zero width; subclasses must open them.
         """
         return split_strips(work, to_split, open_strip=False)
 
     def _gate(self, work: "QuadMesh") -> tuple[bool, str]:
-        """**Is this result acceptable?** ``(ok, reason)``. Subclasses decide.
-
-        Called on the COPY, before it is adopted. The base accepts anything, so a
-        subclass that does not override gets the grammar's own guarantees and
-        nothing more.
-        """
+        """Whether a trial result is acceptable. ``(ok, reason)``. The base accepts anything."""
         return True, ''
 
     def strip_through(self, edge: tuple[int, int]) -> int | None:
-        """The strip key through ``edge``, resolved on a copy. ``None`` if none.
-
-        Collected on a COPY so the live mesh keeps no state the caller did not ask
-        for, and re-collected every time because an earlier edit renumbered. The
-        key is only valid on the copy it came from, which is why nothing here
-        returns it for storage.
-        """
+        """The strip key through ``edge``, resolved on a copy. ``None`` if none."""
         work = self.mesh.copy()
         work.collect_strips()
         return work.edge_strip(tuple(edge))
+
+    def _empty_plan(self, reason: str = '') -> dict[str, Any]:
+        """A deletion plan with nothing done yet: every key :meth:`plan_strip_deletion` publishes."""
+        return {'ok': False, 'reason': reason, 'skey': None, 'faces': 0,
+                'collateral': [], 'boundaries_lost': [], 'to_split': {},
+                'can_preserve': True,
+                'faces_before': self.mesh.number_of_faces(),
+                'faces_after': None,
+                'vertices_before': self.mesh.number_of_vertices(),
+                'vertices_after': None}
 
     def _trial_delete(
         self,
@@ -417,23 +320,11 @@ class MeshEditor(object):
         preserve_boundaries: bool = False,
         skey: int | None = None,
     ) -> tuple["QuadMesh | None", dict[str, Any]]:
-        """Delete a strip on a COPY. ``(mesh or None, info)``. Touches no state.
+        """Delete a strip (by ``edge`` or ``skey``) on a copy. ``(mesh or None, info)``.
 
-        One code path for both :meth:`plan_strip_deletion` and
-        :meth:`remove_strip`, so what the user is told and what then happens
-        cannot drift apart.
-
-        Addressed by ``edge`` or directly by ``skey`` -- a front end that lets the
-        user pick the strip itself has a key already and should not have to invent
-        an edge to pass it.
+        Shared by :meth:`plan_strip_deletion` and :meth:`remove_strip` so they cannot disagree.
         """
-        info = {'ok': False, 'reason': '', 'skey': None, 'faces': 0,
-                'collateral': [], 'boundaries_lost': [], 'to_split': {},
-                'can_preserve': True,
-                'faces_before': self.mesh.number_of_faces(),
-                'faces_after': None,
-                'vertices_before': self.mesh.number_of_vertices(),
-                'vertices_after': None}
+        info = self._empty_plan()
 
         work = self.mesh.copy()
         work.collect_strips()
@@ -528,21 +419,7 @@ class MeshEditor(object):
         preserve_boundaries: bool = False,
         skey: int | None = None,
     ) -> dict[str, Any]:
-        """**What deleting the strip would cost.** No mutation.
-
-        Deleting a strip is not a local edit, and a front end has to be able to
-        say so before it happens. Three things reach past the picked strip, and
-        all three are predicted here on a copy of the untouched mesh:
-
-        * it MERGES the two sides of the strip -- for each disconnected part of
-          the strip's edge network one new vertex is added at the centroid and
-          every old vertex is substituted for it, so surrounding vertices move;
-        * it can take other strips with it: any strip whose faces all lie inside
-          the deleted one goes too;
-        * it can COLLAPSE a boundary, which on a coarse layout means losing a hole
-          the domain still has.
-
-        **The prediction is the operation** -- see :meth:`_trial_delete`.
+        """What deleting the strip would cost, predicted on a copy: moved vertices, collateral strips, lost boundaries.
 
         Returns
         -------
@@ -563,15 +440,9 @@ class MeshEditor(object):
         preserve_boundaries: bool = False,
         skey: int | None = None,
     ) -> tuple[bool, dict[str, Any]]:
-        """**Delete the strip through** ``edge`` (or ``skey``). ``(ok, notes)``.
+        """Delete the strip through ``edge`` (or ``skey``), on a copy adopted only if it passes :meth:`_gate`. ``(ok, notes)``.
 
-        Applied to a copy and adopted only if the copy survives :meth:`_gate`, so
-        a refusal costs nothing and leaves the mesh exactly as it was.
-
-        It COLLAPSES a band of faces and welds the band's two sides together; it
-        does not *dissolve* the picked line and merge the faces either side of it.
-        Dissolving is the exact inverse of a cut and no such operation exists in
-        ``compas_singular``.
+        Collapses the band and welds its sides; it does not dissolve the picked line.
         """
         work, info = self._trial_delete(
             edge, preserve_boundaries=preserve_boundaries, skey=skey)
@@ -588,26 +459,9 @@ class MeshEditor(object):
     # ------------------------------------------------------------------
 
     def _transplant(self, source: "QuadMesh", carry_strip_data: bool = False) -> "QuadMesh":
-        """**Make** :attr:`target` **become** ``source``, keeping its identity.
+        """Make :attr:`target` become ``source`` in place, keeping the caller's reference.
 
-        The caller holds a reference to the mesh it handed in, so a commit that
-        rebound a new object would leave them looking at the pre-edit layout. No
-        helper for this exists in compas: ``Mesh.clear()`` resets the topology and
-        ``_max_vertex`` / ``_max_face`` but **does not touch** ``attributes``,
-        ``__data__`` is a read-only property whose getter stringifies every key,
-        and ``join`` adds rather than replaces. So it is done by hand.
-
-        Vertex and face keys are carried across, so a caller holding keys keeps
-        them **whenever the source was built by mutating this mesh**. They do not
-        survive a weld-and-repair rebuild, which renumbers -- that is the caller's
-        cue to re-key geometrically, and why the commit notes say which path ran.
-
-        ``carry_strip_data`` decides the interesting half. The strip grammar
-        maintains ``attributes['strips']`` incrementally and PRESERVES strip
-        labels (thesis 5.3.3), so after an add or a delete the densities the user
-        set are still about the right bands and travel across. A rebuild renumbers
-        them, and carrying them there would silently apply the wrong numbers to
-        the wrong strips.
+        Strip data is carried only when ``carry_strip_data``; a rebuild renumbers strips.
         """
         target = self.target
         route = target.attributes.get('route')

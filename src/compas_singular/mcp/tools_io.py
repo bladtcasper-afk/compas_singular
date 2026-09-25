@@ -1,16 +1,4 @@
-"""**Loading a mesh from disk and writing one back, with Rhino closed.**
-
-The server is standalone: Rhino is one source of meshes, not the only one. These
-two tools are what make that true in practice -- a mesh from
-``examples/data/*.json``, or one another process wrote, can be improved and
-saved without a CAD session anywhere. They are also what the offline tests use,
-which is why the whole package can be exercised with no Rhino and no model.
-
-**COMPAS 2 dropped** ``to_data``. ``Mesh.to_json`` carries the type information
-that ``compas.json_load`` needs to give the mesh back as the right class, so a
-pseudo-quad mesh saved here comes back knowing its poles. Writing
-``json.dump(mesh.to_data())`` instead would lose that silently.
-"""
+"""MCP tools that load a mesh from disk and write one back, with Rhino closed."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

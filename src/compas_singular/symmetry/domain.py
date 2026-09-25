@@ -20,17 +20,7 @@ __all__ = ['Domain']
 
 
 class Domain(Data):
-    """``outer``, ``inners``, ``guides`` and ``poles`` as plain point lists.
-
-    Loops are stored OPEN (the closing point is not repeated), guides as open
-    polylines, poles as points. A compas ``Polyline`` or ``Point`` is accepted
-    anywhere a point list or point is.
-
-    ``guides`` means any curve that is not a wall: a cable for the field route, a
-    polyline feature for the skeleton route. Symmetry does not care which.
-
-    A compas ``Data`` object, so a domain travels inside a session file.
-    """
+    """``outer``, ``inners``, ``guides`` and ``poles`` as plain point lists (loops open), as compas ``Data``."""
 
     def __init__(
         self,

@@ -20,15 +20,7 @@ from compas_singular.utilities import are_items_in_list
 
 
 def delete_strips_preserving_boundaries(mesh: QuadMesh, skeys: list[int]) -> None:
-    """Delete strips, refining first whatever would let a boundary collapse.
-
-    Pre-splitting used to be a ``preserve_boundaries`` flag on ``delete_strips``
-    itself. It is done here instead so that one layer decides the policy, and
-    because the splitting it did also smoothed the whole mesh -- which the
-    searches in this module neither want nor notice, since they only read
-    ``is_manifold`` and ``euler``. The strips the split adds are left with zero
-    width for exactly that reason.
-    """
+    """Delete strips, refining first whatever would let a boundary collapse."""
     to_split = strips_to_split_to_prevent_boundary_collapse(mesh, skeys)
     # Falsy covers both states that mean "do not split": ``None`` -- no strip
     # survives on that boundary to refine -- and ``{}`` -- nothing is at risk.

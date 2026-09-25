@@ -10,7 +10,7 @@ from compas.tolerance import TOL
 
 from compas_singular.datastructures.mesh import Mesh
 from compas_singular.datastructures.mesh import trimesh_face_circle
-from compas_singular.datastructures.network import Network
+from compas.datastructures import Graph
 
 
 __all__ = ["Skeleton"]
@@ -43,21 +43,11 @@ class Skeleton(Mesh):
     def real_neighbors(self, fkey: int) -> list[int]:
         """The adjacent faces of ``fkey``, excluding any across a curve feature.
 
-        Thesis S4.3.2 makes a topological cut along each curve feature so that no
-        skeleton branch crosses one (Fig 4.20a vs 4.20b). A complete cut leaves no
-        adjacency across a feature edge, and then this is the same as
-        ``face_neighbors``.
-
-        It was written for an incomplete cut: until 2026-09-15 the cut never
-        reached a wall landing or a junction (a duplicate-vertex lookup in
-        ``boundary_triangulation``), the faces either side of a line's end segment
-        stayed adjacent, and the skeleton ran across the feature there. Kept as a
-        safeguard; removing it changes no benchmark once the cut is complete.
+        A safeguard: with a complete topological cut it equals ``face_neighbors``.
 
         Returns
         -------
         list[int]
-
         """
         neighbors = self.face_neighbors(fkey)
         if not self.feature_edges:
@@ -137,7 +127,7 @@ class Skeleton(Mesh):
             List of polylines as tuples of XYZ-coordinates.
 
         """
-        return graph_polylines(Network.from_lines(self.lines()))
+        return graph_polylines(Graph.from_lines(self.lines()))
 
 
 # ==============================================================================

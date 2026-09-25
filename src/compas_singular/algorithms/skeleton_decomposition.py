@@ -33,7 +33,7 @@ from compas.tolerance import TOL
 from compas_singular.algorithms import boundary_triangulation
 
 from compas_singular.datastructures import CoarsePseudoQuadMesh
-from compas_singular.datastructures import Network
+from compas.datastructures import Graph
 from compas_singular.datastructures import Skeleton
 from compas_singular.datastructures import mesh_weld
 from compas_singular.datastructures import split_quad_in_pseudo_quads
@@ -56,13 +56,7 @@ __all__ = ['SkeletonDecomposition']
 
 
 def _wall_spacing(outer: list[list[float]], inners: list[list[list[float]]], target_length: float | None, alpha: float | None) -> float | None:
-    """The segment length the walls were discretised at, for the features.
-
-    ``discretise_boundary`` resolves ``alpha`` against the bounding-box diagonal
-    of the loops; the features must be measured against that same D, not against
-    their own extent, or a short feature comes back far denser than the wall
-    beside it.
-    """
+    """The segment length the walls were discretised at, used for the features too."""
     if target_length is not None:
         return float(target_length)
     if alpha is None:
@@ -72,28 +66,9 @@ def _wall_spacing(outer: list[list[float]], inners: list[list[list[float]]], tar
 
 
 class SkeletonDecomposition(Skeleton):
-    """Coarse quad mesh from a topological skeleton and its singularities.
+    """Coarse quad mesh from a topological skeleton and its singularities (Oval's thesis, chapter 4).
 
-    Implements Oval's thesis chapter 4. The correspondence, method by method:
-
-    ==========================================  ==================================
-    thesis                                      here
-    ==========================================  ==================================
-    S4.2.1  end / singular / regular faces      :meth:`corner_faces`, ``singular_faces``
-    S4.2.2  PRUNING                             :meth:`branches_singularity_to_singularity`
-    S4.2.2  GRAFTING                            :meth:`branches_singularity_to_boundary`
-    S4.2.2  CLOSING                             :meth:`branches_boundary`
-    S4.2.3.1  missed concavities                :meth:`branches_splitting_boundary_kinks`
-    S4.2.3.2  unwanted triangles                :meth:`solve_triangular_faces`
-    S4.2.3.3  flipped patches                   :meth:`branches_splitting_flipped_faces`
-    S4.2.3.4  collapsed boundaries              :meth:`branches_splitting_collapsed_boundaries`
-    S4.3.1  point features become poles         :meth:`split_quads_with_poles`, :meth:`store_pole_data`
-    S4.3.2  seam propagation (Fig 4.20d)        :meth:`quadrangulate_polygonal_faces`
-    ==========================================  ==================================
-
-    Known deviations from the thesis are listed in ``HOW_IT_WORKS.md``; the
-    benchmarks that measure them are ``examples/11_thesis_curve_features.py``.
-
+    The thesis-to-method map and the known deviations are in ``design_notes/algorithms.md``.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -163,15 +138,9 @@ class SkeletonDecomposition(Skeleton):
             Points the decomposition must pass through. They become the POLES of
             the layout, and :meth:`coarse_mesh` takes them from here.
         target_length : float, optional
-            **Background spacing, not the quad size.** The medial axis is read
-            off a Delaunay triangulation of the boundary POINTS, so the walls are
-            discretised to this before they are triangulated: a four-point square
-            gives a two-triangle Delaunay mesh, which has no interior structure
-            at all, and the decomposition that comes out of it is a caricature.
-            ``None`` falls back to the thesis rule, ``alpha`` times the
-            bounding-box diagonal -- the same default the field route uses, so
-            the two front ends discretise the same walls the same way. Pass
-            ``alpha=None`` as well to triangulate the loops exactly as handed in.
+            Background spacing the walls are discretised to, not the quad size.
+            ``None`` uses ``alpha`` times the bounding-box diagonal; pass
+            ``alpha=None`` as well to triangulate the loops as handed in.
         alpha : float, optional
             Fraction of the bounding-box diagonal to use as the target length
             when none is given. Thesis eq. 4.1; see
@@ -230,11 +199,9 @@ class SkeletonDecomposition(Skeleton):
     # --------------------------------------------------------------------------
 
     def find_symmetry(self, tol: float | None = None, include: Iterable[str] = ('walls', 'holes', 'guides', 'poles'), max_order: int = 12) -> SymmetryReport:
-        """**Detect the symmetry of the domain this decomposition was built from.**
+        """Detect the symmetry of the domain (walls, holes, curve and point features).
 
-        Walls, holes, polyline features and point features are all tested. The
-        result is kept on :attr:`symmetry_report`, which :meth:`symmetry_unit`
-        uses when it is not handed one.
+        The result is kept on :attr:`symmetry_report`.
 
         Returns
         -------
@@ -249,12 +216,9 @@ class SkeletonDecomposition(Skeleton):
         return self.symmetry_report
 
     def symmetry_unit(self, keys: list[str] | None = None, centre: str = 'route', seam: float | None = None, report: SymmetryReport | None = None) -> SymmetricUnit:
-        """**Mesh one symmetric unit of the domain with this route.**
+        """Mesh one symmetric unit of the domain with this route, cut along the seams of ``keys``.
 
-        The unit is cut out of the domain along the seams of the symmetries in
-        ``keys`` and decomposed on its own, with the settings this decomposition
-        was built with. Densify it with ``quad_mesh()`` and expand the result with
-        ``expand_symmetrically()`` for a mesh that is symmetric by construction.
+        Densify with ``quad_mesh()`` and expand with ``expand_symmetrically()``.
 
         Parameters
         ----------
@@ -323,19 +287,14 @@ class SkeletonDecomposition(Skeleton):
         return [vkey for fkey in self.singular_faces() for vkey in self.face_vertices(fkey)]
 
     def free_tip_vertices(self) -> list[int]:
-        """Get the indices of the free extremities of the curve features.
+        """Get the vertices at free extremities of curve features (interior angle 360 degrees).
 
-        A curve feature whose extremity is off the boundary is a slit in the
-        Delaunay mesh, and the domain wraps all the way around its end: a boundary
-        vertex with an interior angle of 360 degrees (see
-        :meth:`boundary_interior_angle`). Thesis S4.3.2 makes that extremity a
-        singularity of the layout, so it must stay a node of the decomposition.
+        Thesis S4.3.2 makes each one a singularity, so it stays a node of the decomposition.
 
         Returns
         -------
         list
             List of vertex keys.
-
         """
         return [vkey for bdry in self.vertices_on_boundaries() for vkey in bdry
                 if self.boundary_interior_angle(vkey) > 2 * pi - 0.05]
@@ -345,17 +304,12 @@ class SkeletonDecomposition(Skeleton):
     # --------------------------------------------------------------------------
 
     def branches_singularity_to_singularity(self) -> list[list[list[float]]]:
-        """Get the branch polylines of the topological skeleton between singularities only, not corners.
-
-        **PRUNING**, the first operation of thesis S4.2.2: "pruning removes the
-        branches connected to end faces". Here that is a filter -- a branch whose
-        end is an end-face circumcentre is dropped.
+        """Get the skeleton branches between singularities only: PRUNING (thesis S4.2.2).
 
         Returns
         -------
         list
             List of polylines as list of point XYZ-coordinates.
-
         """
         map_corners = [TOL.geometric_key(trimesh_face_circle(self, corner)[0]) for corner in self.corner_faces()]
         return [
@@ -363,39 +317,21 @@ class SkeletonDecomposition(Skeleton):
             if TOL.geometric_key(branch[0]) not in map_corners and TOL.geometric_key(branch[-1]) not in map_corners]
 
     def branches_singularity_to_boundary(self) -> list[list[list[float]]]:
-        """Get new branch polylines between singularities and boundaries, at the location fo the split vertices. Not part of the topological skeleton.
-
-        **GRAFTING**, the second operation of thesis S4.2.2: "grafting adds
-        branches between the singular face circumcentres and their three
-        vertices".
+        """Get new branches from singular faces to their split vertices: GRAFTING (thesis S4.2.2).
 
         Returns
         -------
         list
             List of polylines as list of point XYZ-coordinates.
-
         """
         grafts = [[trimesh_face_circle(self, fkey)[0], self.vertex_coordinates(vkey)]
                   for fkey in self.singular_faces() for vkey in self.face_vertices(fkey)]
         return self.merge_graft_targets(grafts)
 
     def merge_graft_targets(self, grafts: list[list[list[float]]]) -> list[list[list[float]]]:
-        """Grafts landing on one feature at ADJACENT samples share a node.
+        """Merge grafts that land on one feature at adjacent samples into one node.
 
-        Two singular faces either side of a curve feature each graft to their own
-        nearest sample of it, and the sampling puts those one step apart rather
-        than at the same place. The patch spanning them comes out a triangle.
-
-        Measured on Fig 4.18 -- the singular faces at (2.75, 2.75) and
-        (6.90, 6.90) graft to (4.77, 4.63) and (4.63, 4.77), 0.2 apart, when both
-        project to the segment's midpoint. Merging them takes that layout from 6
-        interior singularities to 4 with no change in patch count.
-
-        Adjacency along the chain is the test rather than a distance: the
-        discretisation decides what counts as the same place, so there is nothing
-        to tune. Targets two samples apart are left alone -- Fig 4.19's
-        (3.36, 6.04) and (3.08, 6.32) -- and widening the rule to reach them
-        makes that case worse, not better.
+        Otherwise the patch between them comes out a triangle.
 
         Parameters
         ----------
@@ -405,7 +341,6 @@ class SkeletonDecomposition(Skeleton):
         Returns
         -------
         list[[[x, y, z], [x, y, z]]]
-
         """
         if not self.feature_points:
             return grafts
@@ -449,17 +384,12 @@ class SkeletonDecomposition(Skeleton):
         return [[centre, move.get(TOL.geometric_key(target), target)] for centre, target in grafts]
 
     def branches_boundary(self) -> list[list[list[float]]]:
-        """Get new branch polylines from the Delaunay mesh boundaries split at the corner and plit vertices. Not part of the topological skeleton.
-
-        **CLOSING**, the third operation of thesis S4.2.2: "closing adds boundary
-        branches, split at the vertices of the singular faces and the two-valent
-        boundary vertices".
+        """Get the boundary branches, split at corner and split vertices: CLOSING (thesis S4.2.2).
 
         Returns
         -------
         list
             List of polylines as list of point XYZ-coordinates.
-
         """
         boundaries = [bdry + bdry[0:] for bdry in self.boundaries()]
         splits = self.corner_vertices() + self.split_vertices()
@@ -471,18 +401,12 @@ class SkeletonDecomposition(Skeleton):
     # --------------------------------------------------------------------------
 
     def decomposition_polylines(self) -> list[list[list[float]]]:
-        """Get all the branch polylines to form a decomposition of the Delaunay mesh.
-
-        The three operations of thesis S4.2.2 -- pruning, grafting, closing --
-        followed by the corrections of S4.2.3.
-        These branches include the ones between singularities, between singularities and boundaries and along boundaries.
-        Additional branches for some fixes: the ones to further split boundaries that only have two splits.
+        """Get all branch polylines of the decomposition: pruning, grafting, closing, then the S4.2.3 corrections.
 
         Returns
         -------
         list
             List of polylines as list of point XYZ-coordinates.
-
         """
         branches = self.branches_singularity_to_singularity() + self.branches_singularity_to_boundary() + self.branches_boundary()
         # Thesis S4.2.3 orders the corrections, and says why:
@@ -499,7 +423,7 @@ class SkeletonDecomposition(Skeleton):
         # graft and the segment -- and would be merged through, losing the
         # singularity at the extremity (Fig 4.21) and cutting across the feature.
         splits = [self.vertex_coordinates(vkey) for vkey in self.corner_vertices() + self.free_tip_vertices()]
-        self.polylines = graph_polylines(Network.from_lines([(u, v) for polyline in branches for u, v in pairwise(polyline)]),
+        self.polylines = graph_polylines(Graph.from_lines([(u, v) for polyline in branches for u, v in pairwise(polyline)]),
                                          splits=splits)
         return self.polylines
 
@@ -547,29 +471,9 @@ class SkeletonDecomposition(Skeleton):
         return self.mesh
 
     def coarse_mesh(self, poles: list[list[float]] | None = None, force: bool = False) -> CoarsePseudoQuadMesh:
-        """**The coarse quad layout. The same object every time you ask.**
+        """The coarse quad layout, built once from the domain's point features and cached.
 
-        The entry point for the workflow::
-
-            decomposition = SkeletonDecomposition.from_boundary(...)
-            coarse = decomposition.coarse_mesh()
-            coarse.set_strips_density_target(t=0.5)
-            dense = coarse.densification()
-
-        :meth:`decomposition_mesh` is the implementation and still works; this
-        adds the two things that make it usable as a step of that sequence.
-
-        **The poles come from the domain.** ``point_features`` handed to
-        :meth:`from_boundary` are what ``split_quads_with_poles`` and
-        ``store_pole_data`` turn into pseudo-quads, so there is no reason to make
-        the caller pass them a second time.
-
-        **It is idempotent.** ``decomposition_mesh`` rebuilds from scratch on
-        every call, which makes it the one method here you cannot call twice: set
-        a strip density on the layout, ask for the layout again, and you get a
-        different object with none of your work on it -- no error, nothing to
-        see. This returns :attr:`mesh` unchanged whenever it was built from the
-        same poles.
+        Returns the same object on repeat calls, so densities set on it are kept.
 
         Parameters
         ----------
@@ -603,22 +507,7 @@ class SkeletonDecomposition(Skeleton):
         return mesh
 
     def edges_to_curves(self, coarse: CoarseQuadMesh | CoarsePseudoQuadMesh | None = None, wall_sampling: float | None = None, snap: bool = True) -> tuple[dict[tuple[int, int], list[list[float]]], dict[str, int]]:
-        """**The shape of every coarse edge**, for ``densification``.
-
-        A coarse edge is a straight chord and has to be -- the layout is a
-        topological quad graph, and strips, densities and poles are all defined
-        on it -- so the SHAPE of each edge lives here instead. Without this a
-        curved domain loses the area between chord and wall outright: a round
-        hole comes out as a polygon.
-
-        Each edge gets the best of three, and the tally says which: the piece of
-        WALL between its two corners, the decomposition BRANCH whose ends match
-        it, or a straight CHORD. See
-        :func:`~compas_singular.datastructures.coarse_edges_to_curves`.
-
-        The walls come from the domain :meth:`from_boundary` was given, resampled
-        finer than the background: those points ARE the boundary from here on, so
-        an arc handed over as two points is a chord.
+        """The shape of every coarse edge, for ``densification``: wall piece, matching branch, or chord.
 
         Parameters
         ----------
@@ -628,13 +517,8 @@ class SkeletonDecomposition(Skeleton):
             How finely to resample the walls. Defaults to a quarter of the
             background ``target_length``, the ratio ``CMD_coarse_mesh`` uses.
         snap : bool, optional
-            Put the layout's boundary corners ON the walls first. **This mutates
-            the layout, and the order matters**: a corner is placed by the
-            background triangulation, so on a curved wall it sits on a CHORD of
-            it, and since an arc is pinned to its two ends those corners would be
-            the only points of the dense boundary not on the curve -- measured at
-            15.1% of the radius on a real plate. The arcs are anchored on corner
-            positions, so snapping afterwards is too late.
+            Put the layout's boundary corners on the walls first. Mutates the
+            layout; it must happen before the arcs are built.
 
         Returns
         -------
@@ -684,18 +568,14 @@ class SkeletonDecomposition(Skeleton):
     # --------------------------------------------------------------------------
 
     def branches_splitting_collapsed_boundaries(self) -> list[list[list[float]]]:
-        """Add new branches to fix the problem of boundaries with less than three splits that would be collapsed in the decomposition mesh.
+        """Add branches to split boundaries with fewer than three splits (thesis S4.2.3.4).
 
-        Thesis S4.2.3.4, COLLAPSED BOUNDARIES: "If less than three branches
-        represent a boundary, the boundary collapses in the coarse quad mesh."
-        It runs LAST, because "adding branches for other corrections can solve
-        collapsed boundaries".
+        Runs last, because the other corrections can already solve it.
 
         Returns
         -------
         new_branches : list
             List of polylines as list of point XYZ-coordinates.
-
         """
         new_branches = []
 
@@ -738,19 +618,12 @@ class SkeletonDecomposition(Skeleton):
         return new_branches
 
     def branches_splitting_flipped_faces(self) -> list[list[list[float]]]:
-        """Add new branches to fix the problem of polyline patches that would form flipped faces in the decomposition mesh.
-
-        Thesis S4.2.3.3, FLIPPED PATCHES: a patch whose face normal opposes its
-        patch normal. The thesis puts this AFTER the unwanted-triangle
-        correction, because it "requires a quad decomposition"; here
-        :meth:`solve_triangular_faces` runs later still, on the built mesh, so
-        this correction sees a decomposition that is not yet all quads.
+        """Add branches to split patches that would form flipped faces (thesis S4.2.3.3).
 
         Returns
         -------
         new_branches : list
             List of polylines as list of point XYZ-coordinates.
-
         """
         new_branches = []
         centre_to_fkey = {TOL.geometric_key(trimesh_face_circle(self, fkey)[0]): fkey for fkey in self.faces()}
@@ -784,17 +657,9 @@ class SkeletonDecomposition(Skeleton):
         return new_branches
 
     def boundary_interior_angle(self, vkey: int) -> float:
-        """The interior angle of the domain at a boundary vertex, in radians.
+        """The interior angle of the domain at a boundary vertex, in radians, from incident face angles.
 
-        The sum of the incident face angles at ``vkey``. Convex is below pi,
-        concave above: a square corner reads 90 deg, the reentrant corner of an
-        L-plate 270 deg, and a vertex the domain wraps completely around -- the
-        end of a curve-feature cut -- 360 deg.
-
-        Measured this way rather than from the turn of the boundary walk, whose
-        sign flips between the outer loop and a hole, and is undefined on the
-        loop around a cut, which encloses no area.
-
+        A convex corner reads below pi, a reentrant one above, a free curve-feature tip 2 pi.
         """
         total = 0.
         for fkey in self.vertex_faces(vkey):
@@ -806,20 +671,12 @@ class SkeletonDecomposition(Skeleton):
         return total
 
     def branches_splitting_boundary_kinks(self) -> list[list[list[float]]]:
-        """Add new branches to fix the problem of boundary kinks not marked by the skeleton
-
-        Thesis S4.2.3.1, MISSED CONCAVITIES: "The skeleton marks convex but not
-        concave kinks, and the added branches may not spot the concavities.
-        Therefore, branches are added to include them." Only a CONCAVITY is
-        corrected -- see the gate on :meth:`boundary_interior_angle` below.
-        Due to a low density that did not spot the change of curvature at the kink.
-        Does not modify the singularites on the contrarty to increasing the density.
+        """Add branches at concave boundary kinks the skeleton missed (thesis S4.2.3.1).
 
         Returns
         -------
         new_branches : list
             List of polylines as list of point XYZ-coordinates.
-
         """
         new_branches = []
 
@@ -863,24 +720,9 @@ class SkeletonDecomposition(Skeleton):
         return new_branches
 
     def solve_triangular_faces(self) -> None:
-        """Modify the decomposition mesh from polylines to make it a quad mesh by converting the degenerated quad faces that appear as triangular faces.
+        """Make the decomposition mesh all-quad by fixing triangles from coinciding singular faces (thesis S4.2.3.2).
 
-        Thesis S4.2.3.2, UNWANTED TRIANGLES: "If two adjacent singular faces have
-        one or several coinciding vertices or a coinciding circumcentre, the
-        missing branch yields triangular faces in the coarse mesh."
-
-        **Deviation.** The thesis inserts the missing BRANCH, before the mesh is
-        built: "If two of the three patch corners are on the boundary, the branch
-        is inserted at the other corner, and reciprocally if two of the three
-        patch corners are off the boundary." This does vertex surgery on the
-        built mesh instead -- duplicate a corner (case 1), merge two (case 2).
-        The two consequences: it cannot act on a triangle whose corners are all
-        interior, and it never fires at a curve feature, because
-        ``from_polylines`` has already welded the topological cut shut so no
-        corner there answers ``is_vertex_on_boundary``. A free extremity touched
-        by one singular face is a two-valent vertex anyway (see
-        :meth:`free_tip_vertices`); one touched by several stays a pole, which
-        Fig 4.22b would collapse to two-valent and this does not.
+        Deviation: does vertex surgery on the built mesh instead of inserting the missing branch.
         """
         mesh = self.mesh
 
@@ -973,37 +815,9 @@ class SkeletonDecomposition(Skeleton):
             attr['z'] += xyz[2]
 
     def quadrangulate_polygonal_faces(self) -> None:
-        """Turn the polygonal faces left by a curve feature into quad faces.
+        """Turn polygonal faces left by a curve feature into quads by seam propagation (thesis Fig 4.20d).
 
-        Thesis S4.3.2, Fig 4.20d: "Pentagonal or higher-valency faces ... become
-        quad faces by propagating the seams of the discrepancies on the curve
-        features."
-
-        A curve feature is a topological cut (see
-        :func:`~compas_singular.algorithms.boundary_triangulation`), and the two
-        sides of a cut do not receive the same skeleton branches. Where one side
-        gets a branch landing that the other does not, the two sides disagree,
-        and welding them back together in ``from_polylines`` turns that
-        disagreement into a face with five or more vertices.
-
-        Such a face is repaired by propagating the seam: the odd vertex is
-        carried across the patch to the opposite side and the patch is relaid as
-        a discrete Coons patch of quads. This is the step of Fig. 4.20d in Oval's
-        thesis, and :func:`~compas_singular.algorithms.propagation.quadrangulate_faces`
-        is its implementation.
-
-        Notes
-        -----
-        Faces of three vertices are NOT touched here. A triangle is a legitimate
-        pseudo-quad with a pole, and is the business of
-        :meth:`solve_triangular_faces` and :meth:`store_pole_data`.
-
-        This method was disabled between 2021 and 2026. See ``HOW_IT_WORKS.md``;
-        the short version is that it kept one un-migrated call to COMPAS's
-        ``vertices_on_boundary()`` after that returned loops rather than
-        vertices, and that it welded inside the ``exploded()`` loop and so threw
-        away every component but the last.
-
+        Triangles are left alone: they are pseudo-quads with a pole.
         """
         supermesh = self.mesh
 
@@ -1079,26 +893,14 @@ class SkeletonDecomposition(Skeleton):
         # 	if len(face_vertices) > 4:
 
     def repair_polygonal_faces(self, poles: Sequence[list[float]] = ()) -> None:
-        """Last resort for a face seam propagation could not turn into quads.
+        """Split any face seam propagation could not quadrangulate along its own diagonals.
 
-        :meth:`quadrangulate_polygonal_faces` repairs a polygonal face by
-        carrying its seam across to the opposite side, which needs the face to
-        have exactly four real corners. A face with more than one seam on the
-        same side -- a closed curve feature produces them -- has fewer, and comes
-        through untouched. ``collect_strips`` cannot walk such a face, so rather
-        than leave the whole densification to fail on it, hand it to the general
-        repair the frame-field front end already carries: it splits an n-gon
-        along its own diagonals, adding no vertex and so leaving every neighbour
-        conforming.
-
-        Inert unless a face larger than a quad survived, which is also what keeps
-        the import out of the common path.
+        Last resort, inert unless a face larger than a quad survived.
 
         Parameters
         ----------
         poles : list, optional
             Point features, passed on as preferred pole positions.
-
         """
         mesh = self.mesh
         if not any(len(mesh.face_vertices(fkey)) > 4 for fkey in mesh.faces()):
@@ -1137,28 +939,15 @@ class SkeletonDecomposition(Skeleton):
         return new_lines
 
     def store_pole_data(self, poles: list[list[float]]) -> None:
-        """Record, for every triangular face, which of its corners is the pole.
+        """Record, for every triangular face, which corner is the pole.
 
-        A triangular face of the coarse mesh is not a defect: it is the
-        pseudo-quad ``(p, a, b, p)`` with one side collapsed at the pole ``p``,
-        and ``face_opposite_edge``, ``collect_strips`` and ``densification`` all
-        handle it. What IS a defect is a triangle with no pole recorded --
-        ``face_opposite_edge`` then raises ``KeyError`` on the first strip that
-        walks into it.
-
-        A point feature is the obvious source of a pole, but not the only one. A
-        curve feature whose extremity lies off the boundary is a singularity too
-        (Oval, thesis p. 100: "a pole if adjacent to several singular faces"), and
-        so is a medial-axis degeneracy. Those triangles used to print
-        ``pole missing`` and take the whole densification down with them, so any
-        triangle without a point feature at a corner gets one chosen for it.
+        Triangles without a point feature at a corner get one chosen by :meth:`_choose_pole`.
 
         Parameters
         ----------
         poles : list
             Point features, as XYZ coordinates. A triangle with one of these at a
             corner collapses there, exactly as before.
-
         """
         mesh = self.mesh
         pole_map = tuple([TOL.geometric_key(pole) for pole in poles])
@@ -1179,19 +968,7 @@ class SkeletonDecomposition(Skeleton):
         mesh.attributes['face_pole'] = face_poles
 
     def _choose_pole(self, fkey: int) -> int:
-        """Which corner of a triangular face to collapse the pseudo-quad at.
-
-        A pseudo-quad ``(p, a, b)`` is the quad ``(p, a, b, p)``: ``(p, a)`` and
-        ``(b, p)`` are one strip, and ``(a, b)`` is the side opposite the
-        collapsed corner. Densification fans the face from ``p`` onto ``(a, b)``
-        with the two rails at one density, so the fan is even when the two rails
-        are the same length -- pick the corner whose two edges are closest to
-        equal.
-
-        Same rule, and same reasoning, as ``_choose_pole`` in
-        ``compas_singular.framefield.separatrix_network``.
-
-        """
+        """Choose the corner of a triangle to collapse at: the one whose two edges are closest in length."""
         mesh = self.mesh
         fv = mesh.face_vertices(fkey)
         best = None

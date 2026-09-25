@@ -1,27 +1,6 @@
-"""What the coarse layout and the dense mesh share in Rhino: drawing and picking.
+"""Drawing and picking shared by the coarse layout and dense mesh scene objects in Rhino.
 
-Ported from ``mesh_ui.PickableMesh`` (2026-09-18), which it replaces. What that
-class learned is kept, each point a bug first:
-
-* **redraw everything, never update in place** -- unless the update is keyed on
-  what is actually drawn (:meth:`~RhinoSingularMeshObject.sync`). Every
-  topological edit can renumber keys, and a stale guid map is a real way to move
-  the wrong vertex;
-* **every ``rs.Add*`` RAISES** on geometry Rhino will not take, and a refusal is
-  reported, never swallowed: an object that was never drawn cannot be picked and
-  nothing on screen says why;
-* **a miss re-prompts**: clicking slightly off is not a decision to stop.
-
-What is new with the scene object:
-
-* **one layer per object, and only it draws there.** :meth:`clear` empties the
-  layer rather than deleting the guids it remembers: after Ctrl+Z, Rhino
-  restores objects this Python session never drew, and a guid map misses them;
-* **cleared objects are DELETED, never purged.** compas_rhino purges by default
-  (``doc.Objects.Purge``), which takes an object out of Rhino's undo list, so
-  Ctrl+Z could not bring back what was drawn before;
-* **selection is a direct pick**: the ``select_*`` methods pick, instead of
-  compas_rui's "All / Boundary / Strip / Manual" menu.
+Each object owns one layer; cleared objects are deleted, never purged, so Ctrl+Z still works.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -59,13 +38,7 @@ def _selection(flag: bool | Sequence[Any] | None, everything: Callable[[], Itera
 
 
 def _boundary_vertices(mesh: Any) -> set[int]:
-    """Every vertex with a faceless halfedge -- the set, without walking a loop.
-
-    NOT ``mesh.vertices_on_boundaries()``: that walks each boundary as a loop,
-    and on a mesh where two faces only touch at a corner the walk never ends.
-    Measured on a dense mesh after hand edits -- and here it would have frozen
-    Rhino on the redraw after the edit that made the corner.
-    """
+    """Every vertex with a faceless halfedge, as a set, without walking a loop."""
     out = set()
     for u, nbrs in mesh.halfedge.items():
         for v, fkey in nbrs.items():
@@ -165,13 +138,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
         return self.guids
 
     def draw_joined_faces(self) -> Any | None:
-        """The faces as ONE welded mesh, n-gons kept -- what ``helpers.bake_mesh`` bakes.
-
-        Vertex KEYS are mapped to positions explicitly: they only agree while the
-        keys are 0..n-1, and a repair or a weld leaves gaps. ``disjoint=False``
-        keeps the corners welded; ``vertices_and_faces_to_rhino`` fans a face of
-        more than four corners around its centroid and groups it as an n-gon.
-        """
+        """The faces as one welded mesh with n-gons kept, as ``helpers.bake_mesh`` bakes it."""
         index = {vkey: i for i, vkey in enumerate(self.mesh.vertices())}
         vertices = [self.mesh.vertex_attributes(vkey, 'xyz') for vkey in self.mesh.vertices()]
         faces = [[index[vkey] for vkey in self.mesh.face_vertices(fkey)] for fkey in self.mesh.faces()]
@@ -223,19 +190,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
         return guids
 
     def sync(self) -> tuple[int, int]:
-        """**Bring the drawing up to date with the mesh, replacing only what changed.**
-
-        What :meth:`redraw` does, for a mesh that changes a little at a time and
-        is too big to redraw after every click. An object is kept only if its KEY
-        and its GEOMETRY both still match: a vertex at the same key and position
-        with the same colour, an edge between the same two keys at the same two
-        positions. Everything else is deleted and drawn again, so a renumbering
-        edit cannot leave a pick pointing at the wrong vertex -- at worst it
-        redraws more than it had to.
-
-        Redraws everything if nothing is drawn yet. A SHAPED edge is always
-        replaced, by its chord. Returns ``(removed, added)``.
-        """
+        """Bring the drawing up to date, replacing only objects whose key or geometry changed. ``(removed, added)``."""
         if not self._drawn_vertices and not self._drawn_edges:
             self.redraw()
             return 0, len(self._guid_vertex) + len(self._guid_edge)
@@ -321,13 +276,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
         return guid
 
     def _add_shaped_edge(self, u: int, v: int, chorded: list[tuple[int, int]]) -> Any | None:
-        """The edge as its shape, or ``None`` to fall back to the chord.
-
-        ``rs.AddPolyline`` RAISES on points Rhino will not take, judged at the
-        DOCUMENT tolerance, so a drawn arc that doubles back by half a tolerance
-        is fine geometry and still unbakeable. The edge then falls back to its
-        chord rather than going missing: that is what densification does anyway.
-        """
+        """The edge drawn as its shape, or ``None`` to fall back to the chord."""
         shape = self.edge_shape(u, v) if self.edge_shape is not None else None
         if shape is None or len(shape) <= 2:
             return None
@@ -359,18 +308,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
             print("Not a vertex of this mesh -- pick one of the points on {!r}.".format(self.layer))
 
     def pick_vertex_or_finish(self, message: str = "Select a vertex", preselect: bool = True) -> int | Any | None:
-        """A vertex key, ``mesh_ui.FINISH`` on Enter, or ``None`` on Esc.
-
-        For a picking LOOP where Enter means "stop, and use what I have" and Esc
-        "abandon the whole pick". ``rs.GetObject`` collapses both to ``None``
-        because it never turns on ``AcceptNothing``; the ``GetObject`` it wraps
-        reports them as different results once it is.
-
-        **The pick is unselected before it is returned.** ``rs.GetObject`` does
-        that itself; a bare ``GetObject`` leaves the object selected, and with
-        preselect on the NEXT call in the loop takes it at once, without waiting
-        for a click -- the same corner, again and again, forever.
-        """
+        """A vertex key, ``mesh_ui.FINISH`` on Enter, or ``None`` on Esc; the pick is unselected first."""
         while True:
             go = Rhino.Input.Custom.GetObject()
             go.SetCommandPrompt(message)
@@ -434,13 +372,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
         return self.pick_faces(message)
 
     def closest_edge_point(self, point: Any, tol: float | None = None) -> Any | None:
-        """``point`` snapped onto one of THIS mesh's edges if it lies on one, else ``None``.
-
-        Only this mesh's edges: any other curve in the document -- an input
-        boundary, a separatrix, a construction line -- would anchor a path where
-        the mesh has no edge, and the operation would refuse something that
-        looked finished.
-        """
+        """``point`` snapped onto one of this mesh's edges if it lies on one, else ``None``."""
         if tol is None:
             tol = sc.doc.ModelAbsoluteTolerance * 2.0
         for guid in self._guid_edge:
@@ -460,18 +392,7 @@ class RhinoSingularMeshObject(RUIMeshObject):
     # --------------------------------------------------------------------------
 
     def show_path(self, vkeys: Sequence[int], color: tuple[int, int, int] | None = None) -> None:
-        """**Show the corners picked so far, by RECOLOURING their objects.**
-
-        Not a line drawn on top: consecutive corners of a polyedge are joined by
-        an edge object, a polyline through them lay exactly on it, and Rhino does
-        not promise which of two coincident curves it draws last -- nothing
-        appeared. Recolouring cannot lose that race, and it shows the FIRST pick
-        too. Not selection either: ``pick_vertex`` asks with ``preselect=True``,
-        so a selected corner would be taken as the next answer.
-
-        A pair of corners with no edge object between them gets a chord polyline.
-        Replaces whatever it showed before.
-        """
+        """Show the corners picked so far by recolouring their objects, replacing what was shown before."""
         self.clear_path()
         color = color or self.colors['path']
         vkeys = list(vkeys)

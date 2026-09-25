@@ -166,10 +166,10 @@ independent of `undo`, which only ever touches the dense mesh.
 6. `coarse_densify` -- then continue with `inspect` and the smoothers.
 7. `coarse_save`, if the layout is worth keeping.
 8. `rhino_pull_coarse` brings it back after editing it in Rhino, with its
-   densities and patterns. If corners were moved there, the document wins and
-   the densities are carried onto the moved layout (`source: document`).
-9. `rhino_push_coarse`, to carry on in Rhino: it writes the layout where
-   `CMD04_densities` / `CMD06_quad_mesh` / `CMD03_edit_coarse_mesh` read one --
-   `TopologyProblem::Skeleton::{Mesh, Poles, Polylines, EdgeCurves}` plus the
-   `coarse.json` side-car carrying strips, densities and patterns. Look at it
-   with `coarse_inspect image=true` first; it refuses otherwise.
+   strips, densities, patterns and edge shapes, exactly as the document's
+   session holds it.
+9. `rhino_push_coarse`, to carry on in Rhino: it writes the layout into the
+   document's session, where `CMD04_densities` / `CMD06_quad_mesh` /
+   `CMD03_edit_coarse_mesh` read one, and draws it on
+   `TopologyProblem::Skeleton::{Mesh, Poles, Polylines, EdgeCurves}`. Look at
+   it with `coarse_inspect image=true` first; it refuses otherwise.

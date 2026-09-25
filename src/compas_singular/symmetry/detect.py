@@ -1,44 +1,6 @@
-"""**Symmetry detection: which rotations and mirrors map the input onto itself.**
+"""Symmetry detection: which rotations and mirrors about the area centroid map the input onto itself.
 
-HOW
----
-
-1. **Centre = area centroid of the region** (outer minus holes). Every isometry
-   that maps a region onto itself fixes its centroid, so there is exactly one
-   candidate, for any order. The bounding-box centre the old detector used is
-   right for square-like shapes and wrong for a triangle.
-
-2. **The matching test.** An element ``g`` is applied to every sample -- each
-   vertex and each segment midpoint of every included curve -- and the distance
-   from the image to the nearest SEGMENT of the curves of the same kind (walls
-   to walls, holes to holes, guides to guides, poles to poles) is measured.
-   ``g`` is accepted when the worst distance is within ``tol``. A segment that
-   samples a smooth curve (no vertex turning 22.5 degrees or more) is allowed
-   its chord sag on top: an image landing between the chord and the arc is on
-   the curve as far as the samples can say. Corners get no slack, so a polygon
-   is matched exactly.
-
-   These are real distances from :class:`~._geometry.SegmentHash`, which
-   searches every cell a query can reach. The old detector rounded coordinates
-   into buckets, so two points 1e-9 apart on either side of a bucket edge
-   disagreed: it lost symmetries at +-1e-7 noise and once rejected the identity.
-   Measuring to a segment rather than to a sample also makes the sampling
-   irrelevant -- a circle divided into 26 points, or rotated 5 degrees, still
-   matches its own images.
-
-3. **Rotations** by ``2 pi / n`` for ``n = 2 .. max_order``; the order is the
-   largest ``n`` whose divisors all pass.
-
-4. **Mirrors.** A mirror axis passes through the centre and, for a polygon,
-   through a vertex or an edge midpoint -- where the distance from the centre is
-   locally extreme. Those directions and the bisectors between them are the
-   candidates, reduced modulo ``pi / n``, each tested with step 2 (on a small
-   subset first, then in full).
-
-5. **The group** is the largest subgroup of the result whose every element
-   passes: elements tested one at a time near the tolerance need not compose.
-
-Nothing is enforced here. See :mod:`.unit` for that.
+Matched by true distance to segments of the same kind, with chord-sag slack on curves. Nothing is enforced here.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -113,12 +75,7 @@ class Matcher(object):
     def deviation(
         self, element: Element, limit: float | None = None, subset: int | None = None
     ) -> tuple[float, tuple[str, list[float]] | None]:
-        """``(worst distance, (tag, point))`` for one element.
-
-        Stops as soon as the worst exceeds ``limit`` (default: the near-miss
-        limit) and returns ``inf`` then -- the exact size of a large miss is
-        not worth the time.
-        """
+        """``(worst distance, (tag, point))`` for one element, or ``inf`` once it exceeds ``limit``."""
         limit = self.near if limit is None else limit
         a, b, c, d = element.matrix
         cx, cy = self.centre[0], self.centre[1]

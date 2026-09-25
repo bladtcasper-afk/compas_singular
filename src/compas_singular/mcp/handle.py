@@ -1,29 +1,6 @@
-"""**Naming places on a mesh, when the keys underneath will not hold still.**
+"""Name mesh places by rounded position (handles) instead of vertex keys, which edits renumber.
 
-A vertex key is an index into a dictionary that every topological edit
-renumbers. Hand ``vertex 37`` to a model, let it smooth, and 37 is a different
-corner of the mesh -- or gone. So no raw key crosses this protocol. What crosses
-is a *handle*, which is the rounded position::
-
-    v:12.500,4.250,0.000
-
-Position is stable under renumbering, survives a round trip through Rhino, and
-is legible: a model reading two handles can tell whether they are near each
-other, which it cannot do with two integers.
-
-**Rounding is what makes a handle work, and also what limits it.** Coordinates
-are rounded to :data:`PRECISION` decimals before naming, so a vertex that moves
-by less than half a millimetre keeps its handle -- exactly what is wanted while
-smoothing, where every vertex moves a little. The cost is that smoothing far
-enough RENAMES a vertex, so a handle is a name for a place, not a permanent name
-for a vertex. :func:`resolve` therefore falls back to nearest-within-tolerance
-rather than requiring an exact match, and says which it did.
-
-**Regions are selected, not enumerated.** Asking a model to pass a list of
-vertex keys means asking it to invent forty numbers it cannot verify. Instead it
-describes what it wants -- the worst faces, near a point, around the
-singularities -- and :func:`select` resolves that against the mesh in hand. Doing
-it here is why this package can keep vertex and face keys entirely private.
+Regions are selected by description via :func:`select`, never enumerated.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -102,12 +79,7 @@ def _parse(handle: Any) -> list[float] | None:
 
 
 def resolve(mesh: Mesh, handle: str) -> tuple[Any, str]:
-    """Find the vertex a handle names.
-
-    Exact first -- a handle that still names its vertex resolves with no search.
-    Otherwise the nearest vertex within tolerance, because smoothing moves
-    everything a little and a handle taken before a smoothing pass should still
-    work after it.
+    """Find the vertex a handle names: exact, else nearest within tolerance. ``(key, how)`` or ``(None, reason)``.
 
     Parameters
     ----------
@@ -158,13 +130,7 @@ def _boundary_vertices(mesh: Mesh) -> set:
 
 
 def _singular_vertices(mesh: Mesh) -> set:
-    """Irregular interior vertices and poles.
-
-    Prefers the mesh's own :meth:`is_vertex_singular`, which
-    :class:`PseudoQuadMesh` overrides to count a pole -- a collapsed side is a
-    singularity no valency count can see. A plain compas ``Mesh``, which is what
-    comes back out of Rhino, has no such method, so fall back to degree.
-    """
+    """Irregular interior vertices and poles."""
     test = getattr(mesh, 'is_vertex_singular', None)
     if test is not None:
         try:

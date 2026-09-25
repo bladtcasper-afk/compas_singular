@@ -17,7 +17,7 @@ from compas.itertools import pairwise
 from compas.tolerance import TOL
 
 from compas_singular.datastructures import Mesh
-from compas_singular.datastructures import Network
+from compas.datastructures import Graph
 from compas_singular.datastructures import trimesh_face_circle
 from compas_singular.datastructures import is_face_degenerate
 
@@ -32,13 +32,7 @@ __all__ = [
 
 
 def as_points(curve: Polyline | list, close: bool | None = None) -> list[list[float]]:
-    """Coerce one curve to a list of ``[x, y, z]``.
-
-    Accepts a :class:`compas.geometry.Polyline`, anything else exposing
-    ``.points``, a list of :class:`compas.geometry.Point`, or the list of
-    ``[x, y, z]`` this module has always taken. A list of ``[x, y, z]`` is
-    returned unchanged, so existing callers pay nothing and their Delaunay
-    tie-breaks cannot move.
+    """Coerce one curve (``Polyline``, anything with ``.points``, or a point list) to a list of ``[x, y, z]``.
 
     Parameters
     ----------
@@ -53,7 +47,6 @@ def as_points(curve: Polyline | list, close: bool | None = None) -> list[list[fl
     Returns
     -------
     list[list[float]]
-
     """
     if hasattr(curve, 'points'):
         curve = list(curve.points)
@@ -109,22 +102,9 @@ def as_curves(curves: Polyline | list | None, close: bool | None = None) -> list
 
 
 def weld_polyline_features(polyline_features: list[list[list[float]]]) -> list[list[list[float]]]:
-    """Weld feature polylines into chains that share their junctions.
+    """Weld feature polylines that share a point into chains split at every non-two-valent junction.
 
-    This is what :meth:`compas_singular.rhino.RhinoSurface.discrete_mapping`
-    already does to the curves selected in Rhino, and what a headless caller
-    otherwise has to remember to do. Polylines that SHARE A POINT are joined
-    into one network and split again at every node that is not two-valent, so
-    the junction becomes one vertex of the Delaunay rather than two.
-
-    Without it the topological cut leaks through the junction and the
-    decomposition returns one large polygonal face instead of a layout: an X
-    fed as two full diagonals comes back with an 11-gon.
-
-    Note what this does NOT do, here or in Rhino: polylines that cross without
-    sharing a point are left alone, because no node exists to weld. Supply a
-    crossing as the chains that meet at it -- an X as four arms from the centre,
-    which is also what four drawn lines give you in Rhino.
+    Crossings without a shared point are left alone; see :func:`arrange_polyline_features`.
 
     Parameters
     ----------
@@ -136,35 +116,17 @@ def weld_polyline_features(polyline_features: list[list[list[float]]]) -> list[l
     list
         The welded polylines. A single polyline, or an empty list, is returned
         unchanged.
-
     """
     # One chain has no junction to weld, and round-tripping it through the
     # network would renumber its points and move the Delaunay's tie-breaks.
     if len(polyline_features) < 2:
         return polyline_features
-    return graph_polylines(Network.from_lines(
+    return graph_polylines(Graph.from_lines(
         [(u, v) for polyline in polyline_features for u, v in pairwise(polyline)]))
 
 
 def arrange_polyline_features(polyline_features: list[list[list[float]]], tol: float = 1e-9) -> list[list[list[float]]]:
-    """Put a vertex where two curve features cross.
-
-    A feature is embedded by cutting the Delaunay along it, and a cut can only
-    run along edges the triangulation has. Two curves crossing in their interiors
-    share no point, so the crossing is no vertex and **no triangulation can hold
-    both crossing segments** -- one is simply absent, and the cut leaks straight
-    through the crossing.
-
-    That is not a shortcoming of the Delaunay. Chew's constrained Delaunay
-    triangulation is defined for "a set of vertices together with a set of
-    NONCROSSING edges", so a crossing breaks its precondition too. The fix is a
-    planar arrangement, not a stronger triangulator.
-
-    Measured on Fig 4.19, whose two features cross at (4.7, 4.7): exactly one
-    segment is missing from the Delaunay, and the two skeleton branches that
-    should be pruned instead run through the crossing, passing within 0.026 of
-    it. Splitting there takes the layout from 20 patches with 2 triangles and 10
-    singularities to 20 all-quad patches and 4.
+    """Put a vertex where two curve features cross, so the Delaunay can hold both cuts.
 
     Parameters
     ----------
@@ -177,7 +139,6 @@ def arrange_polyline_features(polyline_features: list[list[list[float]]], tol: f
     -------
     list
         The polylines, with a vertex inserted at every crossing.
-
     """
     if len(polyline_features) < 2:
         return polyline_features
@@ -229,22 +190,9 @@ def boundary_triangulation(
     point_features: list = [],
     delaunay: Callable[..., Any] | None = None,
 ) -> Mesh:
-    """Generate Delaunay triangulation between a planar outer boundary and planar inner boundaries. All vertices lie the boundaries.
+    """Delaunay triangulation of boundary (and feature) points, cut open along curve features (thesis S4.2.1, S4.3.2).
 
-    Thesis S4.2.1: the surface is triangulated "using points on the boundaries as
-    vertices", and faces outside the boundaries are deleted. The boundaries "must
-    be discretised into points densely enough to capture the relevant curvature
-    changes but not too densely to avoid unnecessary heavy computation" --
-    d_i = max(ceil(l_i / (alpha * D)), d_min), with alpha 0.01 to 0.05 of the
-    bounding-box diagonal D and d_min 5 to 10. That sampling is the caller's job;
-    this function takes the points as given.
-
-    Thesis S4.3.2: curve features are embedded by a TOPOLOGICAL CUT -- "Topological
-    cuts are made in the Delaunay mesh along the curve features to consider them as
-    boundaries" -- which is the unwelding at the end.
-
-    Not implemented: the constrained Delaunay of Fig 4.20 (Chew 1989). Measured
-    harmless at these sampling densities; see ``HOW_IT_WORKS.md``.
+    The caller does the sampling; the constrained Delaunay of Fig 4.20 is not implemented.
 
     Parameters
     ----------
@@ -268,7 +216,6 @@ def boundary_triangulation(
     -------
     delaunay_mesh : Mesh
         The Delaunay mesh.
-
     """
     if not delaunay:
         delaunay = delaunay_from_points

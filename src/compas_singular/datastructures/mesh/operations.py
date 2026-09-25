@@ -95,7 +95,7 @@ FLATNESS = 1e-12
 
 
 def is_face_degenerate(a: list[float], b: list[float], c: list[float], tol: float = FLATNESS) -> bool:
-    """Is a triangle flat -- its three corners collinear, or two of them equal?
+    """Whether a triangle is flat (collinear or repeated corners), by a scale-relative height test.
 
     Parameters
     ----------
@@ -107,17 +107,6 @@ def is_face_degenerate(a: list[float], b: list[float], c: list[float], tol: floa
     Returns
     -------
     bool
-
-    Notes
-    -----
-    Deliberately not ``length_vector(cross_vectors(ab, ac)) == 0``. A flat
-    triangle has zero area in exact arithmetic only; in floats the answer
-    depends on WHICH pair of edge vectors the cross product is taken from --
-    the same collinear triple gives 0.0 from ``ab x ac`` and 8e-17 from
-    ``ba x cb``. :func:`trimesh_face_circle` divides by the second, so an exact
-    test on the first let flat faces through to a ZeroDivisionError there.
-    Anything scale-relative is immune to that disagreement, since the two
-    formulations differ only by rounding.
     """
     ab = subtract_vectors(b, a)
     ac = subtract_vectors(c, a)
@@ -127,7 +116,7 @@ def is_face_degenerate(a: list[float], b: list[float], c: list[float], tol: floa
 
 
 def trimesh_face_circle(mesh: Mesh, fkey: int) -> tuple[list[float], float, list[float]] | None:
-    """Circumcircle of a triangular face.
+    """Circumcircle of a triangular face, in closed form so the centre is bit-reproducible.
 
     Parameters
     ----------
@@ -149,19 +138,6 @@ def trimesh_face_circle(mesh: Mesh, fkey: int) -> tuple[list[float], float, list
         closed form below divides by its doubled squared area.
         :func:`boundary_triangulation` deletes flat faces before any caller here
         gets to walk them, so reaching this means one was built some other way.
-
-    Notes
-    -----
-    This is deliberately not :meth:`compas.datastructures.Mesh.face_circle`.
-    That one is a numpy least-squares *bestfit* through the face coordinates and
-    returns a ``Circle`` for any face, never None. Callers here compare
-    circumcentres by ``TOL.geometric_key`` equality and use one as a dict key
-    that is looked up again later (see ``Skeleton.lines`` and
-    ``SkeletonDecomposition.decomposition_polylines``), so the centre has to
-    come out of the same closed-form arithmetic every time. A bestfit through
-    three points is analytically the circumcircle but not bit-identical to the
-    closed form, and a three-decimal geometric key is exactly where that
-    difference surfaces -- as a KeyError, not as a slightly wrong number.
     """
     vertices = mesh.face_vertices(fkey)
     if len(vertices) != 3:
@@ -195,7 +171,7 @@ def trimesh_face_circle(mesh: Mesh, fkey: int) -> tuple[list[float], float, list
 
 
 def mesh_weld(mesh: Mesh, precision: int | None = None, cls: type | None = None) -> Any:
-    """Weld vertices of a mesh within a precision distance, returning a new mesh.
+    """Weld vertices within a precision into a new mesh, dropping faces that collapse below three vertices.
 
     Parameters
     ----------
@@ -211,16 +187,6 @@ def mesh_weld(mesh: Mesh, precision: int | None = None, cls: type | None = None)
     -------
     Mesh
         A new welded mesh.
-
-    Notes
-    -----
-    This is deliberately not :meth:`compas.datastructures.Mesh.weld`. That one
-    welds in place, returns None, keeps the original vertex keys, and leaves
-    faces that collapse below three vertices in the mesh. Callers here need a
-    *new* mesh (``SkeletonDecomposition.quadrangulate_polygonal_faces``) and
-    need the collapse (the pseudo-quad pole bookkeeping in
-    ``CoarsePseudoQuadMesh.densification`` relies on a pole quad ``[a, b, c, c]``
-    becoming a triangle).
     """
     if cls is None:
         cls = type(mesh)
@@ -252,11 +218,6 @@ def meshes_join(meshes: list[Mesh], cls: type | None = None) -> Any:
     -------
     Mesh
         A new joined mesh.
-
-    Notes
-    -----
-    This is deliberately not :meth:`compas.datastructures.Mesh.join`, which
-    joins one other mesh in place and returns None.
     """
     if cls is None:
         cls = type(meshes[0])
